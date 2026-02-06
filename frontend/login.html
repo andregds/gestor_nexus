@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Nexus Monitor</title>
+    <!-- Link para o CSS principal -->
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="auth-body">
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <p>Entre para acessar o painel</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" placeholder="seu@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" placeholder="Sua senha" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Não tem uma conta? <a href="register.html">Criar conta</a></p>
+            </div>
+
+            <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.9rem; min-height: 20px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msgDiv = document.getElementById('message');
+
+            msgDiv.textContent = 'Autenticando...';
+            msgDiv.style.color = '#64748b'; // Cor neutra
+
+            try {
+                // O padrão OAuth2 do FastAPI espera dados como form-urlencoded
+                const formData = new URLSearchParams();
+                formData.append('username', email); // O backend espera o campo 'username'
+                formData.append('password', password);
+
+                const response = await fetch(`${API_URL}/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    // Salva o token no LocalStorage
+                    localStorage.setItem('token', data.access_token);
+
+                    msgDiv.textContent = 'Login realizado! Redirecionando...';
+                    msgDiv.style.color = 'var(--success)'; // Verde do tema
+
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1000);
+                } else {
+                    msgDiv.textContent = 'E-mail ou senha incorretos.';
+                    msgDiv.style.color = 'var(--danger)'; // Vermelho do tema
+                }
+            } catch (error) {
+                console.error(error);
+                msgDiv.textContent = 'Erro de conexão com o servidor.';
+                msgDiv.style.color = 'var(--danger)';
+            }
+        }
+    </script>
+</body>
+</html>

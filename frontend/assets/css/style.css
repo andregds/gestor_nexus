@@ -1,0 +1,387 @@
+/* =========================================
+   THEME: ENTERPRISE TELECOM
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    /* Brand Colors */
+    --primary: #0f172a;      /* Dark Navy */
+    --primary-light: #1e293b; /* Slate */
+    --accent: #3b82f6;       /* Tech Blue */
+    --accent-hover: #2563eb;
+
+    /* Status Colors */
+    --success: #10b981;      /* Signal Green */
+    --success-bg: #d1fae5;
+    --warning: #f59e0b;      /* Amber */
+    --warning-bg: #fef3c7;
+    --danger: #ef4444;       /* Alert Red */
+    --danger-bg: #fee2e2;
+    --neutral: #64748b;
+
+    /* Backgrounds */
+    --bg-body: #f1f5f9;      /* Light Gray Blue */
+    --bg-card: #ffffff;
+    --border-color: #e2e8f0;
+
+    /* Typography */
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --font-main: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font-main);
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    /* overflow: hidden; -> REMOVIDO DAQUI para não travar a tela de login */
+}
+
+/* =========================================
+   COMPONENTS
+   ========================================= */
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.btn-primary { background-color: var(--accent); color: white; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); }
+.btn-primary:hover { background-color: var(--accent-hover); transform: translateY(-1px); }
+
+.btn-secondary { background-color: white; border: 1px solid var(--border-color); color: var(--text-main); }
+.btn-secondary:hover { background-color: #f8fafc; border-color: var(--accent); color: var(--accent); }
+
+.btn-danger { background-color: var(--danger-bg); color: var(--danger); }
+.btn-danger:hover { background-color: var(--danger); color: white; }
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: 0.2s;
+}
+.btn-icon:hover { color: var(--danger); background: var(--danger-bg); }
+
+.btn-block {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: 0.85rem;
+    font-size: 1rem;
+    justify-content: center;
+}
+
+/* Forms */
+.form-group { margin-bottom: 1rem; }
+label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-main); }
+input, select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    font-family: var(--font-main);
+    transition: 0.2s;
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Cards */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 1.5rem;
+}
+
+/* =========================================
+   LAYOUT: DASHBOARD
+   ========================================= */
+.dashboard-container {
+    display: flex;
+    height: 100vh;
+    overflow: hidden; /* ADICIONADO AQUI: Só o dashboard não deve rolar a página inteira */
+}
+
+/* Sidebar */
+.sidebar {
+    width: 260px;
+    background-color: var(--primary);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(255,255,255,0.1);
+    transition: transform 0.3s ease;
+    z-index: 50;
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.brand-logo { font-weight: 700; font-size: 1.2rem; letter-spacing: -0.5px; color: white; }
+.brand-logo span { color: var(--accent); }
+
+.sidebar-menu { padding: 1rem; flex: 1; }
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    padding: 0.85rem 1rem;
+    color: #94a3b8;
+    text-decoration: none;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: 0.2s;
+    font-weight: 500;
+}
+.sidebar-link:hover, .sidebar-link.active {
+    background-color: rgba(255,255,255,0.1);
+    color: white;
+}
+.sidebar-link.active { border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
+.sidebar-icon { margin-right: 12px; width: 20px; text-align: center; }
+
+.user-profile {
+    padding: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.2);
+}
+.user-info { font-size: 0.9rem; font-weight: 600; }
+.user-role { font-size: 0.75rem; color: #94a3b8; }
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    background-color: var(--bg-body);
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+.page-title h2 { font-size: 1.8rem; font-weight: 700; color: var(--primary); }
+.page-title p { color: var(--text-muted); }
+
+/* =========================================
+   DASHBOARD WIDGETS
+   ========================================= */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+.stat-card::after {
+    content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 3px;
+    background: var(--accent);
+}
+.stat-card.success::after { background: var(--success); }
+.stat-card.danger::after { background: var(--danger); }
+.stat-card.warning::after { background: var(--warning); }
+
+.stat-icon-box {
+    width: 48px; height: 48px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+}
+.stat-details h3 { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-details p { font-size: 1.8rem; font-weight: 700; color: var(--primary); line-height: 1.2; }
+
+/* URL Grid */
+.urls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.url-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.25rem;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-left: 4px solid var(--neutral);
+}
+.url-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+.url-card.status-up { border-left-color: var(--success); }
+.url-card.status-down { border-left-color: var(--danger); }
+.url-card.status-warning { border-left-color: var(--warning); }
+
+.url-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+.url-title { font-weight: 600; font-size: 1.1rem; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.url-link { font-size: 0.8rem; color: var(--accent); font-family: var(--font-mono); text-decoration: none; }
+
+.status-badge {
+    padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+}
+.status-up .status-badge { background: var(--success-bg); color: var(--success); }
+.status-down .status-badge { background: var(--danger-bg); color: var(--danger); }
+.status-warning .status-badge { background: var(--warning-bg); color: #b45309; }
+
+.url-metrics {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+    background: #f8fafc; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem;
+}
+.metric { display: flex; flex-direction: column; }
+.metric-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+.metric-value { font-size: 0.9rem; font-weight: 600; font-family: var(--font-mono); }
+
+/* WhatsApp Specifics */
+.whatsapp-status-box {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1.5rem; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color);
+}
+.status-indicator { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.status-indicator.success { color: var(--success); }
+.status-indicator.error { color: var(--danger); }
+
+.qr-container {
+    background: white; border: 2px dashed var(--border-color);
+    padding: 2rem; text-align: center; border-radius: 8px; margin-top: 1.5rem;
+}
+.spinner {
+    border: 3px solid #f3f3f3; border-top: 3px solid var(--accent);
+    border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* Mobile Toggle */
+.mobile-toggle { display: none; background: none; border: none; font-size: 1.5rem; color: white; cursor: pointer; }
+@media (max-width: 768px) {
+    .sidebar { position: fixed; height: 100%; transform: translateX(-100%); }
+    .sidebar.active { transform: translateX(0); }
+    .mobile-toggle { display: block; }
+    .navbar-mobile { background: var(--primary); padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .dashboard-container { flex-direction: column; }
+    .main-content { padding: 1rem; }
+}
+
+/* =========================================
+   LAYOUT: AUTHENTICATION (LOGIN/REGISTER)
+   ========================================= */
+.auth-body {
+    background-color: var(--bg-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    width: 100%;
+    margin: 0;
+    padding: 20px 0;
+    /* Rolagem habilitada nativamente pois removemos overflow:hidden do body */
+}
+
+.auth-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    margin: auto;
+}
+
+.auth-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.5);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.auth-header .brand-logo {
+    color: var(--primary);
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.auth-header p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.auth-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.auth-footer a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.auth-footer a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+/* --- Responsividade para Celulares --- */
+@media (max-width: 480px) {
+    .auth-card {
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-header .brand-logo {
+        font-size: 1.5rem;
+    }
+
+    .auth-container {
+        padding: 15px;
+    }
+}

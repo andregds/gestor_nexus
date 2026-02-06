@@ -1,0 +1,30 @@
+├── backend/
+│   ├── main.py                 # Novo ponto de entrada principal
+│   ├── database.py             # Mantém o que já existe
+│   ├── models.py               # Mantém o que já existe
+│   ├── monitor.py              # Mantém o que já existe
+│   ├── auth.py                 # Mantém o que já existe (funções de JWT)
+│   ├── .env                    # Mantém o que já existe
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── config.py           # Configurações globais (EVOLUTION_API_URL, etc.)
+│   │   ├── dependencies.py     # get_db, get_current_user
+│   │   ├── lifespan.py         # Função lifespan
+│   │   └── whatsapp_utils.py   # generate_instance_name, evolution_headers
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── auth.py             # Token
+│   │   ├── url.py              # URLCreate, URLResponse
+│   │   ├── user.py             # UserCreate, UserResponse
+│   │   └── whatsapp.py         # WhatsAppNumber (se precisar)
+│   └── routes/
+│       ├── __init__.py
+│       ├── auth.py             # Rotas /register, /token
+│       ├── users.py            # Rotas /me
+│       ├── whatsapp.py         # Rotas /whatsapp/*
+│       └── urls.py             # Rotas /urls, /urls/{id}
+└── frontend/
+    ├── index.html
+    ├── login.html
+    ├── register.html
+    └── dashboard.html

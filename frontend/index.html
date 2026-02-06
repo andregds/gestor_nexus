@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor DNS - Início</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            padding: 50px;
+            border-radius: 16px;
+            max-width: 700px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            font-size: 48px;
+            color: #22c55e;
+            margin-bottom: 20px;
+            text-shadow: 0 0 15px rgba(34, 197, 94, 0.5);
+        }
+        p {
+            font-size: 18px;
+            opacity: 0.8;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+        .features {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 50px;
+            flex-wrap: wrap;
+            gap: 30px;
+        }
+        .feature-item {
+            flex-basis: 30%;
+            min-width: 200px;
+        }
+        .feature-item .icon {
+            font-size: 40px;
+            color: #3b82f6;
+            margin-bottom: 10px;
+        }
+        .feature-item h3 {
+            font-size: 22px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+        .feature-item p {
+            font-size: 14px;
+            opacity: 0.6;
+            margin-bottom: 0;
+        }
+        .buttons a {
+            display: inline-block;
+            padding: 15px 30px;
+            margin: 0 15px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+        .buttons .primary {
+            background: #22c55e;
+            color: #0f172a;
+            box-shadow: 0 10px 20px rgba(34, 197, 94, 0.3);
+        }
+        .buttons .primary:hover {
+            background: #16a34a;
+            transform: translateY(-3px);
+        }
+        .buttons .secondary {
+            background: transparent;
+            border: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+        .buttons .secondary:hover {
+            background: rgba(59, 130, 246, 0.1);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="notification-container"></div>
+    <!-- O resto do seu conteúdo, como a sidebar e o main... -->
+
+    <div class="container">
+        <h1>🌐 Monitor DNS</h1>
+        <p>Monitore seus domínios e receba notificações em tempo real via WhatsApp.</p>
+
+        <div class="features">
+            <div class="feature-item">
+                <div class="icon">🔍</div>
+                <h3>Monitoramento Contínuo</h3>
+                <p>Verificação automática de DNS e status HTTP a cada minuto.</p>
+            </div>
+            <div class="feature-item">
+                <div class="icon">📱</div>
+                <h3>Notificações WhatsApp</h3>
+                <p>Receba alertas instantâneos no seu celular quando algo sair do normal.</p>
+            </div>
+            <div class="feature-item">
+                <div class="icon">🔒</div>
+                <h3>Seguro e Privado</h3>
+                <p>Seus dados e URLs são protegidos no seu próprio servidor.</p>
+            </div>
+        </div>
+
+        <div class="buttons">
+            <a href="register.html" class="primary">Criar Conta</a>
+            <a href="login.html" class="secondary">Já tenho conta</a>
+        </div>
+    </div>
+</body>
+</html>

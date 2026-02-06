@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Conta | Nexus Monitor</title>
+    <!-- Link para o CSS principal -->
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="auth-body">
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <p>Crie sua conta para começar a monitorar</p>
+            </div>
+
+            <form id="registerForm" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="name">Nome Completo</label>
+                    <input type="text" id="name" placeholder="Seu nome" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" placeholder="seu@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" placeholder="Sua senha segura" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Criar Conta</button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Já tem uma conta? <a href="login.html">Fazer Login</a></p>
+            </div>
+
+            <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.9rem;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        async function handleRegister(event) {
+            event.preventDefault();
+
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msgDiv = document.getElementById('message');
+
+            msgDiv.textContent = 'Criando conta...';
+            msgDiv.style.color = '#666';
+
+            try {
+                const response = await fetch(`${API_URL}/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                if (response.ok) {
+                    msgDiv.textContent = 'Conta criada com sucesso! Redirecionando...';
+                    msgDiv.style.color = 'green';
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                } else {
+                    const data = await response.json();
+                    msgDiv.textContent = data.detail || 'Erro ao criar conta.';
+                    msgDiv.style.color = 'red';
+                }
+            } catch (error) {
+                console.error(error);
+                msgDiv.textContent = 'Erro de conexão com o servidor.';
+                msgDiv.style.color = 'red';
+            }
+        }
+    </script>
+</body>
+</html>

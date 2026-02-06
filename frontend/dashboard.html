@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;"> <!-- Controlado via CSS media query -->
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="#" class="sidebar-link active" data-section="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="#" class="sidebar-link" data-section="whatsapp">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <!-- NOVO ITEM -->
+                <a href="#" class="sidebar-link" data-section="telegram">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="#" class="sidebar-link" data-section="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <!-- SECTION: DASHBOARD -->
+            <section id="section-dashboard" class="content-section">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Visão Geral</h2>
+                        <p>Monitoramento em tempo real de serviços DNS e HTTP.</p>
+                    </div>
+                </div>
+                <!-- Stats Row -->
+                <div class="stats-grid">
+                    <div class="stat-card success">
+                        <div class="stat-icon-box" style="color: var(--success);">🟢</div>
+                        <div class="stat-details">
+                            <h3>Online</h3>
+                            <p id="statsOnline">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card danger">
+                        <div class="stat-icon-box" style="color: var(--danger);">🔴</div>
+                        <div class="stat-details">
+                            <h3>Offline</h3>
+                            <p id="statsOffline">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="stat-icon-box" style="color: var(--warning);">⚠️</div>
+                        <div class="stat-details">
+                            <h3>Alerta</h3>
+                            <p id="statsWarning">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon-box" style="color: var(--primary);">📊</div>
+                        <div class="stat-details">
+                            <h3>Total Monitorado</h3>
+                            <p id="statsTotal">0</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Add URL Form -->
+                <div class="card">
+                    <h3 style="margin-bottom: 1rem; color: var(--primary);">Adicionar Novo Monitoramento</h3>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                        <div style="flex: 2; min-width: 250px;">
+                            <label>URL do Serviço</label>
+                            <input type="url" id="newUrl" placeholder="https://api.exemplo.com">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label>Nome Identificador</label>
+                            <input type="text" id="newName" placeholder="Servidor Principal">
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label>Categoria</label>
+                            <select id="newCategory">
+                                <option value="Geral">Geral</option>
+                                <option value="Produção">Produção</option>
+                                <option value="Homologação">Homologação</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="addURL()" style="height: 42px;">+ Adicionar</button>
+                    </div>
+                </div>
+                <!-- URL Grid -->
+                <h3 style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Monitores Ativos</h3>
+                <div id="urlsList" class="urls-grid">
+                    <!-- Cards injetados via JS -->
+                    <div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: var(--text-muted);">
+                        Carregando dados...
+                    </div>
+                </div>
+            </section>
+            <!-- SECTION: WHATSAPP -->
+            <section id="section-whatsapp" class="content-section" style="display: none;">
+                <!-- Injetado via JS -->
+            </section>
+            <!-- SECTION: TELEGRAM (NOVO) -->
+            <section id="section-telegram" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Integração Telegram</h2>
+                        <p>Configure seu bot para receber alertas.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Configuração do Bot</h3>
+                    <div class="form-group">
+                        <label>Bot Token</label>
+                        <input type="text" id="telegramToken" placeholder="Ex: 123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ">
+                        <small style="color: var(--text-muted);">O token fornecido pelo @BotFather.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Chat ID</label>
+                        <input type="text" id="telegramChatId" placeholder="Ex: -100123456789 ou 987654321">
+                        <small style="color: var(--text-muted);">ID do usuário, grupo ou canal.</small>
+                    </div>
+                        <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 Salvar Telegram</button>
+                        <button class="btn btn-secondary" onclick="testTelegram()">🔔 Enviar Teste</button>
+                </div>
+                <!-- TUTORIAL -->
+                <div class="card" style="margin-top: 2rem;">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">📚 Como Configurar</h3>
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <!-- Passo 1 -->
+                        <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--primary);">
+                            <h4 style="margin-bottom: 0.5rem;">1. Criar o Bot</h4>
+                            <ol style="margin-left: 1.5rem; color: var(--text-muted);">
+                                <li>Abra o Telegram e pesquise por <strong>@BotFather</strong>.</li>
+                                <li>Envie o comando <code>/newbot</code>.</li>
+                                <li>Escolha um nome para o bot (ex: <em>Meu Monitor</em>).</li>
+                                <li>Escolha um username (deve terminar em 'bot', ex: <em>meu_monitor_bot</em>).</li>
+                                <li>O BotFather enviará o <strong>Token</strong>. Copie e cole no campo acima.</li>
+                            </ol>
+                        </div>
+                        <!-- Passo 2 -->
+                        <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--success);">
+                            <h4 style="margin-bottom: 0.5rem;">2. Descobrir o Chat ID</h4>
+                            <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">Dependendo de onde você quer receber os alertas:</p>
+                            <details>
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">👤 Para você (Mensagem Privada)</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Inicie uma conversa com seu novo bot (clique em Começar/Start).<br>
+                                    2. Pesquise por <strong>@userinfobot</strong> no Telegram.<br>
+                                    3. Envie qualquer mensagem para ele.<br>
+                                    4. Ele responderá com seu ID (ex: <code>123456789</code>). Copie este número.
+                                </p>
+                            </details>
+                            <details style="margin-top: 0.5rem;">
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">👥 Para um Grupo</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Adicione o seu bot no grupo desejado.<br>
+                                    2. Adicione também o bot <strong>@RawDataBot</strong> no grupo.<br>
+                                    3. Assim que entrar, o RawDataBot enviará um JSON. Procure por <code>"chat": { "id": -100... }</code>.<br>
+                                    4. Copie esse ID (incluindo o sinal de menos).<br>
+                                    5. Remova o RawDataBot do grupo depois.
+                                </p>
+                            </details>
+                            <details style="margin-top: 0.5rem;">
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">📢 Para um Canal</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Adicione o bot como <strong>Administrador</strong> do canal.<br>
+                                    2. Encaminhe uma mensagem qualquer desse canal para o bot <strong>@getidsbot</strong>.<br>
+                                    3. Ele retornará o ID do canal (começa com -100).
+                                </p>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <!-- SECTION: SETTINGS -->
+            <section id="section-settings" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Configurações</h2>
+                        <p>Personalize suas preferências de notificação.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Destinatário das Notificações</h3>
+                    <div class="form-group">
+                        <label for="settingsPhone">Número do WhatsApp (DDI+DDD+Número)</label>
+                        <input type="text" id="settingsPhone" placeholder="Ex: 5511999999999">
+                        <small style="color: var(--text-muted);">Este é o número que receberá os alertas automáticos.</small>
+                    </div>
+                    <h3 style="margin-bottom: 1rem; margin-top: 2rem; color: var(--primary);">Tipos de Notificação</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifyDown" style="width: auto;">
+                            <span>🔴 Notificar quando um site/serviço cair (OFFLINE)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifyUp" style="width: auto;">
+                            <span>🟢 Notificar quando o serviço voltar (ONLINE)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifySlow" style="width: auto;">
+                            <span>⚠️ Notificar lentidão na resposta (Slow Response)</span>
+                        </label>
+                    </div>
+                    <div style="margin-top: 2rem;">
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 Salvar Configurações</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="assets/js/dashboard.js"></script>
+</body>
+</html>
