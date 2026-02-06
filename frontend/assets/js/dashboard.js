@@ -2,7 +2,7 @@
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
  * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
- * @version 2.5
+ * @version 2.6
  */
 // ============================
 // CONFIGURAÇÃO GLOBAL
@@ -34,7 +34,7 @@ function loadPage() {
     loadURLs();
     loadWhatsAppStatus();
     loadSettings();
-    loadTelegramSettings(); // <--- ADICIONE ESTA CHAMADA
+    loadTelegramSettings();
     setInterval(loadURLs, 30000);
 }
 
@@ -164,7 +164,7 @@ async function loadUserInfo() {
 }
 
 // ============================
-// NAVEGAÇÃO
+// NAVEGAÇÃO (CORRIGIDA)
 // ============================
 /**
  * Configura a navegação da barra lateral para alternar entre as seções de conteúdo.
@@ -174,21 +174,31 @@ function setupSidebarNavigation() {
     const sections = document.querySelectorAll('.content-section');
     const sidebar = document.getElementById('sidebar');
     const btnToggle = document.getElementById('btnToggleSidebar');
+
     links.forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const targetId = link.getAttribute('data-section');
-            links.forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-            sections.forEach(s => {
-                s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
-            });
-            // Fecha a sidebar em telas pequenas após clicar em um link
-            if (window.innerWidth <= 768 && sidebar) {
-                sidebar.classList.remove('active');
+
+            // Se o link tiver 'data-section', é uma navegação interna (SPA)
+            if (targetId) {
+                e.preventDefault(); // Impede o recarregamento apenas se for SPA
+
+                links.forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+
+                sections.forEach(s => {
+                    s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
+                });
+
+                // Fecha a sidebar em telas pequenas após clicar em um link
+                if (window.innerWidth <= 768 && sidebar) {
+                    sidebar.classList.remove('active');
+                }
             }
+            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
         });
     });
+
     if (btnToggle && sidebar) {
         btnToggle.addEventListener('click', () => sidebar.classList.toggle('active'));
     }
@@ -628,35 +638,6 @@ async function testTelegram() {
     } catch (error) {
         console.error(error);
         showNotification("Erro de conexão ao enviar teste.", 'error');
-    }
-}
-
-/**
- * Salva as configurações do Telegram.
- */
-async function saveTelegramSettings() {
-    const token = document.getElementById('telegramToken').value.trim();
-    const chatId = document.getElementById('telegramChatId').value.trim();
-    if (!token || !chatId) {
-        showNotification("Preencha o Token e o Chat ID.", 'error');
-        return;
-    }
-    try {
-        const response = await apiFetch('/users/me/settings', {
-            method: 'PATCH',
-            body: JSON.stringify({
-                telegram_token: token,
-                telegram_chat_id: chatId
-            })
-        });
-        if (response.ok) {
-            showNotification("Telegram configurado com sucesso!", 'success');
-        } else {
-            showNotification("Erro ao salvar Telegram.", 'error');
-        }
-    } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão.", 'error');
     }
 }
 

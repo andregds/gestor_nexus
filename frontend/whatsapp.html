@@ -3,234 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code WhatsApp</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-            color: #333;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        #qrContent {
-            margin: 20px 0;
-            min-height: 300px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-        }
-        #qrContent img {
-            max-width: 250px;
-            height: auto;
-            border: 1px solid #eee;
-            border-radius: 5px;
-        }
-        .status-text {
-            font-size: 16px;
-            color: #555;
-            font-weight: 500;
-        }
-        .loading {
-            color: #667eea;
-        }
-        .error {
-            color: #e74c3c;
-        }
-        .success {
-            color: #27ae60;
-        }
-        .info {
-            color: #3498db;
-        }
-        .btn-close {
-            background-color: #f44336;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 20px;
-            transition: background-color 0.3s ease;
-        }
-        .btn-close:hover {
-            background-color: #d32f2f;
-        }
-    </style>
+    <title>Integração WhatsApp | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Conectar WhatsApp</h1>
-        <div id="qrContent">
-            <p class="status-text loading" id="statusText">Iniciando conexão...</p>
-            <!-- O QR Code será inserido aqui -->
-        </div>
-        <button class="btn-close" onclick="window.close()">Fechar</button>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
 
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <!-- Link Ativo -->
+                <a href="whatsapp.html" class="sidebar-link active">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <!-- A seção do WhatsApp é carregada dinamicamente pelo JS,
+                 mas precisamos da estrutura base aqui para ele injetar -->
+            <section id="section-whatsapp" class="content-section" style="display: block;">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Integração WhatsApp</h2>
+                        <p>Gateway de notificações via Evolution API.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Status da Conexão</h3>
+
+                    <!-- Área de Status e Ações -->
+                    <div id="connectionStateArea">
+                        <div id="whatsappStatusContainer" class="whatsapp-status-box">
+                            <div class="spinner"></div>
+                            <div>Verificando status do gateway...</div>
+                        </div>
+
+                        <!-- Formulário de Conexão -->
+                        <div id="connectForm" style="display:none; margin-top: 2rem; text-align: center;">
+                            <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
+                            <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
+                        </div>
+
+                        <!-- Ações quando conectado -->
+                        <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
+                            <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
+                            <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
+                        </div>
+                    </div>
+
+                    <!-- Área do QR Code -->
+                    <div id="qrCodeContainer" class="qr-container" style="display: none;">
+                        <h4 style="color: var(--primary); margin-bottom: 1rem;">Escaneie para Conectar</h4>
+                        <div id="qrCodeImageWrapper" style="min-height: 260px; display: flex; align-items: center; justify-content: center;">
+                            <div class="spinner"></div>
+                        </div>
+                        <p style="margin-top: 1rem; color: var(--text-muted);">Abra o WhatsApp > Aparelhos Conectados > Conectar Aparelho</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
     <script>
-        const API_BASE_URL = 'http://localhost:8000'; // <<<<<<< AJUSTE AQUI SE SEU BACKEND ESTIVER EM OUTRA URL
-        let checkInterval = null;
-        let instanceName = null;
-        let whatsappNumber = null;
-
-        // Função para obter o token JWT do localStorage
-        function getToken() {
-            return localStorage.getItem('accessToken');
-        }
-
-        // Função para obter parâmetros da URL
-        function getUrlParameter(name) {
-            name = name.replace(/[|$]/, '\|$').replace(/[$|]/, '\$|');
-            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-            var results = regex.exec(location.search);
-            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            const token = getToken();
-            if (!token) {
-                document.getElementById('statusText').textContent = 'Erro: Usuário não autenticado.';
-                document.getElementById('statusText').className = 'status-text error';
-                return;
-            }
-
-            whatsappNumber = getUrlParameter('number');
-            if (!whatsappNumber) {
-                document.getElementById('statusText').textContent = 'Erro: Número do WhatsApp não fornecido.';
-                documentclassName = 'status-text loading';
-
-            try {
-                // 1. Chamar /whatsapp/connect para criar a instância
-                const connectResponse = await fetch(`${API_BASE_URL}/whatsapp/connect`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ number: whatsappNumber })
-                });
-                const connectData = await connectResponse.json();
-                console.log('Connect Response:', connectData);
-
-                if (!connectResponse.ok || !connectData.success) {
-                    document.getElementById('statusText').textContent = connectData.detail || connectData.message || 'Erro ao iniciar conexão.';
-                    document.getElementById('statusText').className = 'status-text error';
-                    return;
-                }
-
-                instanceName = connectData.instance_name;
-                document.getElementById('statusText').textContent = connectData.message || 'Instância criada. Aguardando QR Code...';
-                document.getElementById('statusText').className = 'status-text info';
-
-                // Inicia o polling para o status
-                startPolling();
-
-            } catch (error) {
-                console.error('Erro ao conectar WhatsApp:', error);
-                document.getElementById('statusText').textContent = 'Erro de rede ou servidor ao conectar.';
-                document.getElementById('statusText').className = 'status-text error';
-            }
-        });
-
-        function startPolling() {
-            if (checkInterval) {
-                clearInterval(checkInterval);
-            }
-            // Chama imediatamente e depois a cada 3 segundos
-            fetchStatus();
-            checkInterval = setInterval(fetchStatus, 3000);
-        }
-
-        async function fetchStatus() {
-            if (!instanceName) {
-                document.getElementById('statusText').textContent = 'Erro: Nome da instância não disponível.';
-                document.getElementById('statusText').className = 'status-text error';
-                clearInterval(checkInterval);
-                return;
-            }
-
-            const token = getToken();
-            try {
-                // 2. Chamar /whatsapp/status para obter o QR Code e o estado
-                const response = await fetch(`${API_BASE_URL}/whatsapp/status`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                const data = await response.json();
-                console.log('Status Polling Data:', data);
-
-                const qrContentDiv = document.getElementById('qrContent');
-                const statusTextP = document.getElementById('statusText');
-
-                if (!response.ok) {
-                    statusTextP.textContent = data.detail || data.message || 'Erro ao obter status.';
-                    statusTextP.className = 'status-text error';
-                    qrContentDiv.innerHTML = `<p class="status-text error">${statusTextP.textContent}</p>`;
-                    clearInterval(checkInterval);
-                    return;
-                }
-
-                const { connected, qr_code, state, message } = data;
-
-                if (connected) {
-                    statusTextP.textContent = '✅ Conectado com sucesso!';
-                    statusTextP.className = 'status-text success';
-                    qrContentDiv.innerHTML = `<p class="status-text success">✅ Conectado com sucesso!</p>`;
-                    clearInterval(checkInterval);
-
-                    // Atualiza dashboard da janela pai e fecha o popup
-                    if (window.opener && typeof window.opener.loadUserData === 'function') {
-                        window.opener.loadUserData();
-                    }
-                    setTimeout(() => { window.close(); }, 2000); // Fecha após 2 segundos
-                } else if (qr_code) {
-                    statusTextP.textContent = message || `📱 Escaneie o QR Code para conectar (Estado: ${state}).`;
-                    statusTextP.className = 'status-text info';
-                    qrContentDiv.innerHTML = `<img src="${qr_code}" alt="QR Code WhatsApp"><p class="status-text info">${statusTextP.textContent}</p>`;
-                } else {
-                    statusTextP.textContent = message || `⏳ Aguardando QR Code... (Estado: ${state}).`;
-                    statusTextP.className = 'status-text loading';
-                    qrContentDiv.innerHTML = `<p class="status-text loading">${statusTextP.textContent}</p>`;
-                }
-
-            } catch (error) {
-                console.error('Erro no polling de status:', error);
-                document.getElementById('statusText').textContent = 'Erro de rede ou servidor ao verificar status.';
-                document.getElementById('statusText').className = 'status-text error';
-                clearInterval(checkInterval);
-            }
-        }
-
-        // Limpar interval ao fechar
-        window.addEventListener('beforeunload', () => {
-            if (checkInterval) {
-                clearInterval(checkInterval);
+        // Script inline simples para garantir que o status carregue ao abrir esta página específica
+        document.addEventListener('DOMContentLoaded', () => {
+            // Verifica se a função existe no dashboard.js antes de chamar
+            if (typeof loadWhatsAppStatus === 'function') {
+                loadWhatsAppStatus();
             }
         });
     </script>

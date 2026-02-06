@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 from database import get_db
 from auth import get_current_user
 from models import User
-
-# CORREÇÃO: Importando funções utilitárias da raiz (sem 'backend.')
 from whatsapp_utils import (
     generate_instance_name,
     evolution_delete_instance,
@@ -25,6 +23,8 @@ load_dotenv()
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 
+# Configura o logger para ser mais útil
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
@@ -38,7 +38,8 @@ router = APIRouter(
 def format_qr_code(base64_code: str) -> Optional[str]:
     if not base64_code:
         return None
-    if base64_code.startswith("data:"):
+    # O frontend já espera o prefixo, então garantimos que ele sempre esteja lá
+    if base64_code.startswith("data:image/png;base64,"):
         return base64_code
     return f"data:image/png;base64,{base64_code}"
 
@@ -60,7 +61,6 @@ class WhatsAppStatusResponse(BaseModel):
     instance_name: Optional[str]
     qr_code: Optional[str]
     state: str
-    message: str
     whatsapp_number: Optional[str]
 
 
@@ -77,44 +77,41 @@ async def connect_whatsapp(
         db: Session = Depends(get_db),
 ):
     if not EVOLUTION_API_URL or not EVOLUTION_API_KEY:
-        raise HTTPException(status_code=503, detail="API Evolution não configurada.")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API Evolution não configurada no servidor.")
 
-    # REMOVIDO: Validação de número obrigatório
-    # if not whatsapp_data.number:
-    #     raise HTTPException(status_code=400, detail="Número obrigatório.")
-
-    # 1. Limpeza anterior
+    # 1. Limpeza de instância anterior (se existir)
     if current_user.whatsapp_instance:
+        logger.info(f"Removendo instância antiga: {current_user.whatsapp_instance}")
         try:
             await evolution_delete_instance(current_user.whatsapp_instance)
-        except Exception:
-            pass
+        except Exception as e:
+            # Loga o erro mas continua o processo, pois o objetivo é criar uma nova
+            logger.error(f"Falha ao remover instância antiga (não bloqueante): {e}")
         current_user.whatsapp_instance = None
-        current_user.whatsapp_connected = False
-        db.commit()
+        # REMOVIDO: Atribuição a current_user.whatsapp_connected
 
-    # 2. Criação
+    # 2. Criação da nova instância
     instance_name = generate_instance_name(current_user)
+    logger.info(f"Criando nova instância: {instance_name}")
     success = await evolution_create_instance(instance_name)
 
     if not success:
-        raise HTTPException(status_code=500, detail="Falha ao criar instância.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao criar instância na Evolution API.")
 
     current_user.whatsapp_instance = instance_name
-
-    # Atualiza o número apenas se foi fornecido
     if whatsapp_data.number:
         current_user.whatsapp_number = whatsapp_data.number
 
+    # 3. Commit único no banco de dados
     db.commit()
 
-    # 3. Obter QR Code
+    # 4. Obter QR Code inicial
     status_info = await get_instance_state_and_qr(instance_name)
     qr_code_raw = status_info.get("qr_code")
 
     return WhatsAppConnectResponse(
         success=True,
-        message="Instância criada.",
+        message="Instância criada com sucesso. Aguardando QR Code.",
         instance_name=instance_name,
         qr_code=format_qr_code(qr_code_raw)
     )
@@ -123,48 +120,51 @@ async def connect_whatsapp(
 @router.get("/status", response_model=WhatsAppStatusResponse)
 async def get_whatsapp_status(
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db),
 ):
     if not current_user.whatsapp_instance:
         return WhatsAppStatusResponse(
             connected=False, instance_name=None, qr_code=None,
-            state="DISCONNECTED", message="Não configurado.", whatsapp_number=None
+            state="DISCONNECTED", whatsapp_number=None
         )
 
     status_info = await get_instance_state_and_qr(current_user.whatsapp_instance)
     state = status_info.get("state", "UNKNOWN")
     qr_code_raw = status_info.get("qr_code")
 
-    connected = (state == "open" or state == "connected")
+    # A propriedade `whatsapp_connected` no modelo User já faz essa verificação
+    # Esta variável `connected` é apenas para uso local na resposta.
+    connected = (state == "open")
 
-    if current_user.whatsapp_connected != connected:
-        current_user.whatsapp_connected = connected
-        db.commit()
-
-    msg = "Conectado!" if connected else "Escaneie o QR Code."
+    # REMOVIDO: Atribuição a current_user.whatsapp_connected
 
     return WhatsAppStatusResponse(
         connected=connected,
         instance_name=current_user.whatsapp_instance,
         qr_code=format_qr_code(qr_code_raw),
         state=state,
-        message=msg,
         whatsapp_number=current_user.whatsapp_number
     )
 
 
-@router.post("/disconnect")
+@router.post("/disconnect", status_code=status.HTTP_200_OK)
 async def disconnect_whatsapp(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
-    if current_user.whatsapp_instance:
-        await evolution_delete_instance(current_user.whatsapp_instance)
-        current_user.whatsapp_instance = None
-        current_user.whatsapp_connected = False
-        current_user.whatsapp_number = None
-        db.commit()
-    return {"success": True, "message": "Desconectado."}
+    if not current_user.whatsapp_instance:
+        return {"success": True, "message": "Nenhuma instância para desconectar."}
+
+    instance_to_delete = current_user.whatsapp_instance
+    logger.info(f"Desconectando instância: {instance_to_delete}")
+
+    await evolution_delete_instance(instance_to_delete)
+
+    current_user.whatsapp_instance = None
+    current_user.whatsapp_number = None # Opcional: limpar o número ao desconectar
+    # REMOVIDO: Atribuição a current_user.whatsapp_connected
+
+    db.commit()
+    return {"success": True, "message": "Instância desconectada com sucesso."}
 
 
 @router.post("/test-notification")
@@ -173,27 +173,22 @@ async def test_whatsapp_notification_route(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
+    # A verificação agora usa a propriedade dinâmica, que é mais confiável
     if not current_user.whatsapp_connected:
-        raise HTTPException(status_code=400, detail="WhatsApp desconectado.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="WhatsApp não está conectado.")
 
-    # Define qual número usar: o enviado no teste OU o salvo no banco
-    target_number = request.number if request.number else current_user.whatsapp_number
-
+    target_number = request.number or current_user.whatsapp_number
     if not target_number:
-        raise HTTPException(status_code=400, detail="Nenhum número informado para envio.")
-
-    # (Opcional) Se o usuário enviou um número agora e não tinha nada salvo, podemos salvar agora
-    if request.number and not current_user.whatsapp_number:
-        current_user.whatsapp_number = request.number
-        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nenhum número de destino informado.")
 
     success = await send_whatsapp_notification(
         target_number,
-        "🚀 Teste de notificação Monitor DNS!",
+        "🚀 Teste de notificação do Nexus Monitor!",
         current_user.whatsapp_instance
     )
 
     if success:
-        return {"success": True, "message": f"Enviado para {target_number}."}
+        return {"success": True, "message": f"Mensagem de teste enviada para {target_number}."}
 
-    raise HTTPException(status_code=500, detail="Falha no envio. Verifique se o número é válido.")
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha no envio. Verifique o console do servidor e se o número é válido.")
+

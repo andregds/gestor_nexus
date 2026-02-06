@@ -1,8 +1,8 @@
 # backend/models.py
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
-from datetime import datetime
+
 
 class User(Base):
     __tablename__ = "users"
@@ -12,40 +12,80 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
-    # Configurações de WhatsApp
+    # Configurações do WhatsApp
     whatsapp_number = Column(String, nullable=True)
-    whatsapp_connected = Column(Boolean, default=False)
     whatsapp_instance = Column(String, nullable=True)
+    whatsapp_apikey = Column(String, nullable=True)
 
-    # Configurações de Telegram (NOVO)
+    # Configurações do Telegram
     telegram_token = Column(String, nullable=True)
     telegram_chat_id = Column(String, nullable=True)
 
-    # Configurações Globais e Flags de Notificação
+    # Flags de Notificação Globais
     notifications_enabled = Column(Boolean, default=True)
-
     notify_when_down = Column(Boolean, default=True)
     notify_when_up = Column(Boolean, default=True)
     notify_when_slow = Column(Boolean, default=False)
 
+    # Relacionamentos
     urls = relationship("MonitoredURL", back_populates="owner")
+    clients = relationship("Client", back_populates="owner")
 
-# A CLASSE ABAIXO DEVE ESTAR ALINHADA À ESQUERDA (SEM ESPAÇOS NO INÍCIO)
+    # --- PROPRIEDADE VIRTUAL CORRIGIDA ---
+    @property
+    def whatsapp_connected(self) -> bool:
+        """
+        Retorna True se o usuário tiver uma instância de WhatsApp criada.
+        Não depende mais do whatsapp_number, permitindo envio para terceiros
+        mesmo sem o número do admin salvo.
+        """
+        return bool(self.whatsapp_instance)
+    # --------------------------------------
+
+
 class MonitoredURL(Base):
     __tablename__ = "monitored_urls"
 
     id = Column(Integer, primary_key=True, index=True)
     url = Column(String, index=True)
     nickname = Column(String, nullable=True)
-    category = Column(String, default="Geral")
-    status = Column(String, default="unknown")  # UP, DOWN, WARNING, unknown
+    status = Column(String, default="PENDING")
     http_code = Column(Integer, nullable=True)
+    response_time = Column(Integer, nullable=True)
     ip_address = Column(String, nullable=True)
-    last_check = Column(DateTime, default=datetime.now)
-    response_time = Column(Float, default=0.0)
+
+    # CORREÇÃO: Alterado de Date para DateTime para salvar horas/minutos/segundos
+    last_check = Column(DateTime, nullable=True)
+
     error = Column(String, nullable=True)
     error_type = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
 
+    is_active = Column(Boolean, default=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+
     owner = relationship("User", back_populates="urls")
+
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    login = Column(String, index=True)
+    server_name = Column(String)
+    whatsapp = Column(String)
+
+    # Mantido como Date, pois validade de assinatura geralmente não precisa de hora exata
+    expiration_date = Column(Date)
+
+    notes = Column(String, nullable=True)
+    m3u8_url = Column(String, nullable=True)
+
+    # Flags
+    notify_downtime = Column(Boolean, default=True)
+    reminder_enabled = Column(Boolean, default=True)
+    reminder_days_before = Column(String, default="3")
+    notify_after_expiration = Column(Boolean, default=True)
+
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", back_populates="clients")

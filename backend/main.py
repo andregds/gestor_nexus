@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from routes import users, urls, whatsapp, clients
 
 # from core.config import settings  <-- REMOVA ESTA LINHA
 from core.lifespan import lifespan_manager
@@ -34,7 +35,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
-
+app.include_router(clients.router)
 
 @app.get("/", tags=["Geral"])
 def root():

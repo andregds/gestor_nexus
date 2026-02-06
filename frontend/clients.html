@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Clientes | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* Estilos específicos para abas */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+        .tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-weight: 600; color: var(--text-muted); border-bottom: 2px solid transparent; }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Grid do formulário */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .full-width { grid-column: 1 / -1; }
+
+        /* Tabela */
+        .client-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .client-table th, .client-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .client-table th { background: #f8fafc; color: var(--text-muted); font-size: 0.85rem; }
+
+        /* Badges */
+        .badge-date { background: #e0f2fe; color: #0284c7; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge-expiring { background: #fee2e2; color: #ef4444; }
+    </style>
+</head>
+<body>
+    <!-- Mobile Header (Igual ao Dashboard) -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <!-- Link para o Dashboard -->
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+
+                <!-- Link Ativo (Página Atual) -->
+                <a href="clients.html" class="sidebar-link active">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+
+                <!-- Link para WhatsApp -->
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+
+                <!-- Links que voltam para o Dashboard (pois são seções de lá) -->
+                <!-- Se você quiser que abra direto na seção, precisaremos ajustar o JS do dashboard,
+                     mas por enquanto apontamos para a página principal -->
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+
+            <!-- Perfil do Usuário (Igual ao Dashboard) -->
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Gestão de Clientes</h2>
+                    <p>Cadastre e gerencie assinaturas e notificações.</p>
+                </div>
+            </div>
+
+            <!-- ABAS -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab('tab-clients')">👥 Cadastro de Clientes</button>
+                <button class="tab-btn" onclick="openTab('tab-messages')">💬 Mensagens Globais</button>
+            </div>
+
+            <!-- ABA 1: CLIENTES -->
+            <div id="tab-clients" class="tab-content active">
+                <div class="card">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Novo Cliente</h3>
+                    <form id="clientForm" onsubmit="addClient(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Nome do Cliente</label>
+                                <input type="text" id="cName" required placeholder="Ex: João Silva">
+                            </div>
+                            <div class="form-group">
+                                <label>Login / Usuário</label>
+                                <input type="text" id="cLogin" required placeholder="Ex: joao123">
+                            </div>
+                            <div class="form-group">
+                                <label>Servidor / Painel</label>
+                                <input type="text" id="cServer" placeholder="Ex: Servidor Premium">
+                            </div>
+                            <div class="form-group">
+                                <label>WhatsApp (DDI+DDD+Num)</label>
+                                <input type="text" id="cWhatsapp" required placeholder="5511999999999">
+                            </div>
+                            <div class="form-group">
+                                <label>Validade</label>
+                                <input type="date" id="cDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>URL M3U8 (Opcional)</label>
+                                <input type="url" id="cM3u8" placeholder="http://...">
+                            </div>
+
+                            <!-- Configurações de Notificação -->
+                            <div class="full-width" style="background: #f8fafc; padding: 15px; border-radius: 8px;">
+                                <h4 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">⚙️ Configurações de Aviso</h4>
+                                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="cNotifyDowntime" checked>
+                                        Notificar Quedas/Lentidão
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="cReminderEnabled" checked>
+                                        Lembrete de Vencimento
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="cNotifyAfter" checked>
+                                        Avisar 1 dia após vencer
+                                    </label>
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    <label style="font-size: 0.85rem;">Dias antes para avisar (separados por vírgula):</label>
+                                    <input type="text" id="cReminderDays" value="1,3,5" placeholder="Ex: 1,3,5" style="max-width: 200px;">
+                                </div>
+                            </div>
+
+                            <div class="full-width">
+                                <label>Observações</label>
+                                <input type="text" id="cNotes" placeholder="Ex: Cliente prefere Pix">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 15px;">💾 Salvar Cliente</button>
+                    </form>
+                </div>
+
+                <!-- LISTA DE CLIENTES -->
+                <div class="card">
+                    <h3>Clientes Cadastrados</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="client-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome / Login</th>
+                                    <th>WhatsApp</th>
+                                    <th>Validade</th>
+                                    <th>Servidor</th>
+                                    <th>Status Notif.</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clientsList">
+                                <!-- Preenchido via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA 2: MENSAGENS GLOBAIS -->
+            <div id="tab-messages" class="tab-content">
+                <div class="card">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Configurar Mensagens Globais</h3>
+                    <div class="form-group">
+                        <label>URL de Checkout / Pagamento</label>
+                        <input type="url" id="globalCheckoutUrl" placeholder="https://pagamento.com/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Anexar Imagem Padrão (URL)</label>
+                        <input type="url" id="globalImageUrl" placeholder="https://meusite.com/banner.jpg">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Mensagem de Cobrança (Template)</label>
+                        <textarea id="msgTemplateBilling" rows="4" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">Olá {nome}, sua fatura vence em {dias} dias. Link: {link}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Mensagem de Manutenção (Template)</label>
+                        <textarea id="msgTemplateMaint" rows="4" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">Olá {nome}, estamos passando por uma instabilidade momentânea no servidor {servidor}.</textarea>
+                    </div>
+
+                    <button class="btn btn-primary">💾 Salvar Modelos</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/js/dashboard.js"></script> <!-- Carrega funções comuns (logout, sidebar mobile, user info) -->
+    <script src="assets/js/clients.js"></script>   <!-- Lógica específica desta página -->
+</body>
+</html>
