@@ -6,29 +6,105 @@
     <title>Gestão de Clientes | Nexus Monitor</title>
     <link rel="stylesheet" href="assets/css/style.css">
     <style>
-        /* Estilos específicos para abas */
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); }
-        .tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-weight: 600; color: var(--text-muted); border-bottom: 2px solid transparent; }
-        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        /* --- ESTILOS GERAIS --- */
+        /* Container dos Cards de Resumo */
+        .summary-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
 
-        /* Grid do formulário */
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .full-width { grid-column: 1 / -1; }
+        .summary-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+            text-align: center;
+        }
+
+        .summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .summary-card.active { border-color: var(--primary); background-color: #f0f9ff; }
+        .summary-count { font-size: 1.8rem; font-weight: bold; color: var(--text-dark); }
+        .summary-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        .card-expired .summary-count { color: var(--danger); }
+        .card-warning .summary-count { color: var(--warning); }
+        .card-info .summary-count { color: var(--primary); }
+
+        /* Barra de Ferramentas */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            padding-left: 35px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; }
+
+        /* --- WIDGET DE AGENDAMENTO --- */
+        .schedule-widget {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: white;
+            padding: 8px 15px;
+            border-radius: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+
+        .schedule-info { display: flex; flex-direction: column; line-height: 1.1; }
+        .schedule-label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold; }
+        .schedule-time { font-size: 1.1rem; font-weight: bold; color: var(--primary); }
+
+        /* Switch Toggle */
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--success); }
+        input:checked + .slider:before { transform: translateX(18px); }
 
         /* Tabela */
-        .client-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .client-table th, .client-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
-        .client-table th { background: #f8fafc; color: var(--text-muted); font-size: 0.85rem; }
+        .table-container { background: white; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow-x: auto; }
+        .clients-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        .clients-table th, .clients-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .clients-table th { background-color: #f8fafc; font-weight: 600; color: var(--text-dark); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
+        .clients-table tr:hover { background-color: #f9f9f9; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
+        .client-note-inline { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
+        .action-buttons { display: flex; gap: 5px; }
 
-        /* Badges */
-        .badge-date { background: #e0f2fe; color: #0284c7; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
-        .badge-expiring { background: #fee2e2; color: #ef4444; }
+        /* Modais */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 2rem; border-radius: 10px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative; }
+        .close-modal { position: absolute; top: 1rem; right: 1rem; cursor: pointer; font-size: 1.5rem; }
+        .dynamic-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .dynamic-field-row input { flex: 1; }
     </style>
 </head>
 <body>
-    <!-- Mobile Header (Igual ao Dashboard) -->
+    <!-- Mobile Header -->
     <div class="navbar-mobile" style="display: none;">
         <div class="brand-logo">NEXUS<span>MONITOR</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
@@ -41,24 +117,15 @@
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <!-- Link para o Dashboard -->
                 <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-
-                <!-- Link Ativo (Página Atual) -->
                 <a href="clients.html" class="sidebar-link active">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
-
-                <!-- Link para WhatsApp -->
                 <a href="whatsapp.html" class="sidebar-link">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-
-                <!-- Links que voltam para o Dashboard (pois são seções de lá) -->
-                <!-- Se você quiser que abra direto na seção, precisaremos ajustar o JS do dashboard,
-                     mas por enquanto apontamos para a página principal -->
                 <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
@@ -66,8 +133,6 @@
                     <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
             </nav>
-
-            <!-- Perfil do Usuário (Igual ao Dashboard) -->
             <div class="user-profile">
                 <div class="user-info" id="userName">Carregando...</div>
                 <div class="user-role">Administrador</div>
@@ -75,138 +140,600 @@
             </div>
         </aside>
 
+        <!-- MAIN CONTENT -->
         <main class="main-content">
             <div class="page-header">
                 <div class="page-title">
                     <h2>Gestão de Clientes</h2>
-                    <p>Cadastre e gerencie assinaturas e notificações.</p>
+                    <p>Gerencie assinaturas e envie cobranças automáticas.</p>
                 </div>
             </div>
 
-            <!-- ABAS -->
-            <div class="tabs">
-                <button class="tab-btn active" onclick="openTab('tab-clients')">👥 Cadastro de Clientes</button>
-                <button class="tab-btn" onclick="openTab('tab-messages')">💬 Mensagens Globais</button>
-            </div>
-
-            <!-- ABA 1: CLIENTES -->
-            <div id="tab-clients" class="tab-content active">
-                <div class="card">
-                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Novo Cliente</h3>
-                    <form id="clientForm" onsubmit="addClient(event)">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label>Nome do Cliente</label>
-                                <input type="text" id="cName" required placeholder="Ex: João Silva">
-                            </div>
-                            <div class="form-group">
-                                <label>Login / Usuário</label>
-                                <input type="text" id="cLogin" required placeholder="Ex: joao123">
-                            </div>
-                            <div class="form-group">
-                                <label>Servidor / Painel</label>
-                                <input type="text" id="cServer" placeholder="Ex: Servidor Premium">
-                            </div>
-                            <div class="form-group">
-                                <label>WhatsApp (DDI+DDD+Num)</label>
-                                <input type="text" id="cWhatsapp" required placeholder="5511999999999">
-                            </div>
-                            <div class="form-group">
-                                <label>Validade</label>
-                                <input type="date" id="cDate" required>
-                            </div>
-                            <div class="form-group">
-                                <label>URL M3U8 (Opcional)</label>
-                                <input type="url" id="cM3u8" placeholder="http://...">
-                            </div>
-
-                            <!-- Configurações de Notificação -->
-                            <div class="full-width" style="background: #f8fafc; padding: 15px; border-radius: 8px;">
-                                <h4 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">⚙️ Configurações de Aviso</h4>
-                                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="cNotifyDowntime" checked>
-                                        Notificar Quedas/Lentidão
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="cReminderEnabled" checked>
-                                        Lembrete de Vencimento
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px;">
-                                        <input type="checkbox" id="cNotifyAfter" checked>
-                                        Avisar 1 dia após vencer
-                                    </label>
-                                </div>
-                                <div style="margin-top: 10px;">
-                                    <label style="font-size: 0.85rem;">Dias antes para avisar (separados por vírgula):</label>
-                                    <input type="text" id="cReminderDays" value="1,3,5" placeholder="Ex: 1,3,5" style="max-width: 200px;">
-                                </div>
-                            </div>
-
-                            <div class="full-width">
-                                <label>Observações</label>
-                                <input type="text" id="cNotes" placeholder="Ex: Cliente prefere Pix">
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary" style="margin-top: 15px;">💾 Salvar Cliente</button>
-                    </form>
+            <!-- DASHBOARD DE VENCIMENTOS -->
+            <div class="summary-container">
+                <div class="summary-card active" onclick="filterByStatus('all', this)" id="card-all">
+                    <div class="summary-count" id="count-all">0</div>
+                    <div class="summary-label">Todos</div>
                 </div>
-
-                <!-- LISTA DE CLIENTES -->
-                <div class="card">
-                    <h3>Clientes Cadastrados</h3>
-                    <div style="overflow-x: auto;">
-                        <table class="client-table">
-                            <thead>
-                                <tr>
-                                    <th>Nome / Login</th>
-                                    <th>WhatsApp</th>
-                                    <th>Validade</th>
-                                    <th>Servidor</th>
-                                    <th>Status Notif.</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="clientsList">
-                                <!-- Preenchido via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="summary-card card-expired" onclick="filterByStatus('expired', this)">
+                    <div class="summary-count" id="count-expired">0</div>
+                    <div class="summary-label">Vencidos</div>
+                </div>
+                <div class="summary-card card-warning" onclick="filterByStatus('1', this)">
+                    <div class="summary-count" id="count-1">0</div>
+                    <div class="summary-label">Vence em 1 Dia</div>
+                </div>
+                <div class="summary-card card-warning" onclick="filterByStatus('2', this)">
+                    <div class="summary-count" id="count-2">0</div>
+                    <div class="summary-label">Vence em 2 Dias</div>
+                </div>
+                <div class="summary-card card-info" onclick="filterByStatus('3', this)">
+                    <div class="summary-count" id="count-3">0</div>
+                    <div class="summary-label">Vence em 3 Dias</div>
+                </div>
+                <div class="summary-card card-info" onclick="filterByStatus('4', this)">
+                    <div class="summary-count" id="count-4">0</div>
+                    <div class="summary-label">Vence em 4 Dias</div>
                 </div>
             </div>
 
-            <!-- ABA 2: MENSAGENS GLOBAIS -->
-            <div id="tab-messages" class="tab-content">
-                <div class="card">
-                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Configurar Mensagens Globais</h3>
-                    <div class="form-group">
-                        <label>URL de Checkout / Pagamento</label>
-                        <input type="url" id="globalCheckoutUrl" placeholder="https://pagamento.com/...">
-                    </div>
-                    <div class="form-group">
-                        <label>Anexar Imagem Padrão (URL)</label>
-                        <input type="url" id="globalImageUrl" placeholder="https://meusite.com/banner.jpg">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Mensagem de Cobrança (Template)</label>
-                        <textarea id="msgTemplateBilling" rows="4" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">Olá {nome}, sua fatura vence em {dias} dias. Link: {link}</textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Mensagem de Manutenção (Template)</label>
-                        <textarea id="msgTemplateMaint" rows="4" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">Olá {nome}, estamos passando por uma instabilidade momentânea no servidor {servidor}.</textarea>
-                    </div>
-
-                    <button class="btn btn-primary">💾 Salvar Modelos</button>
+            <!-- BARRA DE FERRAMENTAS -->
+            <div class="toolbar">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" placeholder="Buscar por Login ou WhatsApp..." oninput="applyFilters()">
                 </div>
+
+                <!-- WIDGET DE AGENDAMENTO (NOVO) -->
+                <div class="schedule-widget">
+                    <div class="schedule-info">
+                        <span class="schedule-label">Envio Automático</span>
+                        <span class="schedule-time" id="displayScheduleTime">--:--</span>
+                    </div>
+                    
+                    <label class="switch" title="Ativar/Desativar Envio Automático">
+                        <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
+                        <span class="slider round"></span>
+                    </label>
+
+                    <button class="btn btn-sm btn-secondary" onclick="openScheduleModal()" title="Alterar Horário" style="margin-left: 5px;">✏️</button>
+
+                    <!-- NOVO BOTÃO AQUI -->
+                    <button class="btn btn-sm btn-primary" onclick="runBatchProcess()" title="Verificar e enviar cobranças agora" style="margin-left: 5px; background-color: #8b5cf6; border-color: #8b5cf6;">
+                        🚀 Executar Agora
+                    </button>
+                    <!-- FIM DO NOVO BOTÃO -->
+                </div>
+
+                <button class="btn btn-primary" onclick="openClientModal()">+ Novo Cliente</button>
             </div>
 
+            <!-- Lista de Clientes (Tabela) -->
+            <div id="clientsList" class="table-container">
+                <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    Carregando clientes...
+                </div>
+            </div>
         </main>
     </div>
 
-    <!-- Scripts -->
-    <script src="assets/js/dashboard.js"></script> <!-- Carrega funções comuns (logout, sidebar mobile, user info) -->
-    <script src="assets/js/clients.js"></script>   <!-- Lógica específica desta página -->
+    <!-- MODAL DE CADASTRO/EDIÇÃO -->
+    <div class="modal-overlay" id="clientModal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeClientModal()">&times;</span>
+            <h3 id="modalTitle" style="margin-bottom: 1.5rem; color: var(--primary);">Novo Cliente</h3>
+            <input type="hidden" id="clientId">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Nome Completo</label>
+                    <input type="text" id="clientName" placeholder="Ex: João Silva">
+                </div>
+                <div class="form-group">
+                    <label>Login / Usuário</label>
+                    <input type="text" id="clientLogin" placeholder="Ex: joaosilva123">
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp (DDI+DDD+Num)</label>
+                    <input type="text" id="clientWhatsapp" placeholder="5511999999999">
+                </div>
+                <div class="form-group">
+                    <label>Canal de Notificação</label>
+                    <select id="clientNotificationChannel" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="telegram">Telegram (Admin)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Vencimento</label>
+                    <input type="date" id="clientExpiration">
+                </div>
+
+                <!-- NOVO CAMPO AQUI -->
+                <div class="form-group">
+                    <label>Começar a cobrar (Dias antes)</label>
+                    <input type="number" id="clientReminderDays" placeholder="Ex: 3" value="3" min="0" max="30">
+                    <small style="color: #999; font-size: 0.75rem;">Padrão: 3 dias antes</small>
+                </div>
+                <!-- FIM DO NOVO CAMPO -->
+            </div>
+
+            <div class="form-group">
+                <label>Servidor / Plano</label>
+                <input type="text" id="clientServer" placeholder="Ex: Servidor Premium 4K">
+            </div>
+            <div class="form-group">
+                <label>URL M3U8 (Opcional)</label>
+                <input type="text" id="clientM3u8" placeholder="http://servidor.com/get.php?username=...">
+            </div>
+            <div class="form-group">
+                <label>Observações</label>
+                <textarea id="clientNotes" rows="2" placeholder="Ex: Cliente prefere pagar via PIX..."></textarea>
+            </div>
+
+            <div style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <label style="font-weight: bold; color: var(--primary);">Informações Adicionais</label>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addCustomFieldInput()">+ Campo</button>
+                </div>
+                <div id="customFieldsContainer"></div>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeClientModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveClient()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE DETALHES -->
+    <div class="modal-overlay" id="detailsModal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
+            <h3 style="margin-bottom: 1rem; color: var(--primary);">Detalhes do Cliente</h3>
+            <div id="detailsContent" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+            <div style="margin-top: 1.5rem; text-align: right;">
+                <button class="btn btn-secondary" onclick="closeDetailsModal()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AGENDAMENTO -->
+    <div class="modal-overlay" id="scheduleModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <span class="close-modal" onclick="closeScheduleModal()">&times;</span>
+            <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Configurar Agendamento</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Defina o horário diário para o envio automático das cobranças.
+            </p>
+            <div class="form-group">
+                <label>Horário do Envio</label>
+                <input type="time" id="scheduleTime" style="font-size: 1.2rem; text-align: center; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveSchedule()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE ENVIO EM MASSA (NOVO) -->
+    <div class="modal-overlay" id="batchModal">
+        <div class="modal-content" style="max-width: 450px;">
+            <span class="close-modal" onclick="closeBatchModal()">&times;</span>
+            <h3 style="margin-bottom: 1rem; color: var(--primary);">🚀 Envio em Massa</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Selecione qual grupo de clientes deve receber a notificação agora:
+            </p>
+
+            <div class="form-group">
+                <label>Critério de Envio</label>
+                <select id="batchFilter" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem;">
+                    <option value="default">⚡ Padrão (Respeitar configuração de cada cliente)</option>
+                    <option value="3">📅 Vencimento em 3 Dias</option>
+                    <option value="2">📅 Vencimento em 2 Dias</option>
+                    <option value="1">⏰ Vencimento em 1 Dia (Amanhã)</option>
+                    <option value="0">🚨 Vencimento Hoje</option>
+                    <option value="expired">❌ Vencidos (Ontem ou antes)</option>
+                </select>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeBatchModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="executeBatchProcess()" style="background-color: #8b5cf6; border-color: #8b5cf6;">Confirmar Envio</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+
+    <script>
+        // ==========================================
+        // LÓGICA DE CLIENTES E FILTROS
+        // ==========================================
+
+        let allClients = [];
+        let currentFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadClients();
+            loadScheduleStatus(); // Carrega o status do agendamento ao iniciar
+        });
+
+        async function loadClients() {
+            const list = document.getElementById('clientsList');
+            try {
+                const response = await apiFetch('/clients');
+                const data = await response.json();
+
+                const today = new Date();
+                today.setHours(0,0,0,0);
+
+                allClients = data.map(client => {
+                    const expDate = new Date(client.expiration_date);
+                    expDate.setHours(0,0,0,0);
+                    const diffTime = expDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return { ...client, diffDays };
+                });
+
+                updateDashboardCounts();
+                applyFilters();
+            } catch (error) {
+                console.error(error);
+                list.innerHTML = `<div style="color: red; padding: 1rem;">Erro ao carregar clientes.</div>`;
+            }
+        }
+
+        function updateDashboardCounts() {
+            const counts = { all: allClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
+            allClients.forEach(c => {
+                if (c.diffDays < 0) counts.expired++;
+                if (c.diffDays === 1) counts.d1++;
+                if (c.diffDays === 2) counts.d2++;
+                if (c.diffDays === 3) counts.d3++;
+                if (c.diffDays === 4) counts.d4++;
+            });
+            document.getElementById('count-all').textContent = counts.all;
+            document.getElementById('count-expired').textContent = counts.expired;
+            document.getElementById('count-1').textContent = counts.d1;
+            document.getElementById('count-2').textContent = counts.d2;
+            document.getElementById('count-3').textContent = counts.d3;
+            document.getElementById('count-4').textContent = counts.d4;
+        }
+
+        function filterByStatus(status, cardElement) {
+            currentFilter = status;
+            document.querySelectorAll('.summary-card').forEach(c => c.classList.remove('active'));
+            if(cardElement) cardElement.classList.add('active');
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allClients.filter(client => {
+                let statusMatch = false;
+                if (currentFilter === 'all') statusMatch = true;
+                else if (currentFilter === 'expired') statusMatch = client.diffDays < 0;
+                else if (currentFilter === '1') statusMatch = client.diffDays === 1;
+                else if (currentFilter === '2') statusMatch = client.diffDays === 2;
+                else if (currentFilter === '3') statusMatch = client.diffDays === 3;
+                else if (currentFilter === '4') statusMatch = client.diffDays === 4;
+
+                const searchMatch =
+                    client.login.toLowerCase().includes(searchTerm) ||
+                    client.whatsapp.includes(searchTerm) ||
+                    client.name.toLowerCase().includes(searchTerm);
+                return statusMatch && searchMatch;
+            });
+            renderTable(filtered);
+        }
+
+        function renderTable(clients) {
+            const list = document.getElementById('clientsList');
+            if (clients.length === 0) {
+                list.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);">Nenhum cliente encontrado com estes filtros.</div>`;
+                return;
+            }
+
+            let html = `
+                <table class="clients-table">
+                    <thead>
+                        <tr>
+                            <th>Nome / Obs</th>
+                            <th>Login</th>
+                            <th>WhatsApp</th>
+                            <th>Vencimento</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            html += clients.map(client => {
+                let statusColor = 'var(--success)';
+                let statusText = `${client.diffDays} dias`;
+                if (client.diffDays < 0) { statusColor = 'var(--danger)'; statusText = 'Vencido'; }
+                else if (client.diffDays === 0) { statusColor = 'var(--warning)'; statusText = 'Vence Hoje'; }
+                else if (client.diffDays <= 3) { statusColor = 'var(--warning)'; }
+
+                const notesHtml = client.notes ? `<span class="client-note-inline">📝 ${client.notes}</span>` : '';
+
+                return `
+                <tr>
+                    <td>
+                        <div style="font-weight: bold; color: var(--text-dark);">${client.name}</div>
+                        ${notesHtml}
+                    </td>
+                    <td>${client.login}</td>
+                    <td>${client.whatsapp}</td>
+                    <td>${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
+                    <td><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary btn-sm" title="Enviar Cobrança Agora" onclick="sendManualReminder(${client.id})">📨</button>
+                            <button class="btn btn-secondary btn-sm" title="Detalhes" onclick='openDetailsModal(${JSON.stringify(client)})'>👁️</button>
+                            <button class="btn btn-primary btn-sm" title="Editar" onclick='openClientModal(${JSON.stringify(client)})'>✏️</button>
+                            <button class="btn btn-danger btn-sm" title="Excluir" onclick="deleteClient(${client.id})">🗑️</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+            html += `</tbody></table>`;
+            list.innerHTML = html;
+        }
+
+        // --- FUNÇÕES DE MODAL (CRUD) ---
+        function openClientModal(client = null) {
+            const modal = document.getElementById('clientModal');
+            const title = document.getElementById('modalTitle');
+            const container = document.getElementById('customFieldsContainer');
+            container.innerHTML = '';
+
+            if (client) {
+                title.textContent = "Editar Cliente";
+                document.getElementById('clientId').value = client.id;
+                document.getElementById('clientName').value = client.name;
+                document.getElementById('clientLogin').value = client.login;
+                document.getElementById('clientWhatsapp').value = client.whatsapp;
+                document.getElementById('clientNotificationChannel').value = client.notification_channel || 'whatsapp';
+                document.getElementById('clientExpiration').value = client.expiration_date;
+
+                // --- NOVA LINHA: Carrega os dias configurados ou usa 3 como padrão ---
+                document.getElementById('clientReminderDays').value = client.reminder_days_before || 3;
+                // --------------------------------------------------------------------
+
+                document.getElementById('clientServer').value = client.server_name;
+                document.getElementById('clientNotes').value = client.notes || '';
+                document.getElementById('clientM3u8').value = client.m3u8_url || '';
+                if (client.custom_fields) {
+                    Object.entries(client.custom_fields).forEach(([key, value]) => addCustomFieldInput(key, value));
+                }
+            } else {
+                title.textContent = "Novo Cliente";
+                document.getElementById('clientId').value = '';
+                document.querySelectorAll('#clientModal input, #clientModal textarea').forEach(i => i.value = '');
+                document.getElementById('clientNotificationChannel').value = 'whatsapp';
+
+                // --- NOVA LINHA: Define o padrão como 3 para novos clientes ---
+                document.getElementById('clientReminderDays').value = '3';
+                // --------------------------------------------------------------
+            }
+            modal.style.display = 'flex';
+        }
+
+        function closeClientModal() { document.getElementById('clientModal').style.display = 'none'; }
+
+        function addCustomFieldInput(key = '', value = '') {
+            const container = document.getElementById('customFieldsContainer');
+            const div = document.createElement('div');
+            div.className = 'dynamic-field-row';
+            div.innerHTML = `
+                <input type="text" placeholder="Nome do Campo" class="field-key" value="${key}">
+                <input type="text" placeholder="Valor" class="field-value" value="${value}">
+                <button class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">X</button>
+            `;
+            container.appendChild(div);
+        }
+
+        async function saveClient() {
+            const id = document.getElementById('clientId').value;
+            const customFields = {};
+            document.querySelectorAll('.dynamic-field-row').forEach(row => {
+                const key = row.querySelector('.field-key').value.trim();
+                const val = row.querySelector('.field-value').value.trim();
+                if (key) customFields[key] = val;
+            });
+
+            const data = {
+                name: document.getElementById('clientName').value,
+                login: document.getElementById('clientLogin').value,
+                whatsapp: document.getElementById('clientWhatsapp').value,
+                notification_channel: document.getElementById('clientNotificationChannel').value,
+                expiration_date: document.getElementById('clientExpiration').value,
+
+                // --- NOVA LINHA: Envia a configuração de dias para o backend ---
+                reminder_days_before: document.getElementById('clientReminderDays').value,
+                // ---------------------------------------------------------------
+
+                server_name: document.getElementById('clientServer').value,
+                notes: document.getElementById('clientNotes').value,
+                m3u8_url: document.getElementById('clientM3u8').value,
+                custom_fields: customFields
+            };
+
+            if (!data.name || !data.login || !data.expiration_date) { alert("Preencha os campos obrigatórios."); return; }
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `/clients/${id}` : '/clients/';
+
+            try {
+                const response = await apiFetch(url, { method: method, body: JSON.stringify(data) });
+                if (response.ok) {
+                    closeClientModal();
+                    loadClients();
+                    showNotification(id ? "Cliente atualizado!" : "Cliente criado!", "success");
+                } else { alert("Erro ao salvar."); }
+            } catch (error) { console.error(error); alert("Erro de conexão."); }
+        }
+
+        async function deleteClient(id) {
+            if(!confirm("Tem certeza que deseja excluir este cliente?")) return;
+            try {
+                await apiFetch(`/clients/${id}`, { method: 'DELETE' });
+                loadClients();
+                showNotification("Cliente removido.", "info");
+            } catch (e) { console.error(e); }
+        }
+
+        function openDetailsModal(client) {
+            const modal = document.getElementById('detailsModal');
+            const content = document.getElementById('detailsContent');
+            let customFieldsHtml = '';
+            if (client.custom_fields && Object.keys(client.custom_fields).length > 0) {
+                customFieldsHtml = `<h4 style="margin-top:10px; border-bottom:1px solid #eee;">Infos Adicionais</h4>`;
+                Object.entries(client.custom_fields).forEach(([key, value]) => {
+                    customFieldsHtml += `<div><strong>${key}:</strong> ${value}</div>`;
+                });
+            }
+            const m3u8Html = client.m3u8_url ? `<div style="background: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 0.85rem;"><strong>M3U8:</strong> <a href="${client.m3u8_url}" target="_blank">${client.m3u8_url}</a></div>` : '';
+            const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
+
+            content.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div><strong>Nome:</strong> ${client.name}</div>
+                    <div><strong>Login:</strong> ${client.login}</div>
+                    <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
+                    <div><strong>Canal:</strong> ${channelIcon}</div>
+                    <div><strong>Vencimento:</strong> ${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</div>
+                    <div><strong>Servidor:</strong> ${client.server_name}</div>
+                </div>
+                ${client.notes ? `<div style="margin-top:10px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:5px;"><strong>Obs:</strong> ${client.notes}</div>` : ''}
+                ${customFieldsHtml} ${m3u8Html}
+            `;
+            modal.style.display = 'flex';
+        }
+        function closeDetailsModal() { document.getElementById('detailsModal').style.display = 'none'; }
+
+        // ==========================================
+        // LÓGICA DE AGENDAMENTO E ENVIO MANUAL
+        // ==========================================
+
+        async function loadScheduleStatus() {
+            try {
+                const response = await apiFetch('/users/me/schedule');
+                if (response.ok) {
+                    const data = await response.json();
+                    // Atualiza o texto do horário
+                    document.getElementById('displayScheduleTime').textContent = data.time || "--:--";
+                    document.getElementById('scheduleTime').value = data.time || "09:00";
+
+                    // Atualiza o Toggle (Switch)
+                    document.getElementById('scheduleToggle').checked = data.enabled;
+                }
+            } catch (error) {
+                console.error("Erro ao carregar agendamento:", error);
+            }
+        }
+
+        async function toggleSchedule() {
+            const isEnabled = document.getElementById('scheduleToggle').checked;
+            const time = document.getElementById('displayScheduleTime').textContent;
+
+            try {
+                // Envia a atualização para o backend
+                await apiFetch('/users/me/schedule', {
+                    method: 'PUT',
+                    body: JSON.stringify({ time: time, enabled: isEnabled })
+                });
+                showNotification(isEnabled ? "Agendamento ativado!" : "Agendamento desativado.", isEnabled ? "success" : "warning");
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao atualizar status.");
+                // Reverte o switch em caso de erro
+                document.getElementById('scheduleToggle').checked = !isEnabled;
+            }
+        }
+
+        function openScheduleModal() { document.getElementById('scheduleModal').style.display = 'flex'; }
+        function closeScheduleModal() { document.getElementById('scheduleModal').style.display = 'none'; }
+
+        async function saveSchedule() {
+            const time = document.getElementById('scheduleTime').value;
+            const isEnabled = document.getElementById('scheduleToggle').checked;
+
+            if (!time) { alert("Selecione um horário."); return; }
+
+            try {
+                const response = await apiFetch('/users/me/schedule', {
+                    method: 'PUT',
+                    body: JSON.stringify({ time: time, enabled: isEnabled })
+                });
+
+                if (response.ok) {
+                    document.getElementById('displayScheduleTime').textContent = time;
+                    showNotification(`Horário atualizado para ${time}`, "success");
+                    closeScheduleModal();
+                } else { alert("Erro ao salvar."); }
+            } catch (error) { console.error(error); alert("Erro de conexão."); }
+        }
+
+        // --- ENVIO MANUAL ---
+        async function sendManualReminder(clientId) {
+            if(!confirm("Deseja enviar a mensagem de cobrança agora? \n(A mensagem seguirá a mesma regra do agendador baseada na data de vencimento)")) return;
+
+            try {
+                const response = await apiFetch(`/clients/${clientId}/remind`, { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showNotification(result.message, "success");
+                } else {
+                    // Mostra aviso se não houver critério (ex: faltam 10 dias)
+                    alert(result.detail || "Erro ao enviar.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao processar envio.");
+            }
+        }
+
+        // --- ENVIO EM MASSA (EXECUÇÃO MANUAL DA ROTINA) ---
+
+        // 1. Abre o modal para escolher o filtro
+        function runBatchProcess() {
+            document.getElementById('batchModal').style.display = 'flex';
+        }
+
+        // 2. Fecha o modal
+        function closeBatchModal() {
+            document.getElementById('batchModal').style.display = 'none';
+        }
+
+        // 3. Executa o envio com o filtro selecionado
+        async function executeBatchProcess() {
+            const filterType = document.getElementById('batchFilter').value;
+
+            closeBatchModal();
+            showNotification("Iniciando envio em massa...", "info");
+
+            try {
+                // Enviamos o filtro via Query Parameter para o backend
+                // Ex: /clients/process-now?filter_type=3
+                const response = await apiFetch(`/clients/process-now?filter_type=${filterType}`, { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showNotification(result.message, "success");
+                } else {
+                    alert(result.detail || "Erro ao processar.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro de conexão ao tentar executar a rotina.");
+            }
+        }
+    </script>
 </body>
 </html>

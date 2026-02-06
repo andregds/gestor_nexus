@@ -1,5 +1,5 @@
 # backend/models.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -16,6 +16,7 @@ class User(Base):
     whatsapp_number = Column(String, nullable=True)
     whatsapp_instance = Column(String, nullable=True)
     whatsapp_apikey = Column(String, nullable=True)
+    notification_channel = Column(String, default="whatsapp")
 
     # Configurações do Telegram
     telegram_token = Column(String, nullable=True)
@@ -26,6 +27,9 @@ class User(Base):
     notify_when_down = Column(Boolean, default=True)
     notify_when_up = Column(Boolean, default=True)
     notify_when_slow = Column(Boolean, default=False)
+
+    # NOVO CAMPO: Horário de envio das cobranças (Ex: "09:00")
+    notification_time = Column(String, default="09:00", nullable=True)
 
     # Relacionamentos
     urls = relationship("MonitoredURL", back_populates="owner")
@@ -80,6 +84,14 @@ class Client(Base):
 
     notes = Column(String, nullable=True)
     m3u8_url = Column(String, nullable=True)
+
+    # NOVO CAMPO: Para salvar campos dinâmicos (ex: {"MAC": "00:11...", "App": "IPTV Smarters"})
+    custom_fields = Column(JSON, nullable=True)
+
+    # --- NOVO CAMPO ADICIONADO ---
+    # Canal preferencial de notificação: 'whatsapp', 'telegram', etc.
+    notification_channel = Column(String, default="whatsapp")
+    # -----------------------------
 
     # Flags
     notify_downtime = Column(Boolean, default=True)
