@@ -54,6 +54,16 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # --- VERIFICAÇÃO DE BLOQUEIO ---
+    if not user.is_active:
+        reason = user.block_reason if user.block_reason else "Entre em contato com o suporte."
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Acesso bloqueado: {reason}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # -------------------------------
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email},

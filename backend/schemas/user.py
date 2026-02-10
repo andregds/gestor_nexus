@@ -18,6 +18,12 @@ class UserSettingsUpdate(BaseModel):
     notify_when_slow: Optional[bool] = None
 
 
+# --- NOVO SCHEMA PARA BLOQUEIO ---
+class BlockUserRequest(BaseModel):
+    reason: Optional[str] = None
+# ---------------------------------
+
+
 class UserResponse(BaseModel):
     id: int
     name: str
@@ -35,6 +41,9 @@ class UserResponse(BaseModel):
     # --- NOVOS CAMPOS NA RESPOSTA DA API ---
     role: str
     permissions: Dict[str, Any]
+    client_limit: int
+    is_active: bool
+    block_reason: Optional[str] = None  # <-- CAMPO ADICIONADO AQUI
     # ---------------------------------------
 
     class Config:
