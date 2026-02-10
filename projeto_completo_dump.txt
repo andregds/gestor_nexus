@@ -818,6 +818,7 @@ FILE: backend\main.py
 import time
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo  # Import para corrigir o Fuso Horário
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -827,7 +828,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 from models import User, Client
-from routes import auth, users, urls, whatsapp, clients
+# --- ATUALIZAÇÃO: Adicionado 'backup' aos imports ---
+from routes import auth, users, urls, whatsapp, clients, backup
 
 # Utilitários de envio
 from telegram_utils import send_telegram_message
@@ -858,6 +860,8 @@ app.include_router(users.router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)
+# --- ATUALIZAÇÃO: Registrando a rota de backup/importação ---
+app.include_router(backup.router)
 
 
 # ==========================================
@@ -872,8 +876,16 @@ def check_and_send_reminders():
     # Cria uma nova sessão de banco de dados para esta thread
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # --- CORREÇÃO DE FUSO HORÁRIO ---
+        # Define o timezone do Brasil para garantir que 'hoje' seja calculado corretamente
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+
+        now = datetime.now(tz_brazil)
         now_time = now.strftime("%H:%M")
+
+        # Define a data de hoje baseada no Brasil (e não no UTC do servidor)
+        today = now.date()
+        # --------------------------------
 
         # --- DEBUG: Mostra que o scheduler está vivo ---
         # print(f"⏰ Scheduler Check: {now} (Procurando agendamentos para {now_time})")
@@ -902,7 +914,8 @@ def check_and_send_reminders():
 
             # 2. Busca clientes deste usuário
             user_clients = db.query(Client).filter(Client.owner_id == user.id).all()
-            today = datetime.now().date()
+
+            # OBS: A variável 'today' já foi definida corretamente lá em cima com o timezone
 
             print(f"      📂 Analisando {len(user_clients)} clientes...")
 
@@ -937,7 +950,7 @@ def check_and_send_reminders():
                 # 2. Lógica de Vencido (Qualquer dia negativo)
                 # Envia se estiver vencido há 1 ou mais dias, desde que a opção esteja ativa
                 elif days_diff < 0 and client.notify_after_expiration:
-                    days_overdue = abs(days_diff) # Converte -1 para 1, -5 para 5, etc.
+                    days_overdue = abs(days_diff)  # Converte -1 para 1, -5 para 5, etc.
                     msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
                 # Se encontrou uma regra válida, envia
@@ -1739,13 +1752,23 @@ def find_column(df, keywords):
     Procura no DataFrame uma coluna que contenha uma das palavras-chave.
     Retorna o nome da coluna encontrada ou None.
     """
-    columns_lower = [c.lower().strip() for c in df.columns]
+    # Cria um mapa: { "nome_coluna_lower_strip": "Nome Original" }
+    columns_map = {str(c).lower().strip(): c for c in df.columns}
+    columns_lower = list(columns_map.keys())
 
     for keyword in keywords:
+        keyword = keyword.lower()
+
+        # 1. Tentativa de correspondência exata
         if keyword in columns_lower:
-            # Retorna o nome original da coluna (com maiúsculas/minúsculas originais)
-            index = columns_lower.index(keyword)
-            return df.columns[index]
+            return columns_map[keyword]
+
+        # 2. Tentativa de correspondência parcial (contém)
+        # Ex: "Login do Cliente" contém "login"
+        for col_name_lower in columns_lower:
+            if keyword in col_name_lower:
+                return columns_map[col_name_lower]
+
     return None
 
 
@@ -1844,14 +1867,21 @@ async def import_clients_file(
     # 1. Carregar o arquivo para um DataFrame Pandas
     try:
         if filename.endswith('.csv') or filename.endswith('.txt'):
-            # Tenta ler CSV (tenta separador , e ;)
+            # Tenta ler CSV com múltiplas estratégias de codificação e separador
             try:
-                df = pd.read_csv(io.BytesIO(contents), encoding='utf-8')
+                # Estratégia 1: UTF-8 com detecção automática de separador
+                df = pd.read_csv(io.BytesIO(contents), encoding='utf-8', sep=None, engine='python')
             except:
                 try:
-                    df = pd.read_csv(io.BytesIO(contents), encoding='latin-1', sep=';')
+                    # Estratégia 2: Latin-1 (comum no Brasil/Excel) com detecção automática
+                    df = pd.read_csv(io.BytesIO(contents), encoding='latin-1', sep=None, engine='python')
                 except:
-                    df = pd.read_csv(io.BytesIO(contents), encoding='utf-8', sep=';')
+                    try:
+                        # Estratégia 3: UTF-8-SIG (com BOM)
+                        df = pd.read_csv(io.BytesIO(contents), encoding='utf-8-sig', sep=None, engine='python')
+                    except:
+                        # Estratégia 4: Forçar ponto e vírgula com latin-1
+                        df = pd.read_csv(io.BytesIO(contents), encoding='latin-1', sep=';')
 
         elif filename.endswith(('.xls', '.xlsx')):
             df = pd.read_excel(io.BytesIO(contents))
@@ -1859,31 +1889,42 @@ async def import_clients_file(
             raise HTTPException(status_code=400, detail="Formato não suportado. Use CSV ou Excel.")
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao ler arquivo: {str(e)}")
+        print(f"Erro ao ler CSV/Excel: {e}")  # Log no terminal do servidor
+        raise HTTPException(status_code=400,
+                            detail=f"Erro ao ler arquivo. Verifique se é um CSV válido. Detalhe: {str(e)}")
 
     if df is None or df.empty:
         raise HTTPException(status_code=400, detail="O arquivo está vazio ou ilegível.")
 
+    # Debug: Imprime as colunas encontradas no terminal para ajudar a diagnosticar
+    print(f"Colunas encontradas no arquivo: {list(df.columns)}")
+
     # 2. Identificar Colunas (Mapeamento Inteligente)
-    col_name = find_column(df, ['nome', 'cliente', 'name', 'nome completo', 'usuario'])
+    col_name = find_column(df, ['nome', 'cliente', 'name', 'nome completo', 'usuario', 'titular'])
     col_login = find_column(df, ['login', 'usuario', 'user', 'username', 'email'])
     col_phone = find_column(df, ['whatsapp', 'celular', 'telefone', 'tel', 'cel', 'zap', 'contato', 'mobile'])
     col_date = find_column(df, ['vencimento', 'data', 'validade', 'vence', 'expiration', 'expire'])
-    col_notes = find_column(df, ['obs', 'observacao', 'notas', 'observações', 'info'])
+    col_notes = find_column(df, ['obs', 'observacao', 'observação', 'notas', 'observações', 'info'])
     col_server = find_column(df, ['servidor', 'server', 'plano', 'pacote'])
 
-    # Se não achou login, tenta usar o nome como login (fallback)
+    # --- LÓGICA DE FALLBACK (CORREÇÃO SOLICITADA) ---
+
+    # Se achou Login mas NÃO achou Nome, usa o Login como Nome
+    if not col_name and col_login:
+        col_name = col_login
+
+    # Se achou Nome mas NÃO achou Login, usa o Nome como Login
     if not col_login and col_name:
         col_login = col_name
 
     # Validação mínima
     if not col_name:
-        return {"message": "Erro: Não foi possível identificar a coluna de NOME no arquivo.",
-                "errors": ["Coluna 'Nome' não encontrada."]}
+        return {"message": "Erro: Não foi possível identificar a coluna de NOME ou LOGIN no arquivo.",
+                "errors": [f"Colunas identificadas: {list(df.columns)}. Coluna 'Nome' ou 'Login' não encontrada."]}
 
     if not col_date:
         return {"message": "Erro: Não foi possível identificar a coluna de VENCIMENTO.",
-                "errors": ["Coluna 'Vencimento' não encontrada."]}
+                "errors": [f"Colunas identificadas: {list(df.columns)}. Coluna 'Vencimento' não encontrada."]}
 
     # 3. Iterar e Salvar
     # Substitui NaN por None/String vazia para evitar erros
@@ -1891,8 +1932,19 @@ async def import_clients_file(
 
     for index, row in df.iterrows():
         try:
-            name = str(row[col_name]).strip()
-            login = str(row[col_login]).strip() if col_login else name.lower().replace(" ", "")
+            # Pega o valor da coluna mapeada
+            name_val = str(row[col_name]).strip()
+
+            # Se a coluna usada para nome for a mesma do login (fallback), o nome será o login
+            name = name_val
+
+            # Define o Login
+            if col_login:
+                login = str(row[col_login]).strip()
+            else:
+                # Se não tem coluna de login, gera um baseado no nome
+                login = name.lower().replace(" ", "")
+
             phone_raw = row[col_phone] if col_phone else ""
             date_raw = row[col_date]
             notes = str(row[col_notes]) if col_notes else ""
@@ -1962,6 +2014,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
+from zoneinfo import ZoneInfo  # Import essencial para corrigir o Fuso Horário
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
@@ -2032,11 +2085,25 @@ async def process_reminders_now(
     """
     # Busca todos os clientes do usuário
     clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
-    today = datetime.now().date()
+
+    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
+    try:
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        # Fallback caso o sistema não tenha tzdata (comum em Windows sem config)
+        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
+        tz_brazil = None
+
+    if tz_brazil:
+        today = datetime.now(tz_brazil).date()
+    else:
+        today = datetime.now().date()
+    # -----------------------------------------
+
     sent_count = 0
 
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
-    print(f"📅 Data do Servidor: {today}")
+    print(f"📅 Data considerada HOJE (BR): {today}")
     print(f"🔍 Filtro Selecionado: {filter_type}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
@@ -2072,8 +2139,6 @@ async def process_reminders_now(
             if days_diff == target_days:
                 should_send = True
             else:
-                # Debug para entender por que não enviou
-                # print(f"   Ignorado {client.name}: Faltam {days_diff} dias (Filtro pede {target_days})")
                 pass
 
         # 3. Filtro: Padrão (default) - Respeita a config do cliente
@@ -2092,13 +2157,15 @@ async def process_reminders_now(
         if should_send:
             print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
+            # Lógica estrita para evitar confusão entre Hoje e Vencido
             if days_diff == 0:
                 msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
             elif days_diff == 1:
                 msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
             elif days_diff > 1:
                 msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-            else:  # Negativo (Vencido)
+            elif days_diff < 0:
+                # Garante que dias negativos sejam tratados como VENCIDO
                 days_overdue = abs(days_diff)
                 msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
@@ -2221,22 +2288,40 @@ async def send_manual_reminder(
     if not client:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
-    today = datetime.now().date()
+    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
+    try:
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
+        tz_brazil = None
+
+    if tz_brazil:
+        today = datetime.now(tz_brazil).date()
+    else:
+        today = datetime.now().date()
+    # -----------------------------------------
+
     days_diff = (client.expiration_date - today).days
+
+    # DEBUG: Verifique isso no terminal do servidor se o erro persistir
+    print(f"DEBUG MANUAL: Hoje={today}, Vencimento={client.expiration_date}, Diff={days_diff}")
+
     msg = ""
 
-    # Lógica de mensagens
-    if days_diff == 3:
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em 3 dias. Evite bloqueios!"
-    elif days_diff == 1:
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff == 0:
+    # Lógica de mensagens REVISADA E ESTRITA
+    if days_diff == 0:
+        # EXATAMENTE HOJE
         msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+    elif days_diff == 1:
+        # AMANHÃ
+        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+    elif days_diff > 1:
+        # FUTURO (2 dias ou mais)
+        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
     elif days_diff < 0:
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu. Entre em contato para reativar."
-    else:
-        formatted_date = client.expiration_date.strftime('%d/%m/%Y')
-        msg = f"Olá {client.name}! 📅 Lembrete: Sua assinatura está ativa e vence dia {formatted_date}."
+        # PASSADO (Vencido)
+        days_overdue = abs(days_diff)
+        msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -2834,6 +2919,263 @@ FILE: backend\sessions\whatsapp-session.json
 ============================================================
 
 ============================================================
+FILE: frontend\backup_clients.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup e Exportação | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* --- ESTILOS DO SUBMENU (Consistência) --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem;
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover { color: white; }
+        .submenu-link.active { color: var(--primary); font-weight: bold; }
+
+        /* --- CARDS DE BACKUP --- */
+        .backup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .backup-card {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            text-align: center;
+            transition: transform 0.2s;
+            border: 1px solid #e2e8f0;
+        }
+
+        .backup-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+            border-color: var(--primary);
+        }
+
+        .backup-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .backup-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .backup-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            min-height: 40px;
+        }
+
+        .btn-download {
+            width: 100%;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1rem;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+
+                <!-- MENU CLIENTES (EXPANDIDO) -->
+                <div class="menu-group">
+                    <a href="clients.html" class="sidebar-link active">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </a>
+                    <div class="submenu">
+                        <a href="import_clients.html" class="submenu-link">
+                            <span>📂</span> Importar / Padronizar
+                        </a>
+                        <!-- Link Ativo -->
+                        <a href="backup_clients.html" class="submenu-link active">
+                            <span>💾</span> Backup / Exportar
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Backup e Exportação</h2>
+                    <p>Baixe seus dados para segurança ou migração.</p>
+                </div>
+            </div>
+
+            <div class="backup-grid">
+                <!-- CARD 1: EXPORTAR CSV -->
+                <div class="backup-card">
+                    <span class="backup-icon">📊</span>
+                    <h3 class="backup-title">Exportar Clientes (CSV)</h3>
+                    <p class="backup-desc">
+                        Gera uma planilha compatível com Excel contendo todos os seus clientes cadastrados.
+                    </p>
+                    <button class="btn btn-primary btn-download" id="btnCsv" onclick="downloadBackup('csv')">
+                        📥 Baixar Planilha
+                    </button>
+                </div>
+
+                <!-- CARD 2: BACKUP COMPLETO -->
+                <div class="backup-card">
+                    <span class="backup-icon">📦</span>
+                    <h3 class="backup-title">Backup Completo (JSON)</h3>
+                    <p class="backup-desc">
+                        Arquivo técnico contendo configurações do usuário e todos os clientes. Ideal para migração de sistema.
+                    </p>
+                    <button class="btn btn-secondary btn-download" id="btnJson" onclick="downloadBackup('json')" style="background-color: #475569; color: white;">
+                        🛡️ Baixar Backup Completo
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding: 1rem; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 8px; color: #b7791f;">
+                <strong>Nota:</strong> Os arquivos gerados contêm dados sensíveis. Armazene-os em local seguro.
+            </div>
+
+        </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+    <script>
+        async function downloadBackup(type) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const endpoint = type === 'csv' ? '/backup/clients/export' : '/backup/full/export';
+            const btnId = type === 'csv' ? 'btnCsv' : 'btnJson';
+            const btn = document.getElementById(btnId);
+
+            // Feedback Visual
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Gerando arquivo...';
+
+            try {
+                // Usamos fetch com Authorization header para baixar o arquivo
+                const response = await fetch(`http://localhost:8000${endpoint}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // Converte a resposta em um Blob (arquivo binário)
+                    const blob = await response.blob();
+
+                    // Cria uma URL temporária para o Blob
+                    const url = window.URL.createObjectURL(blob);
+
+                    // Cria um link invisível e clica nele para forçar o download
+                    const a = document.createElement('a');
+                    a.href = url;
+
+                    // Tenta pegar o nome do arquivo do Header Content-Disposition
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let fileName = type === 'csv' ? 'clientes.csv' : 'backup.json';
+
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (match && match[1]) {
+                            fileName = match[1];
+                        }
+                    }
+
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    // Limpeza
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    alert("Erro ao gerar o backup. Tente novamente.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro de conexão com o servidor.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    </script>
+</body>
+</html>
+============================================================
 FILE: frontend\cleanup.js
 ============================================================
 import { getInstances, removeInstance } from "./instanceManager.js";
@@ -2957,6 +3299,34 @@ FILE: frontend\clients.html
         .close-modal { position: absolute; top: 1rem; right: 1rem; cursor: pointer; font-size: 1.5rem; }
         .dynamic-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .dynamic-field-row input { flex: 1; }
+
+        /* --- NOVO CSS PARA O SUBMENU --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem; /* Indentação para parecer filho */
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1); /* Fundo levemente mais escuro */
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8; /* Cor mais apagada */
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover {
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -2976,9 +3346,21 @@ FILE: frontend\clients.html
                 <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
+
+                <!-- LINK CLIENTES (MANTIDO INTACTO) -->
                 <a href="clients.html" class="sidebar-link active">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
+                <!-- SUBMENU ADICIONADO ABAIXO -->
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                </div>
+
                 <a href="whatsapp.html" class="sidebar-link">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
@@ -3046,7 +3428,7 @@ FILE: frontend\clients.html
                         <span class="schedule-label">Envio Automático</span>
                         <span class="schedule-time" id="displayScheduleTime">--:--</span>
                     </div>
-                    
+
                     <label class="switch" title="Ativar/Desativar Envio Automático">
                         <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
                         <span class="slider round"></span>
@@ -3836,6 +4218,354 @@ FILE: frontend\dashboard.html
         </main>
     </div>
     <script src="assets/js/dashboard.js"></script>
+</body>
+</html>
+============================================================
+FILE: frontend\import_clients.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importar Clientes | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* --- REUTILIZANDO ESTILOS DO SUBMENU (Para manter consistência) --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem;
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover { color: white; }
+
+        /* Destaque para o link ativo do submenu */
+        .submenu-link.active { color: var(--primary); font-weight: bold; }
+
+        /* --- ESTILOS ESPECÍFICOS DA PÁGINA DE IMPORTAÇÃO --- */
+
+        /* Área de Upload (Drag & Drop) */
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 10px;
+            padding: 3rem;
+            text-align: center;
+            background: #f8fafc;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--primary);
+            background: #f0f9ff;
+            transform: scale(1.01);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #94a3b8;
+            margin-bottom: 1rem;
+        }
+
+        /* Console de Logs (Estilo Terminal) */
+        .import-log {
+            background: #1e293b; /* Fundo escuro */
+            color: #33da7a;      /* Texto verde matrix */
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none; /* Oculto até ter atividade */
+            font-size: 0.9rem;
+            line-height: 1.5;
+            border: 1px solid #334155;
+        }
+
+        .log-error { color: #ef4444; } /* Vermelho para erros */
+        .log-info { color: #60a5fa; }  /* Azul para infos */
+        .log-warn { color: #facc15; }  /* Amarelo para avisos */
+
+        /* Animação de carregamento simples */
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+
+                <!-- MENU CLIENTES (EXPANDIDO) -->
+                <div class="menu-group">
+                    <!-- Mantemos a classe active no pai para indicar contexto -->
+                    <a href="clients.html" class="sidebar-link active">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </a>
+                    <div class="submenu">
+                        <!-- Link ativo nesta página -->
+                        <a href="import_clients.html" class="submenu-link active">
+                            <span>📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="submenu-link">
+                            <span>💾</span> Backup / Exportar
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Importar Clientes</h2>
+                    <p>Carregue arquivos CSV ou Excel para padronizar e importar clientes em massa.</p>
+                </div>
+            </div>
+
+            <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+
+                <!-- Instruções -->
+                <div style="margin-bottom: 2rem; border-left: 4px solid var(--primary); padding-left: 1rem;">
+                    <h4 style="color: var(--text-dark); margin-bottom: 0.5rem;">Instruções de Padronização</h4>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                        O sistema tenta identificar automaticamente as colunas. Para melhores resultados, certifique-se de que seu arquivo tenha cabeçalhos similares a:
+                        <br>
+                        <strong>Nome, Login, WhatsApp, Vencimento, Servidor, Notas</strong>.
+                    </p>
+                </div>
+
+                <!-- Área de Drag & Drop -->
+                <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">📤</div>
+                    <h3 style="color: var(--text-dark);">Clique ou arraste seu arquivo aqui</h3>
+                    <p style="color: var(--text-muted);">Suporta arquivos .csv, .xls, .xlsx</p>
+                    <!-- Input invisível -->
+                    <input type="file" id="fileInput" style="display: none;" accept=".csv, .xlsx, .xls, .txt">
+                </div>
+
+                <!-- Botão de Ação -->
+                <div style="text-align: right; margin-bottom: 1rem;">
+                    <button id="btnImport" class="btn btn-primary" style="display: none;" onclick="uploadFile()">
+                        🚀 Processar e Importar
+                    </button>
+                </div>
+
+                <!-- Console de Logs -->
+                <div id="importLog" class="import-log">
+                    <div>> Aguardando arquivo...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+    <script>
+        // Elementos do DOM
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const btnImport = document.getElementById('btnImport');
+        const logArea = document.getElementById('importLog');
+
+        let selectedFile = null;
+
+        // ==========================================
+        // LÓGICA DE DRAG & DROP
+        // ==========================================
+
+        // Quando o arquivo é arrastado para cima da área
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        // Quando o arquivo sai da área sem soltar
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+        });
+
+        // Quando o arquivo é solto
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+
+            if (e.dataTransfer.files.length) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Quando selecionado via clique
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) {
+                handleFileSelection(fileInput.files[0]);
+            }
+        });
+
+        function handleFileSelection(file) {
+            // Validação simples de extensão
+            const validExtensions = ['.csv', '.xls', '.xlsx', '.txt'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+            if (!validExtensions.includes(fileExtension)) {
+                alert("Formato de arquivo inválido. Por favor, use CSV ou Excel.");
+                return;
+            }
+
+            selectedFile = file;
+
+            // Atualiza visual da área de upload
+            dropZone.innerHTML = `
+                <div class="upload-icon" style="color: var(--success)">📄</div>
+                <h3 style="color: var(--text-dark);">${file.name}</h3>
+                <p style="color: var(--text-muted);">Tamanho: ${(file.size/1024).toFixed(2)} KB</p>
+                <p style="font-size: 0.8rem; color: var(--primary); margin-top: 10px;">Clique para trocar de arquivo</p>
+                <input type="file" id="fileInput" style="display: none;" accept=".csv, .xlsx, .xls, .txt">
+            `;
+
+            // Reatacha o evento de clique no novo input (pois sobrescrevemos o HTML)
+            dropZone.onclick = () => document.getElementById('fileInput').click();
+            document.getElementById('fileInput').addEventListener('change', (e) => {
+                if(e.target.files.length) handleFileSelection(e.target.files[0]);
+            });
+
+            // Mostra botão e log
+            btnImport.style.display = 'inline-block';
+            logArea.style.display = 'block';
+            logArea.innerHTML = `<div class="log-info">> Arquivo carregado na memória: ${file.name}</div>`;
+            logArea.innerHTML += `<div>> Pronto para enviar. Clique em "Processar e Importar".</div>`;
+        }
+
+        // ==========================================
+        // LÓGICA DE ENVIO PARA API
+        // ==========================================
+        async function uploadFile() {
+            if (!selectedFile) return;
+
+            // Trava UI
+            btnImport.disabled = true;
+            btnImport.innerHTML = `<span class="spinner"></span> Processando...`;
+            logArea.innerHTML += `<br><div class="log-info">> Iniciando upload para o servidor...</div>`;
+
+            // Scroll para o final do log
+            logArea.scrollTop = logArea.scrollHeight;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                // Recupera token (lógica padrão do seu dashboard.js)
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // Faz a requisição
+                const response = await fetch('http://localhost:8000/backup/clients/import', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    logArea.innerHTML += `<div style="color: var(--success)">> ${result.message}</div>`;
+
+                    // Se houver erros parciais (linhas ignoradas)
+                    if (result.errors && result.errors.length > 0) {
+                        logArea.innerHTML += `<br><div class="log-warn">⚠️ Alertas durante a importação:</div>`;
+                        result.errors.forEach(err => {
+                            logArea.innerHTML += `<div class="log-error">- ${err}</div>`;
+                        });
+                    } else {
+                        logArea.innerHTML += `<div class="log-info">> Nenhuma inconsistência encontrada.</div>`;
+                    }
+
+                    logArea.innerHTML += `<br><div style="color: white; font-weight: bold;">> Importação finalizada! Redirecionando...</div>`;
+
+                    // Redireciona após 3 segundos
+                    setTimeout(() => {
+                        window.location.href = 'clients.html';
+                    }, 3000);
+
+                } else {
+                    // Erro retornado pela API (ex: 400 Bad Request)
+                    logArea.innerHTML += `<div class="log-error">> FALHA: ${result.detail || 'Erro desconhecido no servidor.'}</div>`;
+                    btnImport.disabled = false;
+                    btnImport.textContent = "Tentar Novamente";
+                }
+
+            } catch (error) {
+                console.error(error);
+                logArea.innerHTML += `<div class="log-error">> ERRO DE CONEXÃO: ${error.message}</div>`;
+                logArea.innerHTML += `<div>> Verifique se o backend está rodando.</div>`;
+                btnImport.disabled = false;
+                btnImport.textContent = "Tentar Novamente";
+            }
+        }
+    </script>
 </body>
 </html>
 ============================================================

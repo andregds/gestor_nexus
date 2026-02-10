@@ -57,7 +57,7 @@ class ClientResponse(ClientCreate):
     owner_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # <--- CORRIGIDO AQUI (Era orm_mode = True)
 
 
 # ==========================================

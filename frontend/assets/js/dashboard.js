@@ -2,7 +2,7 @@
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
  * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
- * @version 2.6
+ * @version 2.7
  */
 // ============================
 // CONFIGURAÇÃO GLOBAL
@@ -12,12 +12,13 @@ let whatsappPollingInterval = null;
 let pollingAttempts = 0;
 const MAX_POLLING_ATTEMPTS = 40; // 40 tentativas * 3s = 2 minutos
 
+// --- ATUALIZAÇÃO: Variável para guardar dados do usuário logado ---
+let currentUser = null;
+
 // ============================
 // INICIALIZAÇÃO
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
-    // A verificação de auth agora é feita pelo apiFetch,
-    // mas mantemos uma inicial para o primeiro carregamento.
     if (!localStorage.getItem('token')) {
         redirectToLogin();
         return;
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function loadPage() {
     setupSidebarNavigation();
-    loadUserInfo();
+    loadUserInfo(); // Esta função agora também cuida das permissões da UI
     loadURLs();
     loadWhatsAppStatus();
     loadSettings();
@@ -86,7 +87,7 @@ function showNotification(message, type = 'info') {
     setTimeout(() => {
         notification.style.opacity = '1';
         notification.style.transform = 'translateY(0)';
-    }, 10); // Pequeno delay para a transição funcionar
+    }, 10);
 
     setTimeout(() => {
         notification.style.opacity = '0';
@@ -120,13 +121,13 @@ async function apiFetch(path, options = {}) {
         if (response.status === 401) {
             showNotification("Sessão expirada ou não autorizada. Faça login novamente.", 'error');
             redirectToLogin();
-            return response; // Retorna a resposta 401 para que o chamador possa lidar com ela se necessário
+            return response;
         }
 
         return response;
     } catch (error) {
         console.error('Erro na requisição API:', error);
-        throw error; // Re-lança o erro para ser tratado pela função chamadora
+        throw error;
     }
 }
 
@@ -147,21 +148,70 @@ function logout() {
     }
 }
 
+// =================================================
+// CONTROLE DE ACESSO E PERMISSÕES (ATUALIZADO)
+// =================================================
+
 /**
- * Carrega as informações do usuário logado e atualiza o nome no cabeçalho.
+ * Carrega as informações do usuário, guarda em currentUser e aplica as permissões na UI.
  */
 async function loadUserInfo() {
     try {
         const response = await apiFetch('/users/me');
         if (response.ok) {
-            const user = await response.json();
+            currentUser = await response.json(); // Armazena os dados do usuário
+
             const el = document.getElementById('userName');
-            if (el) el.textContent = user.name;
+            if (el) el.textContent = currentUser.name;
+
+            // Opcional: Exibe o "cargo" do usuário em algum lugar.
+            const roleEl = document.querySelector('.user-role');
+            if (roleEl) {
+                roleEl.textContent = currentUser.role.replace('_', ' ').toUpperCase();
+            }
+
+            applyUIPermissions(); // Chama a função para ajustar a UI
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
     }
 }
+
+/**
+ * Mostra ou esconde elementos da UI com base no role e permissões do usuário.
+ */
+function applyUIPermissions() {
+    if (!currentUser) return;
+
+    const { role, permissions } = currentUser;
+
+    // Função auxiliar para mostrar/esconder elementos
+    const setElementVisibility = (selector, isVisible) => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.style.display = isVisible ? '' : 'none';
+        }
+    };
+
+    // 1. Controle de Menus da Sidebar baseado nas PERMISSÕES do usuário
+    // (Requer que os links no HTML tenham o atributo 'data-permission-key')
+    setElementVisibility('[data-permission-key="dashboard"]', permissions.can_view_dashboard);
+    setElementVisibility('[data-permission-key="clients"]', permissions.can_view_clients);
+    setElementVisibility('[data-permission-key="integrations"]', permissions.can_view_integrations);
+    setElementVisibility('[data-permission-key="settings"]', permissions.can_view_settings);
+
+    // Lógica especial para esconder o submenu de clientes se o link principal for escondido
+    const clientsMenuGroup = document.querySelector('[data-permission-key="clients"]');
+    if (clientsMenuGroup && clientsMenuGroup.nextElementSibling && clientsMenuGroup.nextElementSibling.classList.contains('submenu')) {
+        clientsMenuGroup.nextElementSibling.style.display = permissions.can_view_clients ? '' : 'none';
+    }
+
+    // 2. Controle de menus específicos por CARGO (ROLE)
+    // (Requer que os links no HTML tenham o atributo 'data-role-required')
+    setElementVisibility('[data-role-required="reseller"]', role === 'reseller' || role === 'super_admin');
+    setElementVisibility('[data-role-required="super_admin"]', role === 'super_admin');
+}
+
 
 // ============================
 // NAVEGAÇÃO (CORRIGIDA)
@@ -179,9 +229,8 @@ function setupSidebarNavigation() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
 
-            // Se o link tiver 'data-section', é uma navegação interna (SPA)
             if (targetId) {
-                e.preventDefault(); // Impede o recarregamento apenas se for SPA
+                e.preventDefault();
 
                 links.forEach(l => l.classList.remove('active'));
                 link.classList.add('active');
@@ -190,12 +239,10 @@ function setupSidebarNavigation() {
                     s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
                 });
 
-                // Fecha a sidebar em telas pequenas após clicar em um link
                 if (window.innerWidth <= 768 && sidebar) {
                     sidebar.classList.remove('active');
                 }
             }
-            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
         });
     });
 
@@ -239,8 +286,9 @@ async function loadURLs() {
 function renderURLCard(url) {
     const statusClass = url.status === 'UP' ? 'status-up' : (url.status === 'DOWN' ? 'status-down' : 'status-warning');
     const statusLabel = url.status === 'UP' ? 'ONLINE' : (url.status === 'DOWN' ? 'OFFLINE' : 'ALERTA');
-    const ping = url.response_time ? `${(url.response_time * 1000).toFixed(0)}ms` : '--';
-    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString() : '--:--';
+    const ping = url.response_time != null ? `${(url.response_time * 1000).toFixed(0)}ms` : '--';
+    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+
     return `
     <article class="url-card ${statusClass}">
         <div class="url-header">
@@ -261,6 +309,7 @@ function renderURLCard(url) {
         </div>
     </article>`;
 }
+
 
 /**
  * Atualiza as estatísticas gerais (Online, Offline, etc.).
@@ -431,7 +480,6 @@ function updateWhatsAppUI(data) {
  * Inicia o processo de conexão, solicitando um QR Code ao backend.
  */
 async function connectWhatsApp() {
-    // REMOVIDO: O prompt que pedia o número
     const qrContainer = document.getElementById('qrCodeContainer');
     const qrWrapper = document.getElementById('qrCodeImageWrapper');
     qrContainer.style.display = 'block';
@@ -439,7 +487,6 @@ async function connectWhatsApp() {
     try {
         const response = await apiFetch('/whatsapp/connect', {
             method: 'POST',
-            // Enviamos um objeto vazio ou com número nulo, já que o backend agora aceita
             body: JSON.stringify({ number: "" })
         });
         const data = await response.json();
@@ -529,7 +576,6 @@ async function disconnectWhatsApp() {
         const response = await apiFetch('/whatsapp/disconnect', { method: 'POST' });
         if (response.ok) {
             showNotification("Instância desconectada com sucesso.", 'info');
-            // Recarrega o status para mostrar o botão de conectar novamente
             loadWhatsAppStatus();
         } else {
             const data = await response.json();
@@ -572,6 +618,15 @@ async function testWhatsAppNotification() {
  */
 async function loadTelegramSettings() {
     try {
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const tokenInput = document.getElementById('telegramToken');
+            if (tokenInput) tokenInput.value = currentUser.telegram_token || '';
+            const chatInput = document.getElementById('telegramChatId');
+            if (chatInput) chatInput.value = currentUser.telegram_chat_id || '';
+            return;
+        }
+        // Fallback caso seja chamado antes
         const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
@@ -592,7 +647,6 @@ async function saveTelegramSettings() {
     const token = document.getElementById('telegramToken').value.trim();
     const chatId = document.getElementById('telegramChatId').value.trim();
 
-    // Validação: Ou preenche tudo, ou limpa tudo. Não pode deixar um só preenchido.
     if ((token && !chatId) || (!token && chatId)) {
         showNotification("Para ativar, preencha tanto o Token quanto o Chat ID.", 'error');
         return;
@@ -622,19 +676,16 @@ async function saveTelegramSettings() {
  */
 async function testTelegram() {
     showNotification("Enviando teste...", 'info');
-
     try {
         const response = await apiFetch('/users/me/telegram/test', {
             method: 'POST'
         });
-
         if (response.ok) {
             showNotification("Teste enviado! Verifique seu Telegram.", 'success');
         } else {
             const err = await response.json();
             showNotification(`Erro: ${err.detail}`, 'error');
         }
-
     } catch (error) {
         console.error(error);
         showNotification("Erro de conexão ao enviar teste.", 'error');
@@ -649,13 +700,24 @@ async function testTelegram() {
  */
 async function loadSettings() {
     try {
-        const response = await apiFetch('/users/me'); // Reutiliza a rota /me que agora traz os flags
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const phoneInput = document.getElementById('settingsPhone');
+            if (phoneInput) phoneInput.value = currentUser.whatsapp_number || '';
+            const checkDown = document.getElementById('checkNotifyDown');
+            if (checkDown) checkDown.checked = currentUser.notify_when_down;
+            const checkUp = document.getElementById('checkNotifyUp');
+            if (checkUp) checkUp.checked = currentUser.notify_when_up;
+            const checkSlow = document.getElementById('checkNotifySlow');
+            if (checkSlow) checkSlow.checked = currentUser.notify_when_slow;
+            return;
+        }
+        // Fallback
+        const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
-            // Preenche telefone
             const phoneInput = document.getElementById('settingsPhone');
             if (phoneInput) phoneInput.value = user.whatsapp_number || '';
-            // Preenche checkboxes
             const checkDown = document.getElementById('checkNotifyDown');
             if (checkDown) checkDown.checked = user.notify_when_down;
             const checkUp = document.getElementById('checkNotifyUp');
@@ -672,15 +734,11 @@ async function loadSettings() {
  * Envia as novas configurações para o backend.
  */
 async function saveSettings() {
-    const phoneInput = document.getElementById('settingsPhone');
-    const phone = phoneInput ? phoneInput.value.replace(/\D/g, '') : ''; // Remove não-números
-    const checkDown = document.getElementById('checkNotifyDown');
-    const notifyDown = checkDown ? checkDown.checked : true;
-    const checkUp = document.getElementById('checkNotifyUp');
-    const notifyUp = checkUp ? checkUp.checked : true;
-    const checkSlow = document.getElementById('checkNotifySlow');
-    const notifySlow = checkSlow ? checkSlow.checked : false;
-    // Validação básica de telefone se preenchido
+    const phone = document.getElementById('settingsPhone')?.value.replace(/\D/g, '') || '';
+    const notifyDown = document.getElementById('checkNotifyDown')?.checked ?? true;
+    const notifyUp = document.getElementById('checkNotifyUp')?.checked ?? true;
+    const notifySlow = document.getElementById('checkNotifySlow')?.checked ?? false;
+
     if (phone && phone.length < 10) {
         showNotification("Número de telefone parece inválido.", 'error');
         return;
@@ -697,8 +755,7 @@ async function saveSettings() {
         });
         if (response.ok) {
             showNotification("Configurações salvas com sucesso!", 'success');
-            // Atualiza info do usuário globalmente se necessário
-            loadUserInfo();
+            loadUserInfo(); // Recarrega os dados do usuário para garantir consistência
         } else {
             showNotification("Erro ao salvar configurações.", 'error');
         }
