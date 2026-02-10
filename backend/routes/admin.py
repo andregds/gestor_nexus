@@ -27,5 +27,30 @@ def list_all_users(db: Session = Depends(get_db)):
     """
     return db.query(User).all()
 
-# Aqui você adicionaria rotas para criar/editar usuários e suas permissões
-# Ex: @router.put("/users/{user_id}/permissions")
+# --- NOVA ROTA: Promover Usuário ---
+@router.put("/users/{user_id}/promote-to-super-admin", dependencies=[Depends(get_super_admin)])
+def promote_user_to_super_admin(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    (Apenas Super Admin) Promove um usuário específico para o nível de 'super_admin'.
+    """
+    # Busca o usuário que será promovido
+    user_to_promote = db.query(User).filter(User.id == user_id).first()
+
+    if not user_to_promote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuário com ID {user_id} não encontrado."
+        )
+
+    if user_to_promote.role == "super_admin":
+        return {"message": f"O usuário '{user_to_promote.name}' já é um super administrador."}
+
+    # Altera a role e salva no banco
+    user_to_promote.role = "super_admin"
+    db.commit()
+    db.refresh(user_to_promote)
+
+    return {"message": f"Usuário '{user_to_promote.name}' promovido a super administrador com sucesso!"}

@@ -14,7 +14,7 @@ from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 # --- ATUALIZAÇÃO: Importar TODOS os modelos necessários ---
 from models import User, Client, MonitoredURL
-from routes import auth, users, urls, whatsapp, clients, backup, admin
+from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers
 
 # --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
 from core.utils import generate_reminder_message
@@ -48,7 +48,7 @@ app.include_router(whatsapp.router)
 app.include_router(clients.router)
 app.include_router(backup.router)
 app.include_router(admin.router)
-
+app.include_router(resellers.router)
 
 # =================================================================
 # TAREFA 1: VERIFICADOR DE LEMBRETES DE COBRANÇA (SEU CÓDIGO ATUAL)

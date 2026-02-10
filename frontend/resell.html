@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Revendedores</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* Ajustes de Layout */
+        body {
+            background-color: #f1f5f9;
+        }
+        main.main-content {
+            padding: 2rem;
+            width: 100%;
+        }
+        .section {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
+        }
+        .section-title {
+            color: #1e293b;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 1rem;
+        }
+
+        /* Formulários */
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: #475569; font-weight: 600; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #0f172a;
+        }
+
+        /* Botões */
+        .btn-promote {
+            background-color: #2563eb;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-promote:hover { background-color: #1d4ed8; }
+
+        .btn-register {
+            background-color: #10b981; /* Verde */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+        }
+        .btn-register:hover { background-color: #059669; }
+
+        /* Tabela */
+        .table-responsive { overflow-x: auto; }
+        .table { width: 100%; border-collapse: collapse; text-align: left; }
+        .table th, .table td { padding: 12px 15px; border-bottom: 1px solid #e2e8f0; }
+        .table th { background-color: #f8fafc; font-weight: 600; color: #475569; }
+        .badge-role-reseller {
+            background-color: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;
+        }
+
+        /* Grid para o formulário de cadastro */
+        .register-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 768px) { .register-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div id="app-wrapper" class="dashboard-container">
+
+        <!-- SIDEBAR (Adicionada Manualmente para garantir visualização) -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <!-- Links diretos para voltar ao Dashboard -->
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Voltar ao Dashboard
+                </a>
+                <a href="resell.html" class="sidebar-link active">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role" id="userRole">...</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="reseller-panel" style="display: none;">
+
+                <!-- SEÇÃO 1: CADASTRAR NOVO USUÁRIO (NOVO) -->
+                <div class="section">
+                    <h2 class="section-title">1. Cadastrar Novo Usuário</h2>
+                    <p style="margin-bottom: 1rem; color: #64748b;">Cadastre um usuário aqui para que ele apareça na lista de promoção abaixo.</p>
+                    <form id="register-form">
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Nome Completo</label>
+                                <input type="text" id="reg-name" required placeholder="Ex: João Silva">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="reg-email" required placeholder="Ex: joao@email.com">
+                            </div>
+                        </div>
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Senha</label>
+                                <input type="password" id="reg-password" required placeholder="******">
+                            </div>
+                            <div class="form-group">
+                                <label>Confirmar Senha</label>
+                                <input type="password" id="reg-confirm-password" required placeholder="******">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-register">Cadastrar Usuário</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 2: PROMOVER -->
+                <div class="section">
+                    <h2 class="section-title">2. Promover a Revendedor</h2>
+                    <form id="promote-form">
+                        <div class="form-group">
+                            <label for="user-to-promote">Selecione um Usuário para Promover</label>
+                            <select id="user-to-promote" required>
+                                <option value="">Carregando usuários...</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn-promote">Promover a Revendedor</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 3: LISTA -->
+                <div class="section">
+                    <h2 class="section-title">Revendedores Ativos</h2>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Função</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resellers-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="access-denied" style="display: none;">
+                <h1>Acesso Negado</h1>
+                <p>Você não tem permissão para visualizar esta página.</p>
+                <a href="dashboard.html">Voltar ao Dashboard</a>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8000';
+        const token = localStorage.getItem('token');
+
+        // Função de Logout
+        function logout() {
+            if(confirm("Deseja sair?")) {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                // 1. Verifica quem sou eu
+                const meResponse = await fetch(`${API_URL}/users/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!meResponse.ok) throw new Error('Sessão expirada.');
+                const currentUser = await meResponse.json();
+
+                // Preenche sidebar
+                document.getElementById('userName').textContent = currentUser.name;
+                document.getElementById('userRole').textContent = currentUser.role;
+
+                // Verifica permissão
+                if (['reseller', 'super_admin'].includes(currentUser.role)) {
+                    document.getElementById('reseller-panel').style.display = 'block';
+                    await loadResellers();
+                    await loadUsersToPromote();
+                } else {
+                    document.getElementById('access-denied').style.display = 'block';
+                }
+
+            } catch (error) {
+                console.error('Erro:', error);
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Função auxiliar de Fetch
+        async function fetchAPI(endpoint, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+            const mergedOptions = { ...defaultOptions, ...options, headers: {...defaultOptions.headers, ...options.headers} };
+            const response = await fetch(`${API_URL}${endpoint}`, mergedOptions);
+            if (!response.ok) {
+                 const errorData = await response.json().catch(() => ({ detail: `Erro ${response.status}` }));
+                 throw new Error(errorData.detail);
+            }
+            return response.json();
+        }
+
+        // Carrega lista de revendedores
+        async function loadResellers() {
+            try {
+                const resellers = await fetchAPI('/resellers/');
+                const listElement = document.getElementById('resellers-list');
+                listElement.innerHTML = '';
+
+                if (resellers.length === 0) {
+                    listElement.innerHTML = '<tr><td colspan="4" style="text-align:center;">Nenhum revendedor encontrado.</td></tr>';
+                } else {
+                    resellers.forEach(user => {
+                        listElement.innerHTML += `
+                            <tr>
+                                <td>${user.id}</td>
+                                <td>${user.name}</td>
+                                <td>${user.email}</td>
+                                <td><span class="badge-role-reseller">${user.role}</span></td>
+                            </tr>`;
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        // Carrega usuários comuns para o Select
+        async function loadUsersToPromote() {
+            try {
+                const promotableUsers = await fetchAPI('/resellers/promotable');
+                const selectElement = document.getElementById('user-to-promote');
+                selectElement.innerHTML = '<option value="">Selecione um usuário</option>';
+
+                if (promotableUsers.length > 0) {
+                    promotableUsers.forEach(user => {
+                        selectElement.innerHTML += `<option value="${user.id}">${user.name} (${user.email})</option>`;
+                    });
+                } else {
+                     selectElement.innerHTML = '<option value="">Nenhum usuário comum disponível.</option>';
+                }
+            } catch(error) {
+                console.error(error);
+            }
+        }
+
+        // Lógica de Cadastro de Usuário (CORRIGIDA)
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const confirmPass = document.getElementById('reg-confirm-password').value;
+
+            if (password !== confirmPass) {
+                alert("As senhas não coincidem!");
+                return;
+            }
+
+            try {
+                // CORREÇÃO: Usar a nova rota '/resellers/create-user' e a função fetchAPI para enviar o token de autenticação
+                const newUser = await fetchAPI('/resellers/create-user', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                // A mensagem de sucesso agora é mais informativa
+                alert(`Usuário "${newUser.name}" cadastrado com sucesso! Agora você pode promovê-lo na lista abaixo.`);
+
+                // Limpa o formulário
+                document.getElementById('register-form').reset();
+
+                // Atualiza a lista de usuários que podem ser promovidos
+                await loadUsersToPromote();
+
+            } catch (error) {
+                // Agora, se a API retornar um erro (ex: email duplicado), ele será exibido aqui.
+                alert("Erro ao cadastrar: " + error.message);
+            }
+        });
+
+        // Lógica de Promoção
+        document.getElementById('promote-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('user-to-promote').value;
+            if (!userId) return alert('Selecione um usuário.');
+
+            if (!confirm(`Promover este usuário a revendedor?`)) return;
+
+            try {
+                await fetchAPI(`/resellers/promote/${userId}`, { method: 'PUT' });
+                alert('Sucesso! Usuário agora é um revendedor.');
+                await loadResellers();
+                await loadUsersToPromote();
+            } catch (error) {
+                alert(`Erro: ${error.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
