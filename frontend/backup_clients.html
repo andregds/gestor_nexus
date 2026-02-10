@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup e Exportação | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* --- ESTILOS DO SUBMENU (Consistência) --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem;
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover { color: white; }
+        .submenu-link.active { color: var(--primary); font-weight: bold; }
+
+        /* --- CARDS DE BACKUP --- */
+        .backup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .backup-card {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            text-align: center;
+            transition: transform 0.2s;
+            border: 1px solid #e2e8f0;
+        }
+
+        .backup-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+            border-color: var(--primary);
+        }
+
+        .backup-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .backup-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .backup-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            min-height: 40px;
+        }
+
+        .btn-download {
+            width: 100%;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1rem;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+
+                <!-- MENU CLIENTES (EXPANDIDO) -->
+                <div class="menu-group">
+                    <a href="clients.html" class="sidebar-link active">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </a>
+                    <div class="submenu">
+                        <a href="import_clients.html" class="submenu-link">
+                            <span>📂</span> Importar / Padronizar
+                        </a>
+                        <!-- Link Ativo -->
+                        <a href="backup_clients.html" class="submenu-link active">
+                            <span>💾</span> Backup / Exportar
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Backup e Exportação</h2>
+                    <p>Baixe seus dados para segurança ou migração.</p>
+                </div>
+            </div>
+
+            <div class="backup-grid">
+                <!-- CARD 1: EXPORTAR CSV -->
+                <div class="backup-card">
+                    <span class="backup-icon">📊</span>
+                    <h3 class="backup-title">Exportar Clientes (CSV)</h3>
+                    <p class="backup-desc">
+                        Gera uma planilha compatível com Excel contendo todos os seus clientes cadastrados.
+                    </p>
+                    <button class="btn btn-primary btn-download" id="btnCsv" onclick="downloadBackup('csv')">
+                        📥 Baixar Planilha
+                    </button>
+                </div>
+
+                <!-- CARD 2: BACKUP COMPLETO -->
+                <div class="backup-card">
+                    <span class="backup-icon">📦</span>
+                    <h3 class="backup-title">Backup Completo (JSON)</h3>
+                    <p class="backup-desc">
+                        Arquivo técnico contendo configurações do usuário e todos os clientes. Ideal para migração de sistema.
+                    </p>
+                    <button class="btn btn-secondary btn-download" id="btnJson" onclick="downloadBackup('json')" style="background-color: #475569; color: white;">
+                        🛡️ Baixar Backup Completo
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; padding: 1rem; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 8px; color: #b7791f;">
+                <strong>Nota:</strong> Os arquivos gerados contêm dados sensíveis. Armazene-os em local seguro.
+            </div>
+
+        </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+    <script>
+        async function downloadBackup(type) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const endpoint = type === 'csv' ? '/backup/clients/export' : '/backup/full/export';
+            const btnId = type === 'csv' ? 'btnCsv' : 'btnJson';
+            const btn = document.getElementById(btnId);
+
+            // Feedback Visual
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Gerando arquivo...';
+
+            try {
+                // Usamos fetch com Authorization header para baixar o arquivo
+                const response = await fetch(`http://localhost:8000${endpoint}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // Converte a resposta em um Blob (arquivo binário)
+                    const blob = await response.blob();
+
+                    // Cria uma URL temporária para o Blob
+                    const url = window.URL.createObjectURL(blob);
+
+                    // Cria um link invisível e clica nele para forçar o download
+                    const a = document.createElement('a');
+                    a.href = url;
+
+                    // Tenta pegar o nome do arquivo do Header Content-Disposition
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let fileName = type === 'csv' ? 'clientes.csv' : 'backup.json';
+
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (match && match[1]) {
+                            fileName = match[1];
+                        }
+                    }
+
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    // Limpeza
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    alert("Erro ao gerar o backup. Tente novamente.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro de conexão com o servidor.");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    </script>
+</body>
+</html>

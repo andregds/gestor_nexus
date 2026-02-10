@@ -40,6 +40,78 @@ FILE: projeto_completo_dump.txt
 ============================================================
 
 ============================================================
+FILE: README.md
+============================================================
+# 📊 Nexus Monitor - Gestor de Disponibilidade e Clientes
+
+> Um sistema completo para monitoramento de serviços web (DNS/HTTP) e gestão de clientes, com notificações automáticas via WhatsApp e Telegram.
+
+![Status](https://img.shields.io/badge/Status-Em_Desenvolvimento-yellow)
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.95+-009688.svg)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+## 📝 Sobre o Projeto
+
+O **Nexus Monitor** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais (como IPTV, Streaming ou SaaS).
+
+O sistema verifica periodicamente o status dos serviços e, em caso de queda ou lentidão, notifica o administrador via WhatsApp (integração com Evolution API) e Telegram. Além disso, permite o cadastro de clientes com datas de vencimento, enviando lembretes automáticos de cobrança.
+
+## ✨ Funcionalidades Principais
+
+### 🖥️ Monitoramento
+- **Verificação em Tempo Real:** Checagem de status HTTP (200, 404, 500, etc.) e latência (ping).
+- **Alertas Inteligentes:** Notificações imediatas quando um serviço cai (DOWN) ou volta (UP).
+- **Histórico:** Registro da última verificação com data e hora precisas.
+
+### 👥 Gestão de Clientes
+- **CRUD Completo:** Cadastro, edição e remoção de clientes.
+- **Controle de Vencimento:** Monitoramento de datas de expiração de assinaturas.
+- **Lembretes Automáticos:** Envio de mensagens de cobrança via WhatsApp antes e depois do vencimento.
+
+### 🔔 Notificações & Integrações
+- **WhatsApp (Evolution API):** Conexão via QR Code diretamente pelo painel. Suporte a envio de mensagens de texto e alertas.
+- **Telegram Bot:** Integração nativa para receber alertas de infraestrutura em grupos ou privado.
+- **Configurações Personalizadas:** O usuário escolhe quais tipos de alerta deseja receber (Queda, Volta, Lentidão).
+
+## 🛠️ Tecnologias Utilizadas
+
+### Backend
+- **Python 3.x**
+- **FastAPI:** Framework moderno e de alta performance para construção da API.
+- **SQLAlchemy:** ORM para interação com o banco de dados.
+- **SQLite:** Banco de dados leve (padrão), facilmente migrável para PostgreSQL/MySQL.
+- **Uvicorn:** Servidor ASGI.
+
+### Frontend
+- **HTML5 / CSS3:** Interface limpa, responsiva e moderna.
+- **JavaScript (Vanilla):** Lógica de interação com a API (Fetch), SPA (Single Page Application) para navegação fluida.
+
+## 🚀 Como Executar o Projeto
+
+### Pré-requisitos
+- Python instalado.
+- Uma instância da [Evolution API](https://github.com/EvolutionAPI/evolution-api) rodando (para funcionalidades de WhatsApp).
+
+### Passo a Passo
+
+1. **Clone o repositório**
+
+2. **Crie e ative um ambiente virtual**
+3. **Instale as dependências**
+4. **Configure as Variáveis de Ambiente**
+   Crie um arquivo `.env` na raiz do projeto (baseado no exemplo abaixo) e preencha com seus dados:
+5. **Execute o Servidor**
+   Navegue até a pasta do backend (se necessário) e rode:
+6. **Acesse o Sistema**
+   Abra o navegador em: `http://localhost:8000/frontend/login.html`
+
+## 📂 Estrutura do Projeto
+🤝 ContribuiçãoContribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests.1.Faça um Fork do projeto2.Crie uma Branch para sua Feature (git checkout -b feature/MinhaFeature)3.Faça o Commit (git commit -m 'Add: Minha nova feature')4.Faça o Push (git push origin feature/MinhaFeature)5.Abra um Pull Request
+
+
+📄 LicençaEste projeto está sob a licença MIT. Veja o arquivo LICENSE para mais detalhes.
+============================================================
 FILE: relatorio de projeto.py
 ============================================================
 import os
@@ -116,6 +188,42 @@ def generate_project_dump():
 if __name__ == "__main__":
     generate_project_dump()
 
+============================================================
+FILE: verificar_arquivos.py
+============================================================
+import os
+
+
+def listar_estrutura(diretorio_inicial):
+    print(f"\n📂 ESTRUTURA DO PROJETO: {os.path.abspath(diretorio_inicial)}\n")
+
+    arquivos_importantes = []
+
+    for root, dirs, files in os.walk(diretorio_inicial):
+        # Ignorar pastas de sistema/configuração para não poluir a visão
+        dirs[:] = [d for d in dirs if
+                   d not in ['.git', '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'node_modules']]
+
+        nivel = root.replace(diretorio_inicial, '').count(os.sep)
+        indentacao = ' ' * 4 * nivel
+        print(f'{indentacao}📁 {os.path.basename(root)}/')
+
+        sub_indentacao = ' ' * 4 * (nivel + 1)
+        for f in files:
+            print(f'{sub_indentacao}📄 {f}')
+            if f.endswith('.html'):
+                arquivos_importantes.append(f)
+
+    print("\n" + "=" * 40)
+    print("RESUMO DOS ARQUIVOS HTML ENCONTRADOS:")
+    for html in arquivos_importantes:
+        print(f" - {html}")
+    print("=" * 40 + "\n")
+
+
+if __name__ == "__main__":
+    listar_estrutura(os.getcwd())
+    input("Pressione ENTER para fechar...")
 ============================================================
 FILE: assets\css\style.css
 ============================================================
@@ -707,35 +815,23 @@ def get_db():
 FILE: backend\main.py
 ============================================================
 # backend/main.py
+import time
+import asyncio
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from apscheduler.schedulers.background import BackgroundScheduler
 
-
-from routes import urls  # <== adicione
-app.include_router(urls.router)  # <== adicione
-
-
-
-
-from routes import auth, users, whatsapp, urls   # ✅ importa urls
-
-app = FastAPI()
-
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(whatsapp.router)
-app.include_router(urls.router)
-
-
-
-
+# Imports locais
 from core.lifespan import lifespan_manager
-from core.config import EVOLUTION_API_URL, EVOLUTION_API_KEY # Para o health check
-from database import Base, engine # Para criar as tabelas
+from database import Base, engine, SessionLocal
+from models import User, Client
+from routes import auth, users, urls, whatsapp, clients
 
-# Importa os routers
-from routes import auth, users, urls, whatsapp # ✅ Importa o router de whatsapp
+# Utilitários de envio
+from telegram_utils import send_telegram_message
+from whatsapp_utils import send_whatsapp_notification
 
 # Cria as tabelas no banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
@@ -750,7 +846,7 @@ app = FastAPI(
 # Configuração CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Permite todas as origens para desenvolvimento
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -760,35 +856,159 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(urls.router)
-app.include_router(whatsapp.router) # ✅ Inclui o router de whatsapp
+app.include_router(whatsapp.router)
+app.include_router(clients.router)
 
-# Rota de health check
+
+# ==========================================
+# LÓGICA DO AGENDADOR (SCHEDULER)
+# ==========================================
+
+def check_and_send_reminders():
+    """
+    Roda a cada minuto.
+    Verifica se há usuários configurados para receber notificações neste minuto exato.
+    """
+    # Cria uma nova sessão de banco de dados para esta thread
+    db = SessionLocal()
+    try:
+        now = datetime.now()
+        now_time = now.strftime("%H:%M")
+
+        # --- DEBUG: Mostra que o scheduler está vivo ---
+        # print(f"⏰ Scheduler Check: {now} (Procurando agendamentos para {now_time})")
+
+        # 1. Busca usuários que configuraram este horário exato
+        users_list = db.query(User).filter(User.notification_time == now_time).all()
+
+        if users_list:
+            print(f"🔔 Encontrados {len(users_list)} usuário(s) agendados para {now_time}")
+
+        for user in users_list:
+            print(f"   👤 Verificando usuário: {user.name} (ID: {user.id})")
+
+            # Verifica se o agendamento está ativado
+            if not user.notifications_enabled:
+                print(f"      ⚠️ Agendamento DESATIVADO pelo usuário. Pulando.")
+                continue
+
+            # Verifica canais
+            has_whatsapp = user.whatsapp_connected
+            has_telegram = bool(user.telegram_token and user.telegram_chat_id)
+
+            if not has_whatsapp and not has_telegram:
+                print(f"      ⚠️ Nenhum canal de notificação conectado. Pulando.")
+                continue
+
+            # 2. Busca clientes deste usuário
+            user_clients = db.query(Client).filter(Client.owner_id == user.id).all()
+            today = datetime.now().date()
+
+            print(f"      📂 Analisando {len(user_clients)} clientes...")
+
+            for client in user_clients:
+                if not client.reminder_enabled:
+                    continue
+
+                # Calcula dias para vencer
+                days_diff = (client.expiration_date - today).days
+
+                # --- LÓGICA DA FLAG DE DIAS ---
+                # Tenta converter a configuração de dias do cliente para inteiro (padrão 3 se falhar)
+                try:
+                    days_alert_threshold = int(client.reminder_days_before)
+                except (ValueError, TypeError):
+                    days_alert_threshold = 3
+
+                msg = ""
+
+                # --- NOVA LÓGICA DINÂMICA ---
+
+                # 1. Lógica de Vencimento Próximo (Intervalo de 0 até X dias configurados)
+                # Ex: Se configurou 5, entra aqui se faltar 5, 4, 3, 2, 1 ou 0 dias.
+                if 0 <= days_diff <= days_alert_threshold:
+                    if days_diff == 0:
+                        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+                    elif days_diff == 1:
+                        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+                    else:
+                        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+
+                # 2. Lógica de Vencido (Qualquer dia negativo)
+                # Envia se estiver vencido há 1 ou mais dias, desde que a opção esteja ativa
+                elif days_diff < 0 and client.notify_after_expiration:
+                    days_overdue = abs(days_diff) # Converte -1 para 1, -5 para 5, etc.
+                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+
+                # Se encontrou uma regra válida, envia
+                if msg:
+                    print(f"         🚀 ENVIANDO MENSAGEM para {client.name} (Motivo: {days_diff} dias)")
+                    channel = client.notification_channel or "whatsapp"
+
+                    # --- ENVIO VIA WHATSAPP ---
+                    if channel == "whatsapp" and has_whatsapp:
+                        if client.whatsapp:
+                            try:
+                                asyncio.run(send_whatsapp_notification(
+                                    number=client.whatsapp,
+                                    message=msg,
+                                    instance_name=user.whatsapp_instance
+                                ))
+                                print(f"            ✅ WhatsApp enviado com sucesso!")
+                            except Exception as e:
+                                print(f"            ❌ Erro ao enviar WhatsApp: {e}")
+
+                    # --- ENVIO VIA TELEGRAM ---
+                    elif channel == "telegram" and has_telegram:
+                        try:
+                            asyncio.run(send_telegram_message(
+                                token=user.telegram_token,
+                                chat_id=user.telegram_chat_id,
+                                message=f"🔔 *Lembrete Cliente: {client.name}*\n\n{msg}"
+                            ))
+                            print(f"            ✅ Telegram enviado com sucesso!")
+                        except Exception as e:
+                            print(f"            ❌ Erro ao enviar Telegram: {e}")
+
+                    time.sleep(2)  # Delay para evitar spam
+
+    except Exception as e:
+        print(f"❌ Erro Crítico no Scheduler: {e}")
+    finally:
+        db.close()
+
+
+# Inicializa o Scheduler em segundo plano
+scheduler = BackgroundScheduler()
+scheduler.add_job(check_and_send_reminders, 'interval', minutes=1)
+scheduler.start()
+
+
 @app.get("/", tags=["Geral"])
 def root():
     return {
         "app": "Monitor DNS com Notificações WhatsApp",
         "status": "online",
         "version": "2.0.0",
-        "docs": "/docs",
-        "evolution_api_configured": bool(EVOLUTION_API_URL and EVOLUTION_API_KEY)
+        "docs": "/docs"
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app", # Agora o ponto de entrada é main:app
+        "main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
     )
-
 ============================================================
 FILE: backend\models.py
 ============================================================
 # backend/models.py
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON
 from sqlalchemy.orm import relationship
-from database import Base # Certifique-se de que 'database' está no mesmo nível ou no PYTHONPATH
-from datetime import datetime
+from database import Base
+
 
 class User(Base):
     __tablename__ = "users"
@@ -797,12 +1017,41 @@ class User(Base):
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    whatsapp_number = Column(String, nullable=True)
-    whatsapp_connected = Column(Boolean, default=False)
-    whatsapp_instance = Column(String, nullable=True)
-    notifications_enabled = Column(Boolean, default=True)
 
+    # Configurações do WhatsApp
+    whatsapp_number = Column(String, nullable=True)
+    whatsapp_instance = Column(String, nullable=True)
+    whatsapp_apikey = Column(String, nullable=True)
+    notification_channel = Column(String, default="whatsapp")
+
+    # Configurações do Telegram
+    telegram_token = Column(String, nullable=True)
+    telegram_chat_id = Column(String, nullable=True)
+
+    # Flags de Notificação Globais
+    notifications_enabled = Column(Boolean, default=True)
+    notify_when_down = Column(Boolean, default=True)
+    notify_when_up = Column(Boolean, default=True)
+    notify_when_slow = Column(Boolean, default=False)
+
+    # NOVO CAMPO: Horário de envio das cobranças (Ex: "09:00")
+    notification_time = Column(String, default="09:00", nullable=True)
+
+    # Relacionamentos
     urls = relationship("MonitoredURL", back_populates="owner")
+    clients = relationship("Client", back_populates="owner")
+
+    # --- PROPRIEDADE VIRTUAL CORRIGIDA ---
+    @property
+    def whatsapp_connected(self) -> bool:
+        """
+        Retorna True se o usuário tiver uma instância de WhatsApp criada.
+        Não depende mais do whatsapp_number, permitindo envio para terceiros
+        mesmo sem o número do admin salvo.
+        """
+        return bool(self.whatsapp_instance)
+    # --------------------------------------
+
 
 class MonitoredURL(Base):
     __tablename__ = "monitored_urls"
@@ -810,19 +1059,54 @@ class MonitoredURL(Base):
     id = Column(Integer, primary_key=True, index=True)
     url = Column(String, index=True)
     nickname = Column(String, nullable=True)
-    category = Column(String, default="Geral")
-    status = Column(String, default="unknown") # UP, DOWN, WARNING, unknown
+    status = Column(String, default="PENDING")
     http_code = Column(Integer, nullable=True)
+    response_time = Column(Integer, nullable=True)
     ip_address = Column(String, nullable=True)
-    last_check = Column(DateTime, default=datetime.now)
-    response_time = Column(Float, default=0.0)
+
+    # CORREÇÃO: Alterado de Date para DateTime para salvar horas/minutos/segundos
+    last_check = Column(DateTime, nullable=True)
+
     error = Column(String, nullable=True)
     error_type = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
 
+    is_active = Column(Boolean, default=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+
     owner = relationship("User", back_populates="urls")
 
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    login = Column(String, index=True)
+    server_name = Column(String)
+    whatsapp = Column(String)
+
+    # Mantido como Date, pois validade de assinatura geralmente não precisa de hora exata
+    expiration_date = Column(Date)
+
+    notes = Column(String, nullable=True)
+    m3u8_url = Column(String, nullable=True)
+
+    # NOVO CAMPO: Para salvar campos dinâmicos (ex: {"MAC": "00:11...", "App": "IPTV Smarters"})
+    custom_fields = Column(JSON, nullable=True)
+
+    # --- NOVO CAMPO ADICIONADO ---
+    # Canal preferencial de notificação: 'whatsapp', 'telegram', etc.
+    notification_channel = Column(String, default="whatsapp")
+    # -----------------------------
+
+    # Flags
+    notify_downtime = Column(Boolean, default=True)
+    reminder_enabled = Column(Boolean, default=True)
+    reminder_days_before = Column(String, default="3")
+    notify_after_expiration = Column(Boolean, default=True)
+
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", back_populates="clients")
 ============================================================
 FILE: backend\monitor.py
 ============================================================
@@ -836,8 +1120,9 @@ import os
 from dotenv import load_dotenv
 
 from models import User, MonitoredURL
-# CORREÇÃO: Importação direta, pois o arquivo está na mesma pasta
 from whatsapp_utils import send_whatsapp_notification
+# Importação do utilitário do Telegram
+from telegram_utils import send_telegram_message
 
 load_dotenv()
 
@@ -860,7 +1145,7 @@ def check_dns(url: str) -> dict:
                 "ip_address": None,
                 "http_code": None,
                 "response_time": 0,
-                "error": "DNS resolution failed",
+                "error": "Falha na resolução DNS",
                 "error_type": "DNS_ERROR",
             }
 
@@ -868,6 +1153,9 @@ def check_dns(url: str) -> dict:
         start = time.time()
 
         try:
+            # Desabilita avisos de certificado SSL inseguro para monitoramento
+            requests.packages.urllib3.disable_warnings()
+
             response = requests.get(
                 url,
                 timeout=TIMEOUT_SECONDS,
@@ -902,7 +1190,7 @@ def check_dns(url: str) -> dict:
                 "ip_address": ip_address,
                 "http_code": None,
                 "response_time": TIMEOUT_SECONDS,
-                "error": "Request timeout",
+                "error": "Tempo limite excedido",
                 "error_type": "TIMEOUT",
             }
 
@@ -912,7 +1200,7 @@ def check_dns(url: str) -> dict:
                 "ip_address": ip_address,
                 "http_code": None,
                 "response_time": 0,
-                "error": "Connection error",
+                "error": "Erro de conexão",
                 "error_type": "CONNECTION_ERROR",
             }
 
@@ -946,6 +1234,8 @@ async def monitor_urls(db: Session):
             result = check_dns(url_obj.url)
 
             previous_status = url_obj.status
+
+            # Atualiza o objeto com os novos dados
             url_obj.status = result["status"]
             url_obj.ip_address = result["ip_address"]
             url_obj.http_code = result["http_code"]
@@ -959,19 +1249,69 @@ async def monitor_urls(db: Session):
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {url_obj.url} -> {url_obj.status}")
 
             # Lógica de notificação
-            if url_obj.status != previous_status and url_obj.owner and url_obj.owner.notifications_enabled:
+            if url_obj.status != previous_status and url_obj.owner:
                 user = url_obj.owner
-                if not user.whatsapp_number or not user.whatsapp_instance:
+
+                # Verifica se notificações globais estão ativas
+                if not user.notifications_enabled:
                     continue
 
-                # Monta mensagem
-                msg = f"🔔 *Monitor DNS*\nURL: {url_obj.url}\nStatus: {url_obj.status}\nErro: {url_obj.error or 'Nenhum'}"
+                # Verifica flags específicas de notificação
+                should_notify = False
+                msg_type = ""
+                emoji = ""
 
-                await send_whatsapp_notification(
-                    user.whatsapp_number,
-                    msg,
-                    user.whatsapp_instance
-                )
+                # Usa getattr para evitar erro caso o campo não exista no modelo antigo em memória,
+                # mas idealmente o modelo User já tem esses campos.
+                notify_down = getattr(user, 'notify_when_down', True)
+                notify_up = getattr(user, 'notify_when_up', True)
+                notify_slow = getattr(user, 'notify_when_slow', False)
+
+                if url_obj.status == "DOWN" and notify_down:
+                    should_notify = True
+                    msg_type = "Serviço OFFLINE"
+                    emoji = "🔴"
+                elif url_obj.status == "UP" and previous_status != "UP" and notify_up:
+                    should_notify = True
+                    msg_type = "Serviço ONLINE"
+                    emoji = "🟢"
+                elif url_obj.status == "WARNING" and notify_slow:
+                    should_notify = True
+                    msg_type = "Lentidão Detectada"
+                    emoji = "⚠️"
+
+                if should_notify:
+                    # Monta mensagem
+                    msg = (
+                        f"{emoji} *Monitor DNS - {msg_type}*\n\n"
+                        f"🔗 *URL:* {url_obj.url}\n"
+                        f"📊 *Status:* {url_obj.status}\n"
+                        f"⏱️ *Tempo:* {url_obj.response_time:.2f}s\n"
+                    )
+                    if url_obj.error:
+                        msg += f"❌ *Erro:* {url_obj.error}"
+
+                    # 1. Envia WhatsApp (se configurado)
+                    if user.whatsapp_number and user.whatsapp_instance:
+                        try:
+                            await send_whatsapp_notification(
+                                user.whatsapp_number,
+                                msg,
+                                user.whatsapp_instance
+                            )
+                        except Exception as e:
+                            print(f"Erro ao enviar WhatsApp: {e}")
+
+                    # 2. Envia Telegram (se configurado)
+                    if user.telegram_token and user.telegram_chat_id:
+                        try:
+                            await send_telegram_message(
+                                user.telegram_token,
+                                user.telegram_chat_id,
+                                msg
+                            )
+                        except Exception as e:
+                            print(f"Erro ao enviar Telegram: {e}")
 
             db.commit()
             db.refresh(url_obj)
@@ -989,25 +1329,47 @@ async def start_monitoring(db_session_factory):
         db = SessionLocal()
         try:
             await monitor_urls(db)
+        except Exception as e:
+            print(f"Erro crítico no loop: {e}")
         finally:
             db.close()
         await asyncio.sleep(30)
 ============================================================
+FILE: backend\telegram_utils.py
+============================================================
+# backend/telegram_utils.py
+import httpx
+
+
+async def send_telegram_message(token: str, chat_id: str, message: str):
+    """
+    Envia uma mensagem de texto para o Telegram via API oficial.
+    """
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload, timeout=10.0)
+
+        if response.status_code != 200:
+            # Levanta erro se o Telegram recusar (ex: chat_id errado)
+            raise Exception(f"Erro Telegram ({response.status_code}): {response.text}")
+
+        return response.json()
+============================================================
 FILE: backend\whatsapp_utils.py
 ============================================================
 # backend/whatsapp_utils.py
-import os
-import requests
 import logging
 import re
-from dotenv import load_dotenv
+import httpx
 from fastapi import HTTPException
-
-load_dotenv()
-
-# Configurações
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
+from core.config import EVOLUTION_API_URL, EVOLUTION_API_KEY
 
 logger = logging.getLogger("uvicorn")
 
@@ -1019,21 +1381,7 @@ def evolution_headers():
     }
 
 
-async def evolution_delete_instance(instance_name: str):
-    """Deleta uma instância na Evolution API."""
-    if not EVOLUTION_API_URL:
-        return False
-    try:
-        url = f"{EVOLUTION_API_URL}/instance/delete/{instance_name}"
-        requests.delete(url, headers=evolution_headers(), timeout=5)
-        return True
-    except Exception as e:
-        logger.error(f"Erro ao deletar instância {instance_name}: {e}")
-        return False
-
-
 async def evolution_create_instance(instance_name: str):
-    """Cria uma nova instância na Evolution API."""
     if not EVOLUTION_API_URL:
         return False
 
@@ -1043,137 +1391,112 @@ async def evolution_create_instance(instance_name: str):
         "integration": "WHATSAPP-BAILEYS"
     }
 
-    try:
-        url = f"{EVOLUTION_API_URL}/instance/create"
-        response = requests.post(url, headers=evolution_headers(), json=payload, timeout=10)
+    url = f"{EVOLUTION_API_URL}/instance/create"
 
-        if response.status_code in [200, 201]:
-            return True
-
-        logger.error(f"Falha ao criar instância. Status: {response.status_code} - {response.text}")
-        return False
-
-    except Exception as e:
-        logger.error(f"Erro de conexão ao criar instância: {e}")
-        return False
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=evolution_headers(), json=payload, timeout=10.0)
+            if response.status_code in [200, 201]:
+                return True
+            logger.error(f"Falha ao criar instância: {response.text}")
+        except Exception as e:
+            logger.error(f"Erro de conexão: {e}")
+    return False
 
 
 async def get_instance_state_and_qr(instance_name: str):
-    """Busca o status e, se necessário, o QR Code no endpoint específico."""
     if not EVOLUTION_API_URL:
         return {}
 
-    try:
-        # 1. Busca o ESTADO da conexão
-        url_state = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
-        response_state = requests.get(url_state, headers=evolution_headers(), timeout=5)
+    async with httpx.AsyncClient() as client:
+        try:
+            # 1. Busca Estado
+            url_state = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
+            response_state = await client.get(url_state, headers=evolution_headers(), timeout=5.0)
 
-        state = "unknown"
-        qr_code = None
+            state = "unknown"
+            qr_code = None
 
-        if response_state.status_code == 200:
-            data = response_state.json()
-            state = data.get("instance", {}).get("state") or data.get("state", "unknown")
-            qr_code = data.get("qrcode", {}).get("base64") or data.get("qrcode")
+            if response_state.status_code == 200:
+                data = response_state.json()
+                state = data.get("instance", {}).get("state") or data.get("state", "unknown")
+                qr_code = data.get("qrcode", {}).get("base64") or data.get("qrcode")
 
-        # 2. Se NÃO estiver conectado e NÃO tiver QR code, chama o endpoint /connect
-        if state not in ["open", "connected"] and not qr_code:
-            try:
+            # 2. Tenta conectar se necessário
+            if state not in ["open", "connected"] and not qr_code:
                 url_connect = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
-                response_connect = requests.get(url_connect, headers=evolution_headers(), timeout=5)
+                try:
+                    response_connect = await client.get(url_connect, headers=evolution_headers(), timeout=5.0)
+                    if response_connect.status_code == 200:
+                        data_connect = response_connect.json()
+                        qr_code = data_connect.get("base64") or data_connect.get("qrcode", {}).get("base64")
+                except Exception:
+                    pass
 
-                if response_connect.status_code == 200:
-                    data_connect = response_connect.json()
-                    qr_code = (
-                            data_connect.get("base64") or
-                            data_connect.get("qrcode", {}).get("base64") or
-                            data_connect.get("qrcode")
-                    )
-            except Exception as e:
-                logger.error(f"Erro ao buscar QR no endpoint /connect: {e}")
+            return {"state": state, "qr_code": qr_code, "message": "Sucesso"}
+        except Exception as e:
+            logger.error(f"Erro status: {e}")
+            return {"state": "ERROR", "message": str(e)}
 
-        return {
-            "state": state,
-            "qr_code": qr_code,
-            "message": "Sucesso"
-        }
 
-    except Exception as e:
-        logger.error(f"Erro ao buscar status: {e}")
-        return {"state": "ERROR", "message": str(e)}
+async def evolution_delete_instance(instance_name: str):
+    if not EVOLUTION_API_URL: return False
+    url = f"{EVOLUTION_API_URL}/instance/delete/{instance_name}"
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.delete(url, headers=evolution_headers(), timeout=5.0)
+            return True
+        except Exception:
+            return False
 
 
 async def send_whatsapp_notification(number: str, message: str, instance_name: str):
-    """Envia mensagem de texto."""
+    if not EVOLUTION_API_URL or not instance_name: return False
 
-    # --- DEBUG LOGS ---
-    logger.info(f"🔍 DEBUG: Iniciando envio de mensagem.")
-    logger.info(f"🔍 DEBUG: Instância: {instance_name}")
-    logger.info(f"🔍 DEBUG: Número recebido (bruto): '{number}'")
-    # ------------------
-
-    if not EVOLUTION_API_URL or not instance_name:
-        logger.error("URL da API ou Nome da Instância não configurados.")
-        return False
-
-    # Limpeza de número com Regex
     clean_number = re.sub(r'\D', '', str(number))
-
-    # --- DEBUG LOGS ---
-    logger.info(f"🔍 DEBUG: Número após limpeza: '{clean_number}'")
-    # ------------------
-
     payload = {
         "number": clean_number,
-        "options": {
-            "delay": 1200,
-            "presence": "composing"
-        },
-        "textMessage": {
-            "text": message
-        }
+        "options": {"delay": 1200, "presence": "composing"},
+        "textMessage": {"text": message}
     }
+    url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
 
-    try:
-        url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
-        logger.info(f"🔍 DEBUG: Enviando POST para: {url}")
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=evolution_headers(), json=payload, timeout=10.0)
 
-        response = requests.post(url, headers=evolution_headers(), json=payload, timeout=10)
+            if response.status_code in [200, 201]:
+                return True
 
-        logger.info(f"🔍 DEBUG: Resposta da API: Status {response.status_code}")
-        logger.info(f"🔍 DEBUG: Corpo da Resposta: {response.text}")
+            # --- CORREÇÃO AQUI ---
+            # Tratamento específico para erro 400 (Número inválido)
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    # Verifica se a resposta contém indícios de número inexistente
+                    if "exists" in str(error_data) or "number" in str(error_data):
+                        logger.warning(f"⚠️ Número inválido detectado: {clean_number}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"O número {clean_number} não possui conta no WhatsApp."
+                        )
+                except HTTPException:
+                    raise  # Propaga a exceção para a rota
+                except Exception:
+                    pass  # Se falhar o parse, continua para o log de erro genérico
+            # ---------------------
 
-        # Sucesso
-        if response.status_code in [200, 201]:
-            return True
+            logger.error(f"Erro envio: {response.status_code} - {response.text}")
+            return False
 
-        # Tratamento de erro 400 (Número inválido)
-        if response.status_code == 400:
-            try:
-                error_data = response.json()
-                if "exists" in str(error_data) or "number" in str(error_data):
-                    logger.warning(f"⚠️ Número inválido detectado pela API: {clean_number}")
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"O número {clean_number} não possui conta no WhatsApp."
-                    )
-            except HTTPException:
-                raise
-            except Exception:
-                pass
-
-        logger.error(f"Erro envio WhatsApp: {response.status_code} - {response.text}")
-        return False
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"Exceção envio WhatsApp: {e}")
-        return False
+        except HTTPException as he:
+            raise he
+        except Exception as e:
+            logger.error(f"Exceção envio: {e}")
+            return False
 
 
 def generate_instance_name(user):
-    """Gera um nome único para a instância."""
     import time
     user_id = user.id if hasattr(user, 'id') else user
     return f"monitor_user_{user_id}_{int(time.time())}"
@@ -1216,30 +1539,67 @@ FILE: backend\core\lifespan.py
 # backend/core/lifespan.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from sqlalchemy.orm import Session
-from database import SessionLocal
-from monitor import start_monitoring # Importa a função de monitoramento
+from monitor import start_monitoring
 import asyncio
 
 @asynccontextmanager
 async def lifespan_manager(app: FastAPI):
     print("🚀 Iniciando aplicação...")
-    db = SessionLocal()
+    # Não precisamos criar a sessão aqui, o monitor cria a dele
+    app.state.monitoring_task = asyncio.create_task(start_monitoring(None))
     try:
-        # Inicia o monitoramento em uma tarefa em segundo plano
-        app.state.monitoring_task = asyncio.create_task(start_monitoring(db))
         yield
     finally:
         print("🛑 Desligando aplicação...")
-        # Cancela a tarefa de monitoramento ao desligar
         if hasattr(app.state, 'monitoring_task') and app.state.monitoring_task:
             app.state.monitoring_task.cancel()
             try:
                 await app.state.monitoring_task
             except asyncio.CancelledError:
                 print("Monitoramento de URLs cancelado.")
-        db.close()
+============================================================
+FILE: backend\core\security.py
+============================================================
+# backend/core/security.py
+from datetime import datetime, timedelta
+from typing import Optional
+from jose import jwt
+from passlib.context import CryptContext
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# Configurações de Segurança
+# Em produção, certifique-se de ter SECRET_KEY no seu arquivo .env
+SECRET_KEY = os.getenv("SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def verify_password(plain_password, hashed_password):
+    """Verifica se a senha em texto plano corresponde ao hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password):
+    """Gera o hash da senha."""
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Cria um token JWT de acesso."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 ============================================================
 FILE: backend\core\__init__.py
 ============================================================
@@ -1253,18 +1613,22 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
+# Ajuste: Importando de core.dependencies
 from core.dependencies import get_db
-from schemas.auth import Token
-from schemas.user import UserCreate, UserResponse
-from models import User
-from auth import (
+# Ajuste: Importando de core.security (onde as funções de hash/token devem estar)
+from core.security import (
     verify_password,
     get_password_hash,
     create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from schemas.auth import Token
+from schemas.user import UserCreate, UserResponse
+from models import User
 
-router = APIRouter(prefix="/auth", tags=["Autenticação"])
+# CORREÇÃO: Removido prefix="/auth" para que as rotas sejam /register e /token
+# Isso corrige o erro 404 pois o frontend chama http://localhost:8000/token
+router = APIRouter(tags=["Autenticação"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -1277,7 +1641,8 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     new_user = User(
         name=user.name,
         email=user.email,
-        hashed_password=hashed_password
+        hashed_password=hashed_password,
+        notifications_enabled=True # Garante que o usuário inicie com notificações ativas
     )
     db.add(new_user)
     db.commit()
@@ -1304,66 +1669,803 @@ def login(
         expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+============================================================
+FILE: backend\routes\backup.py
+============================================================
+# backend/routes/backup.py
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from datetime import datetime
+import csv
+import io
+import json
+import pandas as pd  # Importante para ler Excel e CSV de forma robusta
 
+# --- IMPORTS LOCAIS ---
+from core.dependencies import get_db, get_current_user
+from models import User, Client
+
+router = APIRouter(prefix="/backup", tags=["Backup e Importação"])
+
+
+# --- FUNÇÕES AUXILIARES ---
+
+def normalize_phone(phone) -> str:
+    """Remove caracteres não numéricos e garante o formato 55 + DDD + Numero"""
+    if not phone or pd.isna(phone):
+        return ""
+
+    # Converte para string e remove tudo que não é dígito
+    nums = "".join(filter(str.isdigit, str(phone)))
+
+    if not nums:
+        return ""
+
+    # Se tiver 10 ou 11 dígitos (ex: 11999998888), adiciona o 55
+    if len(nums) in [10, 11]:
+        return f"55{nums}"
+
+    return nums
+
+
+def normalize_date(date_val):
+    """Tenta converter diversos formatos de data para objeto date"""
+    if not date_val or pd.isna(date_val):
+        return None
+
+    # Se o Pandas já leu como Timestamp (comum em Excel)
+    if isinstance(date_val, (pd.Timestamp, datetime)):
+        return date_val.date()
+
+    date_str = str(date_val).strip()
+
+    # Lista de formatos aceitos (Brasileiro e Internacional)
+    formats = [
+        "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d",
+        "%d/%m/%y", "%Y/%m/%d", "%d.%m.%Y"
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def find_column(df, keywords):
+    """
+    Procura no DataFrame uma coluna que contenha uma das palavras-chave.
+    Retorna o nome da coluna encontrada ou None.
+    """
+    columns_lower = [c.lower().strip() for c in df.columns]
+
+    for keyword in keywords:
+        if keyword in columns_lower:
+            # Retorna o nome original da coluna (com maiúsculas/minúsculas originais)
+            index = columns_lower.index(keyword)
+            return df.columns[index]
+    return None
+
+
+# --- ROTAS DE EXPORTAÇÃO (BACKUP) ---
+
+@router.get("/clients/export")
+def export_clients_csv(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Gera um CSV com todos os clientes do usuário"""
+    clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
+
+    stream = io.StringIO()
+    writer = csv.writer(stream)
+
+    # Cabeçalho
+    writer.writerow(["Nome", "Login", "WhatsApp", "Vencimento", "Servidor", "Notas", "M3U8"])
+
+    for client in clients:
+        writer.writerow([
+            client.name,
+            client.login,
+            client.whatsapp,
+            client.expiration_date.strftime("%d/%m/%Y") if client.expiration_date else "",
+            client.server_name or "",
+            client.notes or "",
+            client.m3u8_url or ""
+        ])
+
+    stream.seek(0)
+
+    response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+    response.headers[
+        "Content-Disposition"] = f"attachment; filename=clientes_backup_{datetime.now().strftime('%Y%m%d')}.csv"
+    return response
+
+
+@router.get("/full/export")
+def export_full_backup(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Gera um JSON completo com Configurações + Clientes"""
+    clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
+
+    backup_data = {
+        "user_settings": {
+            "name": current_user.name,
+            "email": current_user.email,
+            "whatsapp_instance": current_user.whatsapp_instance,
+            "notification_time": current_user.notification_time,
+            "notifications_enabled": current_user.notifications_enabled
+        },
+        "clients": []
+    }
+
+    for c in clients:
+        backup_data["clients"].append({
+            "name": c.name,
+            "login": c.login,
+            "whatsapp": c.whatsapp,
+            "expiration_date": c.expiration_date.strftime("%Y-%m-%d") if c.expiration_date else None,
+            "server_name": c.server_name,
+            "notes": c.notes,
+            "m3u8_url": c.m3u8_url,
+            "reminder_days_before": c.reminder_days_before
+        })
+
+    json_str = json.dumps(backup_data, indent=4, ensure_ascii=False)
+
+    response = StreamingResponse(iter([json_str]), media_type="application/json")
+    response.headers[
+        "Content-Disposition"] = f"attachment; filename=backup_geral_{datetime.now().strftime('%Y%m%d')}.json"
+    return response
+
+
+# --- ROTA DE IMPORTAÇÃO (PADRONIZADOR) ---
+
+@router.post("/clients/import")
+async def import_clients_file(
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Lê CSV, XLS ou XLSX, identifica colunas automaticamente e importa clientes.
+    """
+    filename = file.filename.lower()
+    contents = await file.read()
+
+    df = None
+    errors = []
+    imported_count = 0
+
+    # 1. Carregar o arquivo para um DataFrame Pandas
+    try:
+        if filename.endswith('.csv') or filename.endswith('.txt'):
+            # Tenta ler CSV (tenta separador , e ;)
+            try:
+                df = pd.read_csv(io.BytesIO(contents), encoding='utf-8')
+            except:
+                try:
+                    df = pd.read_csv(io.BytesIO(contents), encoding='latin-1', sep=';')
+                except:
+                    df = pd.read_csv(io.BytesIO(contents), encoding='utf-8', sep=';')
+
+        elif filename.endswith(('.xls', '.xlsx')):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(status_code=400, detail="Formato não suportado. Use CSV ou Excel.")
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao ler arquivo: {str(e)}")
+
+    if df is None or df.empty:
+        raise HTTPException(status_code=400, detail="O arquivo está vazio ou ilegível.")
+
+    # 2. Identificar Colunas (Mapeamento Inteligente)
+    col_name = find_column(df, ['nome', 'cliente', 'name', 'nome completo', 'usuario'])
+    col_login = find_column(df, ['login', 'usuario', 'user', 'username', 'email'])
+    col_phone = find_column(df, ['whatsapp', 'celular', 'telefone', 'tel', 'cel', 'zap', 'contato', 'mobile'])
+    col_date = find_column(df, ['vencimento', 'data', 'validade', 'vence', 'expiration', 'expire'])
+    col_notes = find_column(df, ['obs', 'observacao', 'notas', 'observações', 'info'])
+    col_server = find_column(df, ['servidor', 'server', 'plano', 'pacote'])
+
+    # Se não achou login, tenta usar o nome como login (fallback)
+    if not col_login and col_name:
+        col_login = col_name
+
+    # Validação mínima
+    if not col_name:
+        return {"message": "Erro: Não foi possível identificar a coluna de NOME no arquivo.",
+                "errors": ["Coluna 'Nome' não encontrada."]}
+
+    if not col_date:
+        return {"message": "Erro: Não foi possível identificar a coluna de VENCIMENTO.",
+                "errors": ["Coluna 'Vencimento' não encontrada."]}
+
+    # 3. Iterar e Salvar
+    # Substitui NaN por None/String vazia para evitar erros
+    df = df.fillna("")
+
+    for index, row in df.iterrows():
+        try:
+            name = str(row[col_name]).strip()
+            login = str(row[col_login]).strip() if col_login else name.lower().replace(" ", "")
+            phone_raw = row[col_phone] if col_phone else ""
+            date_raw = row[col_date]
+            notes = str(row[col_notes]) if col_notes else ""
+            server = str(row[col_server]) if col_server else ""
+
+            if not name or not date_raw:
+                continue
+
+            # Normalizações
+            whatsapp = normalize_phone(phone_raw)
+            expiration_date = normalize_date(date_raw)
+
+            if not expiration_date:
+                errors.append(f"Linha {index + 2}: Data inválida ({date_raw}) para o cliente {name}")
+                continue
+
+            # Verifica duplicidade (pelo Login)
+            existing = db.query(Client).filter(
+                Client.owner_id == current_user.id,
+                Client.login == login
+            ).first()
+
+            if existing:
+                # Atualiza dados existentes
+                existing.name = name
+                existing.whatsapp = whatsapp
+                existing.expiration_date = expiration_date
+                if notes: existing.notes = notes
+                if server: existing.server_name = server
+            else:
+                # Cria novo cliente
+                new_client = Client(
+                    owner_id=current_user.id,
+                    name=name,
+                    login=login,
+                    whatsapp=whatsapp,
+                    expiration_date=expiration_date,
+                    notes=notes,
+                    server_name=server,
+                    reminder_enabled=True,
+                    reminder_days_before="3"
+                )
+                db.add(new_client)
+
+            imported_count += 1
+
+        except Exception as e:
+            errors.append(f"Linha {index + 2}: Erro ao processar ({str(e)})")
+
+    db.commit()
+
+    msg_final = f"Processamento concluído! {imported_count} clientes importados/atualizados."
+    if not imported_count and errors:
+        msg_final = "Nenhum cliente foi importado. Verifique os erros."
+
+    return {
+        "message": msg_final,
+        "errors": errors
+    }
+============================================================
+FILE: backend\routes\clients.py
+============================================================
+# backend/routes/clients.py
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+from datetime import date, datetime
+import asyncio
+
+# --- IMPORTS DE DEPENDÊNCIAS ---
+from core.dependencies import get_db, get_current_user
+from models import User, Client
+from telegram_utils import send_telegram_message
+
+# --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
+from whatsapp_utils import send_whatsapp_notification
+
+router = APIRouter(prefix="/clients", tags=["Clientes"])
+
+
+# --- SCHEMAS ---
+
+class ClientCreate(BaseModel):
+    name: str
+    login: str
+    server_name: str
+    whatsapp: str
+    expiration_date: date
+    notes: Optional[str] = None
+    m3u8_url: Optional[str] = None
+    custom_fields: Optional[Dict[str, Any]] = None
+    notify_downtime: bool = True
+    reminder_enabled: bool = True
+    reminder_days_before: str = "3"
+    notify_after_expiration: bool = True
+    notification_channel: Optional[str] = "whatsapp"
+
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    login: Optional[str] = None
+    server_name: Optional[str] = None
+    whatsapp: Optional[str] = None
+    expiration_date: Optional[date] = None
+    notes: Optional[str] = None
+    m3u8_url: Optional[str] = None
+    custom_fields: Optional[Dict[str, Any]] = None
+    notify_downtime: Optional[bool] = None
+    reminder_enabled: Optional[bool] = None
+    reminder_days_before: Optional[str] = None
+    notify_after_expiration: Optional[bool] = None
+    notification_channel: Optional[str] = None
+
+
+class ClientResponse(ClientCreate):
+    id: int
+    owner_id: int
+
+    class Config:
+        orm_mode = True
+
+
+# ==========================================
+# ROTAS ESPECIAIS (DEVEM VIR ANTES DO CRUD)
+# ==========================================
+
+@router.post("/process-now")
+async def process_reminders_now(
+        filter_type: Optional[str] = "default",  # Recebe o filtro do Frontend
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Executa a verificação de cobrança IMEDIATAMENTE.
+    Suporta filtros: 'default', 'expired', '0', '1', '2', '3'.
+    """
+    # Busca todos os clientes do usuário
+    clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
+    today = datetime.now().date()
+    sent_count = 0
+
+    print(f"\n--- INICIANDO ENVIO EM MASSA ---")
+    print(f"📅 Data do Servidor: {today}")
+    print(f"🔍 Filtro Selecionado: {filter_type}")
+    print(f"👥 Total de Clientes Analisados: {len(clients)}")
+
+    # Verifica conexão
+    has_whatsapp = current_user.whatsapp_connected
+    has_telegram = bool(current_user.telegram_token)
+
+    if not has_whatsapp and not has_telegram:
+        print("❌ Erro: Nenhum canal conectado.")
+        raise HTTPException(status_code=400, detail="Nenhum canal de notificação conectado.")
+
+    for client in clients:
+        if not client.reminder_enabled:
+            continue
+
+        # Calcula dias para vencer
+        days_diff = (client.expiration_date - today).days
+
+        should_send = False
+        msg = ""
+
+        # --- LÓGICA DE FILTRAGEM ---
+
+        # 1. Filtro: Vencidos (expired)
+        if filter_type == "expired":
+            if days_diff < 0:
+                should_send = True
+
+        # 2. Filtro: Dias Específicos (0, 1, 2, 3)
+        elif filter_type in ["0", "1", "2", "3"]:
+            # Converte para int para comparar com days_diff
+            target_days = int(filter_type)
+            if days_diff == target_days:
+                should_send = True
+            else:
+                # Debug para entender por que não enviou
+                # print(f"   Ignorado {client.name}: Faltam {days_diff} dias (Filtro pede {target_days})")
+                pass
+
+        # 3. Filtro: Padrão (default) - Respeita a config do cliente
+        else:
+            try:
+                threshold = int(client.reminder_days_before)
+            except (ValueError, TypeError):
+                threshold = 3
+
+            if 0 <= days_diff <= threshold:
+                should_send = True
+            elif days_diff < 0 and client.notify_after_expiration:
+                should_send = True
+
+        # --- SE PASSOU NO FILTRO, MONTA A MENSAGEM ---
+        if should_send:
+            print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
+
+            if days_diff == 0:
+                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+            elif days_diff == 1:
+                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+            elif days_diff > 1:
+                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+            else:  # Negativo (Vencido)
+                days_overdue = abs(days_diff)
+                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+
+            # --- ENVIO ---
+            channel = client.notification_channel or "whatsapp"
+            success = False
+
+            # Envio WhatsApp
+            if channel == "whatsapp" and has_whatsapp:
+                try:
+                    success = await send_whatsapp_notification(
+                        number=client.whatsapp,
+                        message=msg,
+                        instance_name=current_user.whatsapp_instance
+                    )
+                    if success:
+                        print(f"   -> WhatsApp enviado com sucesso!")
+                    else:
+                        print(f"   -> Falha no envio do WhatsApp (API retornou False)")
+                except Exception as e:
+                    print(f"   -> Erro técnico no WhatsApp: {e}")
+                    success = False
+
+            # Envio Telegram
+            elif channel == "telegram" and has_telegram:
+                try:
+                    await send_telegram_message(
+                        token=current_user.telegram_token,
+                        chat_id=current_user.telegram_chat_id,
+                        message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+                    )
+                    success = True
+                    print(f"   -> Telegram enviado com sucesso!")
+                except Exception as e:
+                    print(f"   -> Erro técnico no Telegram: {e}")
+                    success = False
+
+            if success:
+                sent_count += 1
+                await asyncio.sleep(1)  # Delay para evitar bloqueio
+
+    print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
+    return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
+
+
+# ==========================================
+# ROTAS CRUD (Create, Read, Update, Delete)
+# ==========================================
+
+@router.post("/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
+def create_client(
+        client_data: ClientCreate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    new_client = Client(
+        **client_data.dict(),
+        owner_id=current_user.id
+    )
+    db.add(new_client)
+    db.commit()
+    db.refresh(new_client)
+    return new_client
+
+
+@router.get("/", response_model=List[ClientResponse])
+def read_clients(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    return db.query(Client).filter(Client.owner_id == current_user.id).all()
+
+
+@router.put("/{client_id}", response_model=ClientResponse)
+def update_client(
+        client_id: int,
+        client_data: ClientUpdate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    update_data = client_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(client, key, value)
+
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_client(
+        client_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    db.delete(client)
+    db.commit()
+    return None
+
+
+# --- ENVIO MANUAL INDIVIDUAL ---
+
+@router.post("/{client_id}/remind")
+async def send_manual_reminder(
+        client_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Força o envio da mensagem de cobrança para um cliente específico."""
+
+    client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    today = datetime.now().date()
+    days_diff = (client.expiration_date - today).days
+    msg = ""
+
+    # Lógica de mensagens
+    if days_diff == 3:
+        msg = f"Olá {client.name}! 📅 Sua assinatura vence em 3 dias. Evite bloqueios!"
+    elif days_diff == 1:
+        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+    elif days_diff == 0:
+        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+    elif days_diff < 0:
+        msg = f"Olá {client.name}. ❌ Sua assinatura venceu. Entre em contato para reativar."
+    else:
+        formatted_date = client.expiration_date.strftime('%d/%m/%Y')
+        msg = f"Olá {client.name}! 📅 Lembrete: Sua assinatura está ativa e vence dia {formatted_date}."
+
+    # Definição do canal
+    channel = client.notification_channel or "whatsapp"
+    success = False
+    error_detail = ""
+
+    # --- ENVIO VIA WHATSAPP ---
+    if channel == "whatsapp":
+        if not current_user.whatsapp_connected:
+            raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
+
+        try:
+            success = await send_whatsapp_notification(
+                number=client.whatsapp,
+                message=msg,
+                instance_name=current_user.whatsapp_instance
+            )
+            if not success:
+                error_detail = "A Evolution API retornou erro ou falha no envio."
+        except Exception as e:
+            success = False
+            error_detail = str(e)
+
+    # --- ENVIO VIA TELEGRAM ---
+    elif channel == "telegram":
+        if not current_user.telegram_token:
+            raise HTTPException(status_code=400, detail="Telegram não configurado.")
+
+        try:
+            await send_telegram_message(
+                token=current_user.telegram_token,
+                chat_id=current_user.telegram_chat_id,
+                message=f"🔔 *Lembrete Manual: {client.name}*\n\n{msg}"
+            )
+            success = True
+        except Exception as e:
+            success = False
+            error_detail = f"Erro Telegram: {str(e)}"
+
+    if success:
+        return {"message": f"Mensagem enviada via {channel}!", "sent": True}
+    else:
+        print(f"❌ Erro no envio manual: {error_detail}")
+        raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")
 ============================================================
 FILE: backend\routes\urls.py
 ============================================================
 # backend/routes/urls.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from models import MonitoredURL, User
+from typing import List
+
 from core.dependencies import get_db, get_current_user
-from datetime import datetime
+from models import User, MonitoredURL
 from schemas.url import URLCreate, URLResponse
 
 router = APIRouter(prefix="/urls", tags=["URLs"])
 
-@router.get("/", response_model=list[URLResponse])
-def list_urls(
-    current_user: User = Depends(get_current_user),
+@router.post("/", response_model=URLResponse, status_code=status.HTTP_201_CREATED)
+def create_url(
+    url: URLCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Lista todas as URLs monitoradas do usuário."""
-    urls = db.query(MonitoredURL).filter(MonitoredURL.user_id == current_user.id).all()
+    # Cria a nova URL vinculada ao usuário logado
+    db_url = MonitoredURL(**url.dict(), user_id=current_user.id)
+    db.add(db_url)
+    db.commit()
+    db.refresh(db_url)
+    return db_url
+
+@router.get("/", response_model=List[URLResponse])
+def read_urls(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Retorna apenas as URLs do usuário logado
+    urls = db.query(MonitoredURL).filter(MonitoredURL.user_id == current_user.id).offset(skip).limit(limit).all()
     return urls
 
-@router.post("/", response_model=URLResponse)
-def create_url(
-    url_data: URLCreate,
-    current_user: User = Depends(get_current_user),
+# --- ADICIONE ESTA ROTA DE DELETE ABAIXO ---
+@router.delete("/{url_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_url(
+    url_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Cadastra uma nova URL para monitoramento."""
-    new_url = MonitoredURL(
-        url=url_data.url,
-        nickname=url_data.nickname or None,
-        category=url_data.category or "Geral",
-        user_id=current_user.id,
-        last_check=datetime.utcnow(),
-    )
-    db.add(new_url)
-    db.commit()
-    db.refresh(new_url)
-    return new_url
+    """Deleta uma URL monitorada."""
+    # Busca a URL garantindo que ela pertence ao usuário logado
+    url_to_delete = db.query(MonitoredURL).filter(
+        MonitoredURL.id == url_id,
+        MonitoredURL.user_id == current_user.id
+    ).first()
 
+    if url_to_delete is None:
+        raise HTTPException(status_code=404, detail="URL não encontrada ou você não tem permissão.")
+
+    db.delete(url_to_delete)
+    db.commit()
+    return None
 ============================================================
 FILE: backend\routes\users.py
 ============================================================
 # backend/routes/users.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
 
+# Imports do projeto
 from core.dependencies import get_db, get_current_user
-from schemas.user import UserResponse
+from schemas.user import UserResponse, UserSettingsUpdate
 from models import User
+from telegram_utils import send_telegram_message
 
 router = APIRouter(prefix="/users", tags=["Usuários"])
+
 
 @router.get("/me", response_model=UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user)):
     """Retorna informações do usuário logado."""
     return current_user
 
+
+# Rota para salvar configurações gerais
+@router.patch("/me/settings", response_model=UserResponse)
+def update_user_settings(
+        settings: UserSettingsUpdate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Garante que o usuário está na sessão atual
+    user_in_db = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user_in_db:
+        # Fallback caso não encontre (raro se estiver logado)
+        user_in_db = db.merge(current_user)
+
+    if settings.whatsapp_number is not None:
+        user_in_db.whatsapp_number = settings.whatsapp_number
+
+    if settings.telegram_token is not None:
+        user_in_db.telegram_token = settings.telegram_token
+    if settings.telegram_chat_id is not None:
+        user_in_db.telegram_chat_id = settings.telegram_chat_id
+
+    if settings.notify_when_down is not None:
+        user_in_db.notify_when_down = settings.notify_when_down
+    if settings.notify_when_up is not None:
+        user_in_db.notify_when_up = settings.notify_when_up
+    if settings.notify_when_slow is not None:
+        user_in_db.notify_when_slow = settings.notify_when_slow
+
+    db.commit()
+    db.refresh(user_in_db)
+    return user_in_db
+
+
+@router.post("/me/telegram/test")
+async def test_telegram_notification(
+        current_user: User = Depends(get_current_user)
+):
+    if not current_user.telegram_token or not current_user.telegram_chat_id:
+        raise HTTPException(status_code=400, detail="Telegram não configurado. Salve as configurações primeiro.")
+
+    try:
+        await send_telegram_message(
+            token=current_user.telegram_token,
+            chat_id=current_user.telegram_chat_id,
+            message="🔔 *Teste de Notificação - Nexus Monitor*\n\nSe você recebeu esta mensagem, a integração está funcionando perfeitamente! 🚀"
+        )
+        return {"message": "Mensagem de teste enviada com sucesso!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# ROTAS DE AGENDAMENTO (CORRIGIDAS)
+# ==========================================
+
+class ScheduleUpdate(BaseModel):
+    time: str  # Formato "HH:MM"
+    enabled: bool = True  # Campo essencial para o switch funcionar
+
+
+@router.put("/me/schedule")
+def update_notification_schedule(
+        schedule_data: ScheduleUpdate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Atualiza o horário e se o agendamento está ativo."""
+
+    # --- CORREÇÃO PRINCIPAL AQUI ---
+    # Buscamos o usuário novamente na sessão atual para garantir que o commit funcione
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # Atualiza os campos
+    user_db.notification_time = schedule_data.time
+    user_db.notifications_enabled = schedule_data.enabled
+
+    db.commit()
+    db.refresh(user_db)
+
+    return {
+        "message": "Configuração de agendamento atualizada com sucesso!",
+        "time": user_db.notification_time,
+        "enabled": user_db.notifications_enabled
+    }
+
+
+@router.get("/me/schedule")
+def get_notification_schedule(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)  # Adicionado DB session para leitura atualizada
+):
+    """Retorna o horário e status configurados."""
+    # Também garantimos a leitura atualizada do banco
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+
+    return {
+        "time": user_db.notification_time or "09:00",
+        "enabled": user_db.notifications_enabled if user_db.notifications_enabled is not None else True
+    }
 ============================================================
 FILE: backend\routes\whatsapp.py
 ============================================================
@@ -1380,8 +2482,6 @@ from dotenv import load_dotenv
 from database import get_db
 from auth import get_current_user
 from models import User
-
-# CORREÇÃO: Importando funções utilitárias da raiz (sem 'backend.')
 from whatsapp_utils import (
     generate_instance_name,
     evolution_delete_instance,
@@ -1394,6 +2494,8 @@ load_dotenv()
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 
+# Configura o logger para ser mais útil
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
@@ -1407,14 +2509,15 @@ router = APIRouter(
 def format_qr_code(base64_code: str) -> Optional[str]:
     if not base64_code:
         return None
-    if base64_code.startswith("data:"):
+    # O frontend já espera o prefixo, então garantimos que ele sempre esteja lá
+    if base64_code.startswith("data:image/png;base64,"):
         return base64_code
     return f"data:image/png;base64,{base64_code}"
 
 
 # --- SCHEMAS ---
 class WhatsAppNumber(BaseModel):
-    number: str
+    number: Optional[str] = None
 
 
 class WhatsAppConnectResponse(BaseModel):
@@ -1429,8 +2532,11 @@ class WhatsAppStatusResponse(BaseModel):
     instance_name: Optional[str]
     qr_code: Optional[str]
     state: str
-    message: str
     whatsapp_number: Optional[str]
+
+
+class TestNotificationRequest(BaseModel):
+    number: Optional[str] = None
 
 
 # --- ROTAS ---
@@ -1442,39 +2548,41 @@ async def connect_whatsapp(
         db: Session = Depends(get_db),
 ):
     if not EVOLUTION_API_URL or not EVOLUTION_API_KEY:
-        raise HTTPException(status_code=503, detail="API Evolution não configurada.")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API Evolution não configurada no servidor.")
 
-    if not whatsapp_data.number:
-        raise HTTPException(status_code=400, detail="Número obrigatório.")
-
-    # 1. Limpeza anterior
+    # 1. Limpeza de instância anterior (se existir)
     if current_user.whatsapp_instance:
+        logger.info(f"Removendo instância antiga: {current_user.whatsapp_instance}")
         try:
             await evolution_delete_instance(current_user.whatsapp_instance)
-        except Exception:
-            pass
+        except Exception as e:
+            # Loga o erro mas continua o processo, pois o objetivo é criar uma nova
+            logger.error(f"Falha ao remover instância antiga (não bloqueante): {e}")
         current_user.whatsapp_instance = None
-        current_user.whatsapp_connected = False
-        db.commit()
+        # REMOVIDO: Atribuição a current_user.whatsapp_connected
 
-    # 2. Criação
+    # 2. Criação da nova instância
     instance_name = generate_instance_name(current_user)
+    logger.info(f"Criando nova instância: {instance_name}")
     success = await evolution_create_instance(instance_name)
 
     if not success:
-        raise HTTPException(status_code=500, detail="Falha ao criar instância.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao criar instância na Evolution API.")
 
     current_user.whatsapp_instance = instance_name
-    current_user.whatsapp_number = whatsapp_data.number
+    if whatsapp_data.number:
+        current_user.whatsapp_number = whatsapp_data.number
+
+    # 3. Commit único no banco de dados
     db.commit()
 
-    # 3. Obter QR Code
+    # 4. Obter QR Code inicial
     status_info = await get_instance_state_and_qr(instance_name)
     qr_code_raw = status_info.get("qr_code")
 
     return WhatsAppConnectResponse(
         success=True,
-        message="Instância criada.",
+        message="Instância criada com sucesso. Aguardando QR Code.",
         instance_name=instance_name,
         qr_code=format_qr_code(qr_code_raw)
     )
@@ -1483,65 +2591,78 @@ async def connect_whatsapp(
 @router.get("/status", response_model=WhatsAppStatusResponse)
 async def get_whatsapp_status(
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db),
 ):
     if not current_user.whatsapp_instance:
         return WhatsAppStatusResponse(
             connected=False, instance_name=None, qr_code=None,
-            state="DISCONNECTED", message="Não configurado.", whatsapp_number=None
+            state="DISCONNECTED", whatsapp_number=None
         )
 
     status_info = await get_instance_state_and_qr(current_user.whatsapp_instance)
     state = status_info.get("state", "UNKNOWN")
     qr_code_raw = status_info.get("qr_code")
 
-    connected = (state == "open" or state == "connected")
+    # A propriedade `whatsapp_connected` no modelo User já faz essa verificação
+    # Esta variável `connected` é apenas para uso local na resposta.
+    connected = (state == "open")
 
-    if current_user.whatsapp_connected != connected:
-        current_user.whatsapp_connected = connected
-        db.commit()
-
-    msg = "Conectado!" if connected else "Escaneie o QR Code."
+    # REMOVIDO: Atribuição a current_user.whatsapp_connected
 
     return WhatsAppStatusResponse(
         connected=connected,
         instance_name=current_user.whatsapp_instance,
         qr_code=format_qr_code(qr_code_raw),
         state=state,
-        message=msg,
         whatsapp_number=current_user.whatsapp_number
     )
 
 
-@router.post("/disconnect")
+@router.post("/disconnect", status_code=status.HTTP_200_OK)
 async def disconnect_whatsapp(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
-    if current_user.whatsapp_instance:
-        await evolution_delete_instance(current_user.whatsapp_instance)
-        current_user.whatsapp_instance = None
-        current_user.whatsapp_connected = False
-        current_user.whatsapp_number = None
-        db.commit()
-    return {"success": True, "message": "Desconectado."}
+    if not current_user.whatsapp_instance:
+        return {"success": True, "message": "Nenhuma instância para desconectar."}
+
+    instance_to_delete = current_user.whatsapp_instance
+    logger.info(f"Desconectando instância: {instance_to_delete}")
+
+    await evolution_delete_instance(instance_to_delete)
+
+    current_user.whatsapp_instance = None
+    current_user.whatsapp_number = None # Opcional: limpar o número ao desconectar
+    # REMOVIDO: Atribuição a current_user.whatsapp_connected
+
+    db.commit()
+    return {"success": True, "message": "Instância desconectada com sucesso."}
 
 
 @router.post("/test-notification")
 async def test_whatsapp_notification_route(
+        request: TestNotificationRequest,
         current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
 ):
+    # A verificação agora usa a propriedade dinâmica, que é mais confiável
     if not current_user.whatsapp_connected:
-        raise HTTPException(status_code=400, detail="WhatsApp desconectado.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="WhatsApp não está conectado.")
+
+    target_number = request.number or current_user.whatsapp_number
+    if not target_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nenhum número de destino informado.")
 
     success = await send_whatsapp_notification(
-        current_user.whatsapp_number,
-        "🚀 Teste de notificação Monitor DNS!",
+        target_number,
+        "🚀 Teste de notificação do Nexus Monitor!",
         current_user.whatsapp_instance
     )
+
     if success:
-        return {"success": True, "message": "Enviado."}
-    raise HTTPException(status_code=500, detail="Falha no envio.")
+        return {"success": True, "message": f"Mensagem de teste enviada para {target_number}."}
+
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha no envio. Verifique o console do servidor e se o número é válido.")
+
 
 ============================================================
 FILE: backend\routes\__init__.py
@@ -1558,26 +2679,83 @@ class Token(BaseModel):
     token_type: str
 
 ============================================================
+FILE: backend\schemas\client.py
+============================================================
+# backend/schemas/client.py
+from pydantic import BaseModel
+from typing import Optional, Any, Dict
+from datetime import date
+
+
+class ClientBase(BaseModel):
+    name: str
+    login: str
+    server_name: str
+    whatsapp: str
+    expiration_date: date
+    notes: Optional[str] = None
+    m3u8_url: Optional[str] = None
+
+    # Campo para dados dinâmicos (ex: MAC, App, etc)
+    custom_fields: Optional[Dict[str, Any]] = None
+
+    notify_downtime: bool = True
+    reminder_enabled: bool = True
+    reminder_days_before: str = "3"
+    notify_after_expiration: bool = True
+
+    # Canal de notificação (whatsapp, telegram, etc)
+    notification_channel: Optional[str] = "whatsapp"
+
+
+class ClientCreate(ClientBase):
+    pass
+
+
+class ClientUpdate(ClientBase):
+    """Schema específico para atualizações (PUT/PATCH)"""
+    pass
+
+
+class ClientResponse(ClientBase):
+    id: int
+    owner_id: int
+
+    class Config:
+        from_attributes = True
+============================================================
 FILE: backend\schemas\url.py
 ============================================================
+# backend/schemas/url.py
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
+
 
 class URLBase(BaseModel):
     url: str
     nickname: Optional[str] = None
-    category: Optional[str] = "Geral"
+
 
 class URLCreate(URLBase):
     pass
 
+
 class URLResponse(URLBase):
     id: int
-    status: Optional[str] = "unknown"
+    user_id: int
+    status: str
+    is_active: bool
+
+    # Adicionando os campos que estavam faltando para o Dashboard
+    http_code: Optional[int] = None
+    response_time: Optional[float] = None
+    ip_address: Optional[str] = None
+    last_check: Optional[datetime] = None
+    error: Optional[str] = None
 
     class Config:
-        orm_mode = True
-
+        from_attributes = True
 ============================================================
 FILE: backend\schemas\user.py
 ============================================================
@@ -1585,10 +2763,24 @@ FILE: backend\schemas\user.py
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
+
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
+
+
+# CORREÇÃO: Todos os campos agora são Optional com valor padrão None.
+# Isso permite enviar apenas os dados do Telegram sem precisar enviar as flags de notificação junto.
+class UserSettingsUpdate(BaseModel):
+    whatsapp_number: Optional[str] = None
+    telegram_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+    notify_when_down: Optional[bool] = None
+    notify_when_up: Optional[bool] = None
+    notify_when_slow: Optional[bool] = None
+
 
 class UserResponse(BaseModel):
     id: int
@@ -1596,12 +2788,19 @@ class UserResponse(BaseModel):
     email: str
     whatsapp_connected: bool
     notifications_enabled: bool
-    whatsapp_number: Optional[str] = None # Adicionado para /me
-    whatsapp_instance: Optional[str] = None # Adicionado para /me
+    whatsapp_number: Optional[str] = None
+    whatsapp_instance: Optional[str] = None
+
+    # Adicionamos os campos do Telegram na resposta para o frontend carregar os dados salvos
+    telegram_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+    notify_when_down: bool
+    notify_when_up: bool
+    notify_when_slow: bool
 
     class Config:
         from_attributes = True
-
 ============================================================
 FILE: backend\schemas\whatsapp.py
 ============================================================
@@ -1653,6 +2852,748 @@ export function startCleanup() {
 }
 
 ============================================================
+FILE: frontend\clients.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Clientes | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* --- ESTILOS GERAIS --- */
+        /* Container dos Cards de Resumo */
+        .summary-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+            text-align: center;
+        }
+
+        .summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .summary-card.active { border-color: var(--primary); background-color: #f0f9ff; }
+        .summary-count { font-size: 1.8rem; font-weight: bold; color: var(--text-dark); }
+        .summary-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        .card-expired .summary-count { color: var(--danger); }
+        .card-warning .summary-count { color: var(--warning); }
+        .card-info .summary-count { color: var(--primary); }
+
+        /* Barra de Ferramentas */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            padding-left: 35px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; }
+
+        /* --- WIDGET DE AGENDAMENTO --- */
+        .schedule-widget {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: white;
+            padding: 8px 15px;
+            border-radius: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+
+        .schedule-info { display: flex; flex-direction: column; line-height: 1.1; }
+        .schedule-label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold; }
+        .schedule-time { font-size: 1.1rem; font-weight: bold; color: var(--primary); }
+
+        /* Switch Toggle */
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--success); }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        /* Tabela */
+        .table-container { background: white; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow-x: auto; }
+        .clients-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        .clients-table th, .clients-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .clients-table th { background-color: #f8fafc; font-weight: 600; color: var(--text-dark); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
+        .clients-table tr:hover { background-color: #f9f9f9; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
+        .client-note-inline { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
+        .action-buttons { display: flex; gap: 5px; }
+
+        /* Modais */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 2rem; border-radius: 10px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative; }
+        .close-modal { position: absolute; top: 1rem; right: 1rem; cursor: pointer; font-size: 1.5rem; }
+        .dynamic-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .dynamic-field-row input { flex: 1; }
+    </style>
+</head>
+<body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link active">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Gestão de Clientes</h2>
+                    <p>Gerencie assinaturas e envie cobranças automáticas.</p>
+                </div>
+            </div>
+
+            <!-- DASHBOARD DE VENCIMENTOS -->
+            <div class="summary-container">
+                <div class="summary-card active" onclick="filterByStatus('all', this)" id="card-all">
+                    <div class="summary-count" id="count-all">0</div>
+                    <div class="summary-label">Todos</div>
+                </div>
+                <div class="summary-card card-expired" onclick="filterByStatus('expired', this)">
+                    <div class="summary-count" id="count-expired">0</div>
+                    <div class="summary-label">Vencidos</div>
+                </div>
+                <div class="summary-card card-warning" onclick="filterByStatus('1', this)">
+                    <div class="summary-count" id="count-1">0</div>
+                    <div class="summary-label">Vence em 1 Dia</div>
+                </div>
+                <div class="summary-card card-warning" onclick="filterByStatus('2', this)">
+                    <div class="summary-count" id="count-2">0</div>
+                    <div class="summary-label">Vence em 2 Dias</div>
+                </div>
+                <div class="summary-card card-info" onclick="filterByStatus('3', this)">
+                    <div class="summary-count" id="count-3">0</div>
+                    <div class="summary-label">Vence em 3 Dias</div>
+                </div>
+                <div class="summary-card card-info" onclick="filterByStatus('4', this)">
+                    <div class="summary-count" id="count-4">0</div>
+                    <div class="summary-label">Vence em 4 Dias</div>
+                </div>
+            </div>
+
+            <!-- BARRA DE FERRAMENTAS -->
+            <div class="toolbar">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" placeholder="Buscar por Login ou WhatsApp..." oninput="applyFilters()">
+                </div>
+
+                <!-- WIDGET DE AGENDAMENTO (NOVO) -->
+                <div class="schedule-widget">
+                    <div class="schedule-info">
+                        <span class="schedule-label">Envio Automático</span>
+                        <span class="schedule-time" id="displayScheduleTime">--:--</span>
+                    </div>
+                    
+                    <label class="switch" title="Ativar/Desativar Envio Automático">
+                        <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
+                        <span class="slider round"></span>
+                    </label>
+
+                    <button class="btn btn-sm btn-secondary" onclick="openScheduleModal()" title="Alterar Horário" style="margin-left: 5px;">✏️</button>
+
+                    <!-- NOVO BOTÃO AQUI -->
+                    <button class="btn btn-sm btn-primary" onclick="runBatchProcess()" title="Verificar e enviar cobranças agora" style="margin-left: 5px; background-color: #8b5cf6; border-color: #8b5cf6;">
+                        🚀 Executar Agora
+                    </button>
+                    <!-- FIM DO NOVO BOTÃO -->
+                </div>
+
+                <button class="btn btn-primary" onclick="openClientModal()">+ Novo Cliente</button>
+            </div>
+
+            <!-- Lista de Clientes (Tabela) -->
+            <div id="clientsList" class="table-container">
+                <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    Carregando clientes...
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE CADASTRO/EDIÇÃO -->
+    <div class="modal-overlay" id="clientModal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeClientModal()">&times;</span>
+            <h3 id="modalTitle" style="margin-bottom: 1.5rem; color: var(--primary);">Novo Cliente</h3>
+            <input type="hidden" id="clientId">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Nome Completo</label>
+                    <input type="text" id="clientName" placeholder="Ex: João Silva">
+                </div>
+                <div class="form-group">
+                    <label>Login / Usuário</label>
+                    <input type="text" id="clientLogin" placeholder="Ex: joaosilva123">
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp (DDI+DDD+Num)</label>
+                    <input type="text" id="clientWhatsapp" placeholder="5511999999999">
+                </div>
+                <div class="form-group">
+                    <label>Canal de Notificação</label>
+                    <select id="clientNotificationChannel" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="telegram">Telegram (Admin)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Vencimento</label>
+                    <input type="date" id="clientExpiration">
+                </div>
+
+                <!-- NOVO CAMPO AQUI -->
+                <div class="form-group">
+                    <label>Começar a cobrar (Dias antes)</label>
+                    <input type="number" id="clientReminderDays" placeholder="Ex: 3" value="3" min="0" max="30">
+                    <small style="color: #999; font-size: 0.75rem;">Padrão: 3 dias antes</small>
+                </div>
+                <!-- FIM DO NOVO CAMPO -->
+            </div>
+
+            <div class="form-group">
+                <label>Servidor / Plano</label>
+                <input type="text" id="clientServer" placeholder="Ex: Servidor Premium 4K">
+            </div>
+            <div class="form-group">
+                <label>URL M3U8 (Opcional)</label>
+                <input type="text" id="clientM3u8" placeholder="http://servidor.com/get.php?username=...">
+            </div>
+            <div class="form-group">
+                <label>Observações</label>
+                <textarea id="clientNotes" rows="2" placeholder="Ex: Cliente prefere pagar via PIX..."></textarea>
+            </div>
+
+            <div style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <label style="font-weight: bold; color: var(--primary);">Informações Adicionais</label>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addCustomFieldInput()">+ Campo</button>
+                </div>
+                <div id="customFieldsContainer"></div>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeClientModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveClient()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE DETALHES -->
+    <div class="modal-overlay" id="detailsModal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeDetailsModal()">&times;</span>
+            <h3 style="margin-bottom: 1rem; color: var(--primary);">Detalhes do Cliente</h3>
+            <div id="detailsContent" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+            <div style="margin-top: 1.5rem; text-align: right;">
+                <button class="btn btn-secondary" onclick="closeDetailsModal()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AGENDAMENTO -->
+    <div class="modal-overlay" id="scheduleModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <span class="close-modal" onclick="closeScheduleModal()">&times;</span>
+            <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Configurar Agendamento</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Defina o horário diário para o envio automático das cobranças.
+            </p>
+            <div class="form-group">
+                <label>Horário do Envio</label>
+                <input type="time" id="scheduleTime" style="font-size: 1.2rem; text-align: center; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveSchedule()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE ENVIO EM MASSA (NOVO) -->
+    <div class="modal-overlay" id="batchModal">
+        <div class="modal-content" style="max-width: 450px;">
+            <span class="close-modal" onclick="closeBatchModal()">&times;</span>
+            <h3 style="margin-bottom: 1rem; color: var(--primary);">🚀 Envio em Massa</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Selecione qual grupo de clientes deve receber a notificação agora:
+            </p>
+
+            <div class="form-group">
+                <label>Critério de Envio</label>
+                <select id="batchFilter" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem;">
+                    <option value="default">⚡ Padrão (Respeitar configuração de cada cliente)</option>
+                    <option value="3">📅 Vencimento em 3 Dias</option>
+                    <option value="2">📅 Vencimento em 2 Dias</option>
+                    <option value="1">⏰ Vencimento em 1 Dia (Amanhã)</option>
+                    <option value="0">🚨 Vencimento Hoje</option>
+                    <option value="expired">❌ Vencidos (Ontem ou antes)</option>
+                </select>
+            </div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closeBatchModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="executeBatchProcess()" style="background-color: #8b5cf6; border-color: #8b5cf6;">Confirmar Envio</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
+
+    <script>
+        // ==========================================
+        // LÓGICA DE CLIENTES E FILTROS
+        // ==========================================
+
+        let allClients = [];
+        let currentFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadClients();
+            loadScheduleStatus(); // Carrega o status do agendamento ao iniciar
+        });
+
+        async function loadClients() {
+            const list = document.getElementById('clientsList');
+            try {
+                const response = await apiFetch('/clients');
+                const data = await response.json();
+
+                const today = new Date();
+                today.setHours(0,0,0,0);
+
+                allClients = data.map(client => {
+                    const expDate = new Date(client.expiration_date);
+                    expDate.setHours(0,0,0,0);
+                    const diffTime = expDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return { ...client, diffDays };
+                });
+
+                updateDashboardCounts();
+                applyFilters();
+            } catch (error) {
+                console.error(error);
+                list.innerHTML = `<div style="color: red; padding: 1rem;">Erro ao carregar clientes.</div>`;
+            }
+        }
+
+        function updateDashboardCounts() {
+            const counts = { all: allClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
+            allClients.forEach(c => {
+                if (c.diffDays < 0) counts.expired++;
+                if (c.diffDays === 1) counts.d1++;
+                if (c.diffDays === 2) counts.d2++;
+                if (c.diffDays === 3) counts.d3++;
+                if (c.diffDays === 4) counts.d4++;
+            });
+            document.getElementById('count-all').textContent = counts.all;
+            document.getElementById('count-expired').textContent = counts.expired;
+            document.getElementById('count-1').textContent = counts.d1;
+            document.getElementById('count-2').textContent = counts.d2;
+            document.getElementById('count-3').textContent = counts.d3;
+            document.getElementById('count-4').textContent = counts.d4;
+        }
+
+        function filterByStatus(status, cardElement) {
+            currentFilter = status;
+            document.querySelectorAll('.summary-card').forEach(c => c.classList.remove('active'));
+            if(cardElement) cardElement.classList.add('active');
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allClients.filter(client => {
+                let statusMatch = false;
+                if (currentFilter === 'all') statusMatch = true;
+                else if (currentFilter === 'expired') statusMatch = client.diffDays < 0;
+                else if (currentFilter === '1') statusMatch = client.diffDays === 1;
+                else if (currentFilter === '2') statusMatch = client.diffDays === 2;
+                else if (currentFilter === '3') statusMatch = client.diffDays === 3;
+                else if (currentFilter === '4') statusMatch = client.diffDays === 4;
+
+                const searchMatch =
+                    client.login.toLowerCase().includes(searchTerm) ||
+                    client.whatsapp.includes(searchTerm) ||
+                    client.name.toLowerCase().includes(searchTerm);
+                return statusMatch && searchMatch;
+            });
+            renderTable(filtered);
+        }
+
+        function renderTable(clients) {
+            const list = document.getElementById('clientsList');
+            if (clients.length === 0) {
+                list.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);">Nenhum cliente encontrado com estes filtros.</div>`;
+                return;
+            }
+
+            let html = `
+                <table class="clients-table">
+                    <thead>
+                        <tr>
+                            <th>Nome / Obs</th>
+                            <th>Login</th>
+                            <th>WhatsApp</th>
+                            <th>Vencimento</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            html += clients.map(client => {
+                let statusColor = 'var(--success)';
+                let statusText = `${client.diffDays} dias`;
+                if (client.diffDays < 0) { statusColor = 'var(--danger)'; statusText = 'Vencido'; }
+                else if (client.diffDays === 0) { statusColor = 'var(--warning)'; statusText = 'Vence Hoje'; }
+                else if (client.diffDays <= 3) { statusColor = 'var(--warning)'; }
+
+                const notesHtml = client.notes ? `<span class="client-note-inline">📝 ${client.notes}</span>` : '';
+
+                return `
+                <tr>
+                    <td>
+                        <div style="font-weight: bold; color: var(--text-dark);">${client.name}</div>
+                        ${notesHtml}
+                    </td>
+                    <td>${client.login}</td>
+                    <td>${client.whatsapp}</td>
+                    <td>${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
+                    <td><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary btn-sm" title="Enviar Cobrança Agora" onclick="sendManualReminder(${client.id})">📨</button>
+                            <button class="btn btn-secondary btn-sm" title="Detalhes" onclick='openDetailsModal(${JSON.stringify(client)})'>👁️</button>
+                            <button class="btn btn-primary btn-sm" title="Editar" onclick='openClientModal(${JSON.stringify(client)})'>✏️</button>
+                            <button class="btn btn-danger btn-sm" title="Excluir" onclick="deleteClient(${client.id})">🗑️</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+            html += `</tbody></table>`;
+            list.innerHTML = html;
+        }
+
+        // --- FUNÇÕES DE MODAL (CRUD) ---
+        function openClientModal(client = null) {
+            const modal = document.getElementById('clientModal');
+            const title = document.getElementById('modalTitle');
+            const container = document.getElementById('customFieldsContainer');
+            container.innerHTML = '';
+
+            if (client) {
+                title.textContent = "Editar Cliente";
+                document.getElementById('clientId').value = client.id;
+                document.getElementById('clientName').value = client.name;
+                document.getElementById('clientLogin').value = client.login;
+                document.getElementById('clientWhatsapp').value = client.whatsapp;
+                document.getElementById('clientNotificationChannel').value = client.notification_channel || 'whatsapp';
+                document.getElementById('clientExpiration').value = client.expiration_date;
+
+                // --- NOVA LINHA: Carrega os dias configurados ou usa 3 como padrão ---
+                document.getElementById('clientReminderDays').value = client.reminder_days_before || 3;
+                // --------------------------------------------------------------------
+
+                document.getElementById('clientServer').value = client.server_name;
+                document.getElementById('clientNotes').value = client.notes || '';
+                document.getElementById('clientM3u8').value = client.m3u8_url || '';
+                if (client.custom_fields) {
+                    Object.entries(client.custom_fields).forEach(([key, value]) => addCustomFieldInput(key, value));
+                }
+            } else {
+                title.textContent = "Novo Cliente";
+                document.getElementById('clientId').value = '';
+                document.querySelectorAll('#clientModal input, #clientModal textarea').forEach(i => i.value = '');
+                document.getElementById('clientNotificationChannel').value = 'whatsapp';
+
+                // --- NOVA LINHA: Define o padrão como 3 para novos clientes ---
+                document.getElementById('clientReminderDays').value = '3';
+                // --------------------------------------------------------------
+            }
+            modal.style.display = 'flex';
+        }
+
+        function closeClientModal() { document.getElementById('clientModal').style.display = 'none'; }
+
+        function addCustomFieldInput(key = '', value = '') {
+            const container = document.getElementById('customFieldsContainer');
+            const div = document.createElement('div');
+            div.className = 'dynamic-field-row';
+            div.innerHTML = `
+                <input type="text" placeholder="Nome do Campo" class="field-key" value="${key}">
+                <input type="text" placeholder="Valor" class="field-value" value="${value}">
+                <button class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">X</button>
+            `;
+            container.appendChild(div);
+        }
+
+        async function saveClient() {
+            const id = document.getElementById('clientId').value;
+            const customFields = {};
+            document.querySelectorAll('.dynamic-field-row').forEach(row => {
+                const key = row.querySelector('.field-key').value.trim();
+                const val = row.querySelector('.field-value').value.trim();
+                if (key) customFields[key] = val;
+            });
+
+            const data = {
+                name: document.getElementById('clientName').value,
+                login: document.getElementById('clientLogin').value,
+                whatsapp: document.getElementById('clientWhatsapp').value,
+                notification_channel: document.getElementById('clientNotificationChannel').value,
+                expiration_date: document.getElementById('clientExpiration').value,
+
+                // --- NOVA LINHA: Envia a configuração de dias para o backend ---
+                reminder_days_before: document.getElementById('clientReminderDays').value,
+                // ---------------------------------------------------------------
+
+                server_name: document.getElementById('clientServer').value,
+                notes: document.getElementById('clientNotes').value,
+                m3u8_url: document.getElementById('clientM3u8').value,
+                custom_fields: customFields
+            };
+
+            if (!data.name || !data.login || !data.expiration_date) { alert("Preencha os campos obrigatórios."); return; }
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `/clients/${id}` : '/clients/';
+
+            try {
+                const response = await apiFetch(url, { method: method, body: JSON.stringify(data) });
+                if (response.ok) {
+                    closeClientModal();
+                    loadClients();
+                    showNotification(id ? "Cliente atualizado!" : "Cliente criado!", "success");
+                } else { alert("Erro ao salvar."); }
+            } catch (error) { console.error(error); alert("Erro de conexão."); }
+        }
+
+        async function deleteClient(id) {
+            if(!confirm("Tem certeza que deseja excluir este cliente?")) return;
+            try {
+                await apiFetch(`/clients/${id}`, { method: 'DELETE' });
+                loadClients();
+                showNotification("Cliente removido.", "info");
+            } catch (e) { console.error(e); }
+        }
+
+        function openDetailsModal(client) {
+            const modal = document.getElementById('detailsModal');
+            const content = document.getElementById('detailsContent');
+            let customFieldsHtml = '';
+            if (client.custom_fields && Object.keys(client.custom_fields).length > 0) {
+                customFieldsHtml = `<h4 style="margin-top:10px; border-bottom:1px solid #eee;">Infos Adicionais</h4>`;
+                Object.entries(client.custom_fields).forEach(([key, value]) => {
+                    customFieldsHtml += `<div><strong>${key}:</strong> ${value}</div>`;
+                });
+            }
+            const m3u8Html = client.m3u8_url ? `<div style="background: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 0.85rem;"><strong>M3U8:</strong> <a href="${client.m3u8_url}" target="_blank">${client.m3u8_url}</a></div>` : '';
+            const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
+
+            content.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div><strong>Nome:</strong> ${client.name}</div>
+                    <div><strong>Login:</strong> ${client.login}</div>
+                    <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
+                    <div><strong>Canal:</strong> ${channelIcon}</div>
+                    <div><strong>Vencimento:</strong> ${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</div>
+                    <div><strong>Servidor:</strong> ${client.server_name}</div>
+                </div>
+                ${client.notes ? `<div style="margin-top:10px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:5px;"><strong>Obs:</strong> ${client.notes}</div>` : ''}
+                ${customFieldsHtml} ${m3u8Html}
+            `;
+            modal.style.display = 'flex';
+        }
+        function closeDetailsModal() { document.getElementById('detailsModal').style.display = 'none'; }
+
+        // ==========================================
+        // LÓGICA DE AGENDAMENTO E ENVIO MANUAL
+        // ==========================================
+
+        async function loadScheduleStatus() {
+            try {
+                const response = await apiFetch('/users/me/schedule');
+                if (response.ok) {
+                    const data = await response.json();
+                    // Atualiza o texto do horário
+                    document.getElementById('displayScheduleTime').textContent = data.time || "--:--";
+                    document.getElementById('scheduleTime').value = data.time || "09:00";
+
+                    // Atualiza o Toggle (Switch)
+                    document.getElementById('scheduleToggle').checked = data.enabled;
+                }
+            } catch (error) {
+                console.error("Erro ao carregar agendamento:", error);
+            }
+        }
+
+        async function toggleSchedule() {
+            const isEnabled = document.getElementById('scheduleToggle').checked;
+            const time = document.getElementById('displayScheduleTime').textContent;
+
+            try {
+                // Envia a atualização para o backend
+                await apiFetch('/users/me/schedule', {
+                    method: 'PUT',
+                    body: JSON.stringify({ time: time, enabled: isEnabled })
+                });
+                showNotification(isEnabled ? "Agendamento ativado!" : "Agendamento desativado.", isEnabled ? "success" : "warning");
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao atualizar status.");
+                // Reverte o switch em caso de erro
+                document.getElementById('scheduleToggle').checked = !isEnabled;
+            }
+        }
+
+        function openScheduleModal() { document.getElementById('scheduleModal').style.display = 'flex'; }
+        function closeScheduleModal() { document.getElementById('scheduleModal').style.display = 'none'; }
+
+        async function saveSchedule() {
+            const time = document.getElementById('scheduleTime').value;
+            const isEnabled = document.getElementById('scheduleToggle').checked;
+
+            if (!time) { alert("Selecione um horário."); return; }
+
+            try {
+                const response = await apiFetch('/users/me/schedule', {
+                    method: 'PUT',
+                    body: JSON.stringify({ time: time, enabled: isEnabled })
+                });
+
+                if (response.ok) {
+                    document.getElementById('displayScheduleTime').textContent = time;
+                    showNotification(`Horário atualizado para ${time}`, "success");
+                    closeScheduleModal();
+                } else { alert("Erro ao salvar."); }
+            } catch (error) { console.error(error); alert("Erro de conexão."); }
+        }
+
+        // --- ENVIO MANUAL ---
+        async function sendManualReminder(clientId) {
+            if(!confirm("Deseja enviar a mensagem de cobrança agora? \n(A mensagem seguirá a mesma regra do agendador baseada na data de vencimento)")) return;
+
+            try {
+                const response = await apiFetch(`/clients/${clientId}/remind`, { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showNotification(result.message, "success");
+                } else {
+                    // Mostra aviso se não houver critério (ex: faltam 10 dias)
+                    alert(result.detail || "Erro ao enviar.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao processar envio.");
+            }
+        }
+
+        // --- ENVIO EM MASSA (EXECUÇÃO MANUAL DA ROTINA) ---
+
+        // 1. Abre o modal para escolher o filtro
+        function runBatchProcess() {
+            document.getElementById('batchModal').style.display = 'flex';
+        }
+
+        // 2. Fecha o modal
+        function closeBatchModal() {
+            document.getElementById('batchModal').style.display = 'none';
+        }
+
+        // 3. Executa o envio com o filtro selecionado
+        async function executeBatchProcess() {
+            const filterType = document.getElementById('batchFilter').value;
+
+            closeBatchModal();
+            showNotification("Iniciando envio em massa...", "info");
+
+            try {
+                // Enviamos o filtro via Query Parameter para o backend
+                // Ex: /clients/process-now?filter_type=3
+                const response = await apiFetch(`/clients/process-now?filter_type=${filterType}`, { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showNotification(result.message, "success");
+                } else {
+                    alert(result.detail || "Erro ao processar.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro de conexão ao tentar executar a rotina.");
+            }
+        }
+    </script>
+</body>
+</html>
+============================================================
 FILE: frontend\dashboard.html
 ============================================================
 <!DOCTYPE html>
@@ -1669,36 +3610,46 @@ FILE: frontend\dashboard.html
         <div class="brand-logo">NEXUS<span>MONITOR</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
-
     <div class="dashboard-container">
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
-
             <nav class="sidebar-menu">
+                <!-- Link Dashboard (SPA - usa data-section) -->
                 <a href="#" class="sidebar-link active" data-section="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
+
+                <!-- Link Clientes (Página Separada - usa href direto) -->
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+
+                <!-- Link WhatsApp (SPA - usa data-section) -->
                 <a href="#" class="sidebar-link" data-section="whatsapp">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
+
+                <!-- Link Telegram (SPA - usa data-section) -->
+                <a href="#" class="sidebar-link" data-section="telegram">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+
+                <!-- Link Configurações (SPA - usa data-section) -->
                 <a href="#" class="sidebar-link" data-section="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
             </nav>
-
             <div class="user-profile">
                 <div class="user-info" id="userName">Carregando...</div>
                 <div class="user-role">Administrador</div>
                 <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
             </div>
         </aside>
-
         <!-- MAIN CONTENT -->
         <main class="main-content">
-
             <!-- SECTION: DASHBOARD -->
             <section id="section-dashboard" class="content-section">
                 <div class="page-header">
@@ -1707,7 +3658,6 @@ FILE: frontend\dashboard.html
                         <p>Monitoramento em tempo real de serviços DNS e HTTP.</p>
                     </div>
                 </div>
-
                 <!-- Stats Row -->
                 <div class="stats-grid">
                     <div class="stat-card success">
@@ -1739,7 +3689,6 @@ FILE: frontend\dashboard.html
                         </div>
                     </div>
                 </div>
-
                 <!-- Add URL Form -->
                 <div class="card">
                     <h3 style="margin-bottom: 1rem; color: var(--primary);">Adicionar Novo Monitoramento</h3>
@@ -1763,7 +3712,6 @@ FILE: frontend\dashboard.html
                         <button class="btn btn-primary" onclick="addURL()" style="height: 42px;">+ Adicionar</button>
                     </div>
                 </div>
-
                 <!-- URL Grid -->
                 <h3 style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Monitores Ativos</h3>
                 <div id="urlsList" class="urls-grid">
@@ -1773,28 +3721,120 @@ FILE: frontend\dashboard.html
                     </div>
                 </div>
             </section>
-
             <!-- SECTION: WHATSAPP -->
             <section id="section-whatsapp" class="content-section" style="display: none;">
                 <!-- Injetado via JS -->
             </section>
-
+            <!-- SECTION: TELEGRAM (NOVO) -->
+            <section id="section-telegram" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Integração Telegram</h2>
+                        <p>Configure seu bot para receber alertas.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">Configuração do Bot</h3>
+                    <div class="form-group">
+                        <label>Bot Token</label>
+                        <input type="text" id="telegramToken" placeholder="Ex: 123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ">
+                        <small style="color: var(--text-muted);">O token fornecido pelo @BotFather.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Chat ID</label>
+                        <input type="text" id="telegramChatId" placeholder="Ex: -100123456789 ou 987654321">
+                        <small style="color: var(--text-muted);">ID do usuário, grupo ou canal.</small>
+                    </div>
+                        <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 Salvar Telegram</button>
+                        <button class="btn btn-secondary" onclick="testTelegram()">🔔 Enviar Teste</button>
+                </div>
+                <!-- TUTORIAL -->
+                <div class="card" style="margin-top: 2rem;">
+                    <h3 style="color: var(--primary); margin-bottom: 1rem;">📚 Como Configurar</h3>
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <!-- Passo 1 -->
+                        <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--primary);">
+                            <h4 style="margin-bottom: 0.5rem;">1. Criar o Bot</h4>
+                            <ol style="margin-left: 1.5rem; color: var(--text-muted);">
+                                <li>Abra o Telegram e pesquise por <strong>@BotFather</strong>.</li>
+                                <li>Envie o comando <code>/newbot</code>.</li>
+                                <li>Escolha um nome para o bot (ex: <em>Meu Monitor</em>).</li>
+                                <li>Escolha um username (deve terminar em 'bot', ex: <em>meu_monitor_bot</em>).</li>
+                                <li>O BotFather enviará o <strong>Token</strong>. Copie e cole no campo acima.</li>
+                            </ol>
+                        </div>
+                        <!-- Passo 2 -->
+                        <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--success);">
+                            <h4 style="margin-bottom: 0.5rem;">2. Descobrir o Chat ID</h4>
+                            <p style="font-size: 0.9rem; margin-bottom: 0.5rem;">Dependendo de onde você quer receber os alertas:</p>
+                            <details>
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">👤 Para você (Mensagem Privada)</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Inicie uma conversa com seu novo bot (clique em Começar/Start).<br>
+                                    2. Pesquise por <strong>@userinfobot</strong> no Telegram.<br>
+                                    3. Envie qualquer mensagem para ele.<br>
+                                    4. Ele responderá com seu ID (ex: <code>123456789</code>). Copie este número.
+                                </p>
+                            </details>
+                            <details style="margin-top: 0.5rem;">
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">👥 Para um Grupo</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Adicione o seu bot no grupo desejado.<br>
+                                    2. Adicione também o bot <strong>@RawDataBot</strong> no grupo.<br>
+                                    3. Assim que entrar, o RawDataBot enviará um JSON. Procure por <code>"chat": { "id": -100... }</code>.<br>
+                                    4. Copie esse ID (incluindo o sinal de menos).<br>
+                                    5. Remova o RawDataBot do grupo depois.
+                                </p>
+                            </details>
+                            <details style="margin-top: 0.5rem;">
+                                <summary style="cursor: pointer; font-weight: bold; color: var(--primary);">📢 Para um Canal</summary>
+                                <p style="margin-top: 0.5rem; color: var(--text-muted);">
+                                    1. Adicione o bot como <strong>Administrador</strong> do canal.<br>
+                                    2. Encaminhe uma mensagem qualquer desse canal para o bot <strong>@getidsbot</strong>.<br>
+                                    3. Ele retornará o ID do canal (começa com -100).
+                                </p>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </section>
             <!-- SECTION: SETTINGS -->
             <section id="section-settings" class="content-section" style="display: none;">
                 <div class="page-header">
                     <div class="page-title">
                         <h2>Configurações</h2>
-                        <p>Ajustes do sistema.</p>
+                        <p>Personalize suas preferências de notificação.</p>
                     </div>
                 </div>
                 <div class="card">
-                    <p>Funcionalidade em desenvolvimento.</p>
+                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Destinatário das Notificações</h3>
+                    <div class="form-group">
+                        <label for="settingsPhone">Número do WhatsApp (DDI+DDD+Número)</label>
+                        <input type="text" id="settingsPhone" placeholder="Ex: 5511999999999">
+                        <small style="color: var(--text-muted);">Este é o número que receberá os alertas automáticos.</small>
+                    </div>
+                    <h3 style="margin-bottom: 1rem; margin-top: 2rem; color: var(--primary);">Tipos de Notificação</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifyDown" style="width: auto;">
+                            <span>🔴 Notificar quando um site/serviço cair (OFFLINE)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifyUp" style="width: auto;">
+                            <span>🟢 Notificar quando o serviço voltar (ONLINE)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="checkNotifySlow" style="width: auto;">
+                            <span>⚠️ Notificar lentidão na resposta (Slow Response)</span>
+                        </label>
+                    </div>
+                    <div style="margin-top: 2rem;">
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 Salvar Configurações</button>
+                    </div>
                 </div>
             </section>
-
         </main>
     </div>
-
     <script src="assets/js/dashboard.js"></script>
 </body>
 </html>
@@ -1939,235 +3979,92 @@ FILE: frontend\login.html
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Monitor DNS</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .login-box {
-            background: rgba(30, 41, 59, 0.95);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            padding: 40px;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 420px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-        }
-
-        .login-box h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-            color: #22c55e;
-            text-align: center;
-        }
-
-        .login-box p {
-            text-align: center;
-            opacity: 0.7;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            color: #94a3b8;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 12px 16px;
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            border-radius: 8px;
-            color: #fff;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #22c55e;
-            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
-        }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            background: #22c55e;
-            border: none;
-            border-radius: 8px;
-            color: #0f172a;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 10px;
-        }
-
-        .btn:hover:not(:disabled) {
-            background: #16a34a;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(34, 197, 94, 0.3);
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .alert.show {
-            display: block;
-        }
-
-        .alert-error {
-            background: rgba(239, 68, 68, 0.2);
-            border: 1px solid #ef4444;
-            color: #fca5a5;
-        }
-
-        .alert-success {
-            background: rgba(34, 197, 94, 0.2);
-            border: 1px solid #22c55e;
-            color: #86efac;
-        }
-
-        .register-link {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 14px;
-            color: #94a3b8;
-        }
-
-        .register-link a {
-            color: #3b82f6;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .register-link a:hover {
-            text-decoration: underline;
-        }
-    </style>
+    <title>Login | Nexus Monitor</title>
+    <!-- Link para o CSS principal -->
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
-<body>
-    <div class="login-box">
-        <h1>🔍 Monitor DNS</h1>
-        <p>Faça login para acessar o dashboard</p>
+<body class="auth-body">
 
-        <div id="alert" class="alert"></div>
-
-        <form id="login-form">
-            <div class="form-group">
-                <label for="email">E-mail</label>
-                <input type="email" id="email" required placeholder="seu@email.com">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <p>Entre para acessar o painel</p>
             </div>
 
-            <div class="form-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" required placeholder="Sua senha">
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" placeholder="seu@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" placeholder="Sua senha" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Não tem uma conta? <a href="register.html">Criar conta</a></p>
             </div>
 
-            <button type="submit" class="btn" id="btn-login">Entrar</button>
-        </form>
-
-        <div class="register-link">
-            Não tem uma conta? <a href="register.html">Cadastre-se</a>
+            <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.9rem; min-height: 20px;"></div>
         </div>
     </div>
 
     <script>
-        const API_URL = "http://127.0.0.1:8000";
-        const form = document.getElementById("login-form");
-        const alertBox = document.getElementById("alert");
-        const btn = document.getElementById("btn-login");
+        const API_URL = 'http://localhost:8000';
 
-        function showAlert(type, message) {
-            alertBox.className = `alert show alert-${type}`;
-            alertBox.textContent = message;
-        }
+        async function handleLogin(event) {
+            event.preventDefault();
 
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const msgDiv = document.getElementById('message');
 
-            const email = document.getElementById("email").value;
-            const password = document.getElementById("password").value;
-
-            btn.disabled = true;
-            btn.textContent = "Entrando...";
-            showAlert("success", "Entrando..."); // Feedback imediato
+            msgDiv.textContent = 'Autenticando...';
+            msgDiv.style.color = '#64748b'; // Cor neutra
 
             try {
-                console.log("📤 Enviando credenciais para:", `${API_URL}/token`);
-
+                // O padrão OAuth2 do FastAPI espera dados como form-urlencoded
                 const formData = new URLSearchParams();
-                formData.append("username", email); // OAuth2 espera 'username'
-                formData.append("password", password);
+                formData.append('username', email); // O backend espera o campo 'username'
+                formData.append('password', password);
 
-                const res = await fetch(`${API_URL}/token`, {
-                    method: "POST",
+                const response = await fetch(`${API_URL}/token`, {
+                    method: 'POST',
                     headers: {
-                        "Content-Type": "application/x-www-form-urlencoded",
+                        'Content-Type': 'application/x-www-form-urlencoded'
                     },
-                    body: formData.toString(),
+                    body: formData
                 });
 
-                console.log("📥 Resposta status:", res.status);
-                const data = await res.json();
-                console.log("📥 Resposta data:", data);
+                if (response.ok) {
+                    const data = await response.json();
+                    // Salva o token no LocalStorage
+                    localStorage.setItem('token', data.access_token);
 
-                if (!res.ok) {
-                    throw new Error(data.detail || "Erro ao fazer login");
+                    msgDiv.textContent = 'Login realizado! Redirecionando...';
+                    msgDiv.style.color = 'var(--success)'; // Verde do tema
+
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1000);
+                } else {
+                    msgDiv.textContent = 'E-mail ou senha incorretos.';
+                    msgDiv.style.color = 'var(--danger)'; // Vermelho do tema
                 }
-
-                console.log("✅ Login bem-sucedido! Token recebido.");
-                localStorage.setItem("token", data.access_token);
-                showAlert("success", "Login bem-sucedido! Redirecionando...");
-
-                setTimeout(() => {
-                    window.location.href = "dashboard.html";
-                }, 1000);
-
-            } catch (err) {
-                console.error("❌ Erro:", err);
-                showAlert("error", err.message);
-                btn.disabled = false;
-                btn.textContent = "Entrar";
+            } catch (error) {
+                console.error(error);
+                msgDiv.textContent = 'Erro de conexão com o servidor.';
+                msgDiv.style.color = 'var(--danger)';
             }
-        });
+        }
     </script>
 </body>
 </html>
-
 ============================================================
 FILE: frontend\qrcode.html
 ============================================================
@@ -2405,76 +4302,91 @@ FILE: frontend\register.html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8" />
-    <title>Cadastro - Monitor DNS</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="assets/css/style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Conta | Nexus Monitor</title>
+    <!-- Link para o CSS principal -->
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
-<body>
-    <main class="form-container">
-        <h1>🔍 Monitor DNS</h1>
-        <p>Crie sua conta para começar</p>
+<body class="auth-body">
 
-        <form id="registerForm">
-            <div class="form-group">
-                <label for="name">Nome</label>
-                <input id="name" type="text" required />
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <p>Crie sua conta para começar a monitorar</p>
             </div>
 
-            <div class="form-group">
-                <label for="email">E-mail</label>
-                <input id="email" type="email" required />
+            <form id="registerForm" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="name">Nome Completo</label>
+                    <input type="text" id="name" placeholder="Seu nome" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" placeholder="seu@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" placeholder="Sua senha segura" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Criar Conta</button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Já tem uma conta? <a href="login.html">Fazer Login</a></p>
             </div>
 
-            <div class="form-group">
-                <label for="password">Senha</label>
-                <input id="password" type="password" required />
-            </div>
+            <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.9rem;"></div>
+        </div>
+    </div>
 
-            <button type="submit" class="btn btn-primary btn-block">Cadastrar</button>
-        </form>
-
-        <p class="mt-3 text-muted">
-            Já tem uma conta?
-            <a href="login.html">Faça login</a>
-        </p>
-    </main>
-
-    <script src="assets/js/script.js"></script>
     <script>
         const API_URL = 'http://localhost:8000';
 
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('name').value.trim();
-            const email = document.getElementById('email').value.trim();
+        async function handleRegister(event) {
+            event.preventDefault();
+
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const msgDiv = document.getElementById('message');
+
+            msgDiv.textContent = 'Criando conta...';
+            msgDiv.style.color = '#666';
 
             try {
-                const resp = await fetch(`${API_URL}/register`, {
+                const response = await fetch(`${API_URL}/register`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ name, email, password }),
+                    body: JSON.stringify({ name, email, password })
                 });
 
-                if (resp.ok) {
-                    alert('Usuário cadastrado com sucesso! Faça login.');
-                    window.location.href = 'login.html';
+                if (response.ok) {
+                    msgDiv.textContent = 'Conta criada com sucesso! Redirecionando...';
+                    msgDiv.style.color = 'green';
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
                 } else {
-                    const err = await resp.json();
-                    alert(err.detail || 'Erro ao cadastrar.');
+                    const data = await response.json();
+                    msgDiv.textContent = data.detail || 'Erro ao criar conta.';
+                    msgDiv.style.color = 'red';
                 }
-            } catch (err) {
-                console.error(err);
-                alert('Erro ao cadastrar.');
+            } catch (error) {
+                console.error(error);
+                msgDiv.textContent = 'Erro de conexão com o servidor.';
+                msgDiv.style.color = 'red';
             }
-        });
+        }
     </script>
 </body>
 </html>
-
 ============================================================
 FILE: frontend\whatsapp.html
 ============================================================
@@ -2483,240 +4395,107 @@ FILE: frontend\whatsapp.html
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code WhatsApp</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-            color: #333;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        #qrContent {
-            margin: 20px 0;
-            min-height: 300px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-        }
-        #qrContent img {
-            max-width: 250px;
-            height: auto;
-            border: 1px solid #eee;
-            border-radius: 5px;
-        }
-        .status-text {
-            font-size: 16px;
-            color: #555;
-            font-weight: 500;
-        }
-        .loading {
-            color: #667eea;
-        }
-        .error {
-            color: #e74c3c;
-        }
-        .success {
-            color: #27ae60;
-        }
-        .info {
-            color: #3498db;
-        }
-        .btn-close {
-            background-color: #f44336;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 20px;
-            transition: background-color 0.3s ease;
-        }
-        .btn-close:hover {
-            background-color: #d32f2f;
-        }
-    </style>
+    <title>Integração WhatsApp | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Conectar WhatsApp</h1>
-        <div id="qrContent">
-            <p class="status-text loading" id="statusText">Iniciando conexão...</p>
-            <!-- O QR Code será inserido aqui -->
-        </div>
-        <button class="btn-close" onclick="window.close()">Fechar</button>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
 
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <!-- Link Ativo -->
+                <a href="whatsapp.html" class="sidebar-link active">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <!-- A seção do WhatsApp é carregada dinamicamente pelo JS,
+                 mas precisamos da estrutura base aqui para ele injetar -->
+            <section id="section-whatsapp" class="content-section" style="display: block;">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Integração WhatsApp</h2>
+                        <p>Gateway de notificações via Evolution API.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Status da Conexão</h3>
+
+                    <!-- Área de Status e Ações -->
+                    <div id="connectionStateArea">
+                        <div id="whatsappStatusContainer" class="whatsapp-status-box">
+                            <div class="spinner"></div>
+                            <div>Verificando status do gateway...</div>
+                        </div>
+
+                        <!-- Formulário de Conexão -->
+                        <div id="connectForm" style="display:none; margin-top: 2rem; text-align: center;">
+                            <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
+                            <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
+                        </div>
+
+                        <!-- Ações quando conectado -->
+                        <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
+                            <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
+                            <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
+                        </div>
+                    </div>
+
+                    <!-- Área do QR Code -->
+                    <div id="qrCodeContainer" class="qr-container" style="display: none;">
+                        <h4 style="color: var(--primary); margin-bottom: 1rem;">Escaneie para Conectar</h4>
+                        <div id="qrCodeImageWrapper" style="min-height: 260px; display: flex; align-items: center; justify-content: center;">
+                            <div class="spinner"></div>
+                        </div>
+                        <p style="margin-top: 1rem; color: var(--text-muted);">Abra o WhatsApp > Aparelhos Conectados > Conectar Aparelho</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="assets/js/dashboard.js"></script>
     <script>
-        const API_BASE_URL = 'http://localhost:8000'; // <<<<<<< AJUSTE AQUI SE SEU BACKEND ESTIVER EM OUTRA URL
-        let checkInterval = null;
-        let instanceName = null;
-        let whatsappNumber = null;
-
-        // Função para obter o token JWT do localStorage
-        function getToken() {
-            return localStorage.getItem('accessToken');
-        }
-
-        // Função para obter parâmetros da URL
-        function getUrlParameter(name) {
-            name = name.replace(/[|$]/, '\|$').replace(/[$|]/, '\$|');
-            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-            var results = regex.exec(location.search);
-            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            const token = getToken();
-            if (!token) {
-                document.getElementById('statusText').textContent = 'Erro: Usuário não autenticado.';
-                document.getElementById('statusText').className = 'status-text error';
-                return;
-            }
-
-            whatsappNumber = getUrlParameter('number');
-            if (!whatsappNumber) {
-                document.getElementById('statusText').textContent = 'Erro: Número do WhatsApp não fornecido.';
-                documentclassName = 'status-text loading';
-
-            try {
-                // 1. Chamar /whatsapp/connect para criar a instância
-                const connectResponse = await fetch(`${API_BASE_URL}/whatsapp/connect`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ number: whatsappNumber })
-                });
-                const connectData = await connectResponse.json();
-                console.log('Connect Response:', connectData);
-
-                if (!connectResponse.ok || !connectData.success) {
-                    document.getElementById('statusText').textContent = connectData.detail || connectData.message || 'Erro ao iniciar conexão.';
-                    document.getElementById('statusText').className = 'status-text error';
-                    return;
-                }
-
-                instanceName = connectData.instance_name;
-                document.getElementById('statusText').textContent = connectData.message || 'Instância criada. Aguardando QR Code...';
-                document.getElementById('statusText').className = 'status-text info';
-
-                // Inicia o polling para o status
-                startPolling();
-
-            } catch (error) {
-                console.error('Erro ao conectar WhatsApp:', error);
-                document.getElementById('statusText').textContent = 'Erro de rede ou servidor ao conectar.';
-                document.getElementById('statusText').className = 'status-text error';
-            }
-        });
-
-        function startPolling() {
-            if (checkInterval) {
-                clearInterval(checkInterval);
-            }
-            // Chama imediatamente e depois a cada 3 segundos
-            fetchStatus();
-            checkInterval = setInterval(fetchStatus, 3000);
-        }
-
-        async function fetchStatus() {
-            if (!instanceName) {
-                document.getElementById('statusText').textContent = 'Erro: Nome da instância não disponível.';
-                document.getElementById('statusText').className = 'status-text error';
-                clearInterval(checkInterval);
-                return;
-            }
-
-            const token = getToken();
-            try {
-                // 2. Chamar /whatsapp/status para obter o QR Code e o estado
-                const response = await fetch(`${API_BASE_URL}/whatsapp/status`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                const data = await response.json();
-                console.log('Status Polling Data:', data);
-
-                const qrContentDiv = document.getElementById('qrContent');
-                const statusTextP = document.getElementById('statusText');
-
-                if (!response.ok) {
-                    statusTextP.textContent = data.detail || data.message || 'Erro ao obter status.';
-                    statusTextP.className = 'status-text error';
-                    qrContentDiv.innerHTML = `<p class="status-text error">${statusTextP.textContent}</p>`;
-                    clearInterval(checkInterval);
-                    return;
-                }
-
-                const { connected, qr_code, state, message } = data;
-
-                if (connected) {
-                    statusTextP.textContent = '✅ Conectado com sucesso!';
-                    statusTextP.className = 'status-text success';
-                    qrContentDiv.innerHTML = `<p class="status-text success">✅ Conectado com sucesso!</p>`;
-                    clearInterval(checkInterval);
-
-                    // Atualiza dashboard da janela pai e fecha o popup
-                    if (window.opener && typeof window.opener.loadUserData === 'function') {
-                        window.opener.loadUserData();
-                    }
-                    setTimeout(() => { window.close(); }, 2000); // Fecha após 2 segundos
-                } else if (qr_code) {
-                    statusTextP.textContent = message || `📱 Escaneie o QR Code para conectar (Estado: ${state}).`;
-                    statusTextP.className = 'status-text info';
-                    qrContentDiv.innerHTML = `<img src="${qr_code}" alt="QR Code WhatsApp"><p class="status-text info">${statusTextP.textContent}</p>`;
-                } else {
-                    statusTextP.textContent = message || `⏳ Aguardando QR Code... (Estado: ${state}).`;
-                    statusTextP.className = 'status-text loading';
-                    qrContentDiv.innerHTML = `<p class="status-text loading">${statusTextP.textContent}</p>`;
-                }
-
-            } catch (error) {
-                console.error('Erro no polling de status:', error);
-                document.getElementById('statusText').textContent = 'Erro de rede ou servidor ao verificar status.';
-                document.getElementById('statusText').className = 'status-text error';
-                clearInterval(checkInterval);
-            }
-        }
-
-        // Limpar interval ao fechar
-        window.addEventListener('beforeunload', () => {
-            if (checkInterval) {
-                clearInterval(checkInterval);
+        // Script inline simples para garantir que o status carregue ao abrir esta página específica
+        document.addEventListener('DOMContentLoaded', () => {
+            // Verifica se a função existe no dashboard.js antes de chamar
+            if (typeof loadWhatsAppStatus === 'function') {
+                loadWhatsAppStatus();
             }
         });
     </script>
 </body>
 </html>
-
 ============================================================
 FILE: frontend\assets\css\style.css
 ============================================================
@@ -2761,8 +4540,8 @@ body {
     color: var(--text-main);
     font-size: 14px;
     line-height: 1.5;
-    height: 100vh;
-    overflow: hidden; /* Sidebar scroll handling */
+    min-height: 100vh;
+    /* overflow: hidden; -> REMOVIDO DAQUI para não travar a tela de login */
 }
 
 /* =========================================
@@ -2804,6 +4583,14 @@ body {
 }
 .btn-icon:hover { color: var(--danger); background: var(--danger-bg); }
 
+.btn-block {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: 0.85rem;
+    font-size: 1rem;
+    justify-content: center;
+}
+
 /* Forms */
 .form-group { margin-bottom: 1rem; }
 label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-main); }
@@ -2833,33 +4620,13 @@ input:focus, select:focus {
 }
 
 /* =========================================
-   LAYOUT: LOGIN
-   ========================================= */
-.auth-wrapper {
-    display: flex;
-    height: 100vh;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--primary) 0%, #1e1b4b 100%);
-}
-
-.auth-card {
-    background: white;
-    padding: 2.5rem;
-    border-radius: 12px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
-
-.auth-header { text-align: center; margin-bottom: 2rem; }
-.auth-header h1 { color: var(--primary); font-size: 1.5rem; font-weight: 700; }
-.auth-header p { color: var(--text-muted); }
-
-/* =========================================
    LAYOUT: DASHBOARD
    ========================================= */
-.dashboard-container { display: flex; height: 100vh; }
+.dashboard-container {
+    display: flex;
+    height: 100vh;
+    overflow: hidden; /* ADICIONADO AQUI: Só o dashboard não deve rolar a página inteira */
+}
 
 /* Sidebar */
 .sidebar {
@@ -3036,16 +4803,225 @@ input:focus, select:focus {
     .dashboard-container { flex-direction: column; }
     .main-content { padding: 1rem; }
 }
+
+/* =========================================
+   LAYOUT: AUTHENTICATION (LOGIN/REGISTER)
+   ========================================= */
+.auth-body {
+    background-color: var(--bg-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    width: 100%;
+    margin: 0;
+    padding: 20px 0;
+    /* Rolagem habilitada nativamente pois removemos overflow:hidden do body */
+}
+
+.auth-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    margin: auto;
+}
+
+.auth-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.5);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.auth-header .brand-logo {
+    color: var(--primary);
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.auth-header p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.auth-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.auth-footer a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.auth-footer a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+/* --- Responsividade para Celulares --- */
+@media (max-width: 480px) {
+    .auth-card {
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-header .brand-logo {
+        font-size: 1.5rem;
+    }
+
+    .auth-container {
+        padding: 15px;
+    }
+}
+============================================================
+FILE: frontend\assets\js\clients.js
+============================================================
+// frontend/assets/js/clients.js
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadClients();
+});
+
+function openTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+async function addClient(event) {
+    event.preventDefault();
+
+    const clientData = {
+        name: document.getElementById('cName').value,
+        login: document.getElementById('cLogin').value,
+        server_name: document.getElementById('cServer').value,
+        whatsapp: document.getElementById('cWhatsapp').value.replace(/\D/g, ''),
+        expiration_date: document.getElementById('cDate').value,
+        notes: document.getElementById('cNotes').value,
+        m3u8_url: document.getElementById('cM3u8').value,
+        notify_downtime: document.getElementById('cNotifyDowntime').checked,
+        reminder_enabled: document.getElementById('cReminderEnabled').checked,
+        reminder_days_before: document.getElementById('cReminderDays').value,
+        notify_after_expiration: document.getElementById('cNotifyAfter').checked
+    };
+
+    try {
+        const response = await apiFetch('/clients/', {
+            method: 'POST',
+            body: JSON.stringify(clientData)
+        });
+
+        if (response.ok) {
+            showNotification('Cliente cadastrado com sucesso!', 'success');
+            document.getElementById('clientForm').reset();
+            loadClients();
+        } else {
+            const err = await response.json();
+            showNotification('Erro: ' + (err.detail || 'Falha ao salvar'), 'error');
+        }
+    } catch (error) {
+        console.error(error);
+        showNotification('Erro de conexão.', 'error');
+    }
+}
+
+async function loadClients() {
+    const tbody = document.getElementById('clientsList');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Carregando...</td></tr>';
+
+    try {
+        const response = await apiFetch('/clients/');
+        const clients = await response.json();
+
+        if (clients.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #999;">Nenhum cliente cadastrado.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = clients.map(c => {
+            // Formata data
+            const dateObj = new Date(c.expiration_date);
+            const dateStr = dateObj.toLocaleDateString('pt-BR');
+
+            // Verifica se está vencido para mudar a cor
+            const today = new Date();
+            const isExpired = dateObj < today;
+            const badgeClass = isExpired ? 'badge-expiring' : 'badge-date';
+
+            return `
+                <tr>
+                    <td>
+                        <div style="font-weight:600">${c.name}</div>
+                        <div style="font-size:0.8rem; color:#666">👤 ${c.login}</div>
+                    </td>
+                    <td>${c.whatsapp}</td>
+                    <td><span class="${badgeClass}">${dateStr}</span></td>
+                    <td>${c.server_name || '-'}</td>
+                    <td>
+                        ${c.notify_downtime ? '✅ Quedas' : '❌ Quedas'}<br>
+                        ${c.reminder_enabled ? '✅ Cobrança' : '❌ Cobrança'}
+                    </td>
+                    <td>
+                        <button class="btn-icon" onclick="sendMsg(${c.id})" title="Enviar Mensagem">💬</button>
+                        <button class="btn-icon" onclick="deleteClient(${c.id})" title="Excluir">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: red;">Erro ao carregar clientes.</td></tr>';
+    }
+}
+
+async function deleteClient(id) {
+    if(!confirm("Tem certeza que deseja excluir este cliente?")) return;
+
+    try {
+        const response = await apiFetch(`/clients/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            showNotification('Cliente removido.', 'success');
+            loadClients();
+        } else {
+            showNotification('Erro ao remover.', 'error');
+        }
+    } catch (e) {
+        showNotification('Erro de conexão.', 'error');
+    }
+}
+
+function sendMsg(id) {
+    // Aqui você pode abrir um modal futuramente para escolher qual mensagem enviar
+    const msg = prompt("Digite a mensagem personalizada para enviar agora:");
+    if (msg) {
+        // Lógica futura para enviar mensagem via endpoint do WhatsApp
+        showNotification("Funcionalidade de envio direto em desenvolvimento.", "info");
+    }
+}
 ============================================================
 FILE: frontend\assets\js\dashboard.js
 ============================================================
 /**
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
- * carregamento de dados, navegação e interação com a API de monitoramento e WhatsApp.
- * @version 2.0
+ * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
+ * @version 2.6
  */
-
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
@@ -3061,87 +5037,132 @@ document.addEventListener('DOMContentLoaded', () => {
     // A verificação de auth agora é feita pelo apiFetch,
     // mas mantemos uma inicial para o primeiro carregamento.
     if (!localStorage.getItem('token')) {
-        window.location.href = 'login.html';
+        redirectToLogin();
         return;
     }
-
     loadPage();
 });
 
 /**
- * Carrega todos os componentes iniciais da página.
+ * Função principal para carregar todos os componentes da página.
  */
 function loadPage() {
     setupSidebarNavigation();
     loadUserInfo();
     loadURLs();
     loadWhatsAppStatus();
-    setInterval(loadURLs, 30000); // Atualiza a lista de URLs a cada 30s
+    loadSettings();
+    loadTelegramSettings();
+    setInterval(loadURLs, 30000);
 }
 
-
 // ============================
-// HELPERS DE UI E API
+// UTILITÁRIOS GERAIS
 // ============================
-
 /**
- * Exibe uma notificação não-bloqueante na tela.
+ * Exibe uma notificação temporária na tela.
  * @param {string} message A mensagem a ser exibida.
- * @param {'success' | 'error' | 'info'} type O tipo de notificação.
+ * @param {'success'|'error'|'info'} type O tipo da notificação.
  */
 function showNotification(message, type = 'info') {
-    const container = document.getElementById('notification-container');
-    if (!container) return;
+    const notificationContainer = document.getElementById('notificationContainer') || (() => {
+        const div = document.createElement('div');
+        div.id = 'notificationContainer';
+        Object.assign(div.style, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: '1000',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+        });
+        document.body.appendChild(div);
+        return div;
+    })();
 
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
+    Object.assign(notification.style, {
+        padding: '10px 20px',
+        borderRadius: '5px',
+        color: 'white',
+        fontWeight: 'bold',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        opacity: '0',
+        transition: 'opacity 0.3s ease-in-out, transform 0.3s ease-in-out',
+        transform: 'translateY(-20px)'
+    });
 
-    container.appendChild(notification);
+    if (type === 'success') notification.style.backgroundColor = '#4CAF50';
+    if (type === 'error') notification.style.backgroundColor = '#f44336';
+    if (type === 'info') notification.style.backgroundColor = '#2196F3';
 
-    // Garante que a animação de fade-out remova o elemento
+    notificationContainer.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateY(0)';
+    }, 10); // Pequeno delay para a transição funcionar
+
     setTimeout(() => {
         notification.style.opacity = '0';
-        setTimeout(() => notification.remove(), 500);
-    }, 3500);
+        notification.style.transform = 'translateY(-20px)';
+        notification.addEventListener('transitionend', () => notification.remove());
+    }, 5000);
 }
 
 /**
- * Realiza uma chamada segura à API, incluindo o token de autorização.
- * @param {string} endpoint O endpoint da API (ex: '/me').
- * @param {RequestInit} options Opções do fetch (method, body, etc.).
- * @returns {Promise<Response>}
+ * Wrapper para fetch API que inclui o token de autenticação e lida com erros.
+ * @param {string} path O caminho da API.
+ * @param {object} options Opções para a requisição fetch.
+ * @returns {Promise<Response>} A resposta da requisição.
  */
-async function apiFetch(endpoint, options = {}) {
+async function apiFetch(path, options = {}) {
     const token = localStorage.getItem('token');
-    if (!token) {
-        window.location.href = 'login.html';
-        return Promise.reject(new Error("Token de autenticação não encontrado."));
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const config = {
-        ...options,
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            ...options.headers,
-        },
-    };
+    try {
+        const response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers: headers
+        });
 
-    return fetch(`${API_URL}${endpoint}`, config);
+        if (response.status === 401) {
+            showNotification("Sessão expirada ou não autorizada. Faça login novamente.", 'error');
+            redirectToLogin();
+            return response; // Retorna a resposta 401 para que o chamador possa lidar com ela se necessário
+        }
+
+        return response;
+    } catch (error) {
+        console.error('Erro na requisição API:', error);
+        throw error; // Re-lança o erro para ser tratado pela função chamadora
+    }
 }
 
-
-// ============================
-// AUTENTICAÇÃO E USUÁRIO
-// ============================
-
 /**
- * Realiza o logout do usuário, limpando o token e redirecionando para o login.
+ * Redireciona para a página de login e limpa o token.
  */
-function logout() {
+function redirectToLogin() {
     localStorage.removeItem('token');
     window.location.href = 'login.html';
+}
+
+/**
+ * Desloga o usuário e redireciona para a página de login.
+ */
+function logout() {
+    if (confirm("Tem certeza que deseja sair?")) {
+        redirectToLogin();
+    }
 }
 
 /**
@@ -3149,7 +5170,7 @@ function logout() {
  */
 async function loadUserInfo() {
     try {
-        const response = await apiFetch('/me');
+        const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
             const el = document.getElementById('userName');
@@ -3160,11 +5181,9 @@ async function loadUserInfo() {
     }
 }
 
-
 // ============================
-// NAVEGAÇÃO
+// NAVEGAÇÃO (CORRIGIDA)
 // ============================
-
 /**
  * Configura a navegação da barra lateral para alternar entre as seções de conteúdo.
  */
@@ -3176,20 +5195,25 @@ function setupSidebarNavigation() {
 
     links.forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const targetId = link.getAttribute('data-section');
 
-            links.forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
+            // Se o link tiver 'data-section', é uma navegação interna (SPA)
+            if (targetId) {
+                e.preventDefault(); // Impede o recarregamento apenas se for SPA
 
-            sections.forEach(s => {
-                s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
-            });
+                links.forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
 
-            // Fecha a sidebar em telas pequenas após clicar em um link
-            if (window.innerWidth <= 768 && sidebar) {
-                sidebar.classList.remove('active');
+                sections.forEach(s => {
+                    s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
+                });
+
+                // Fecha a sidebar em telas pequenas após clicar em um link
+                if (window.innerWidth <= 768 && sidebar) {
+                    sidebar.classList.remove('active');
+                }
             }
+            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
         });
     });
 
@@ -3198,34 +5222,27 @@ function setupSidebarNavigation() {
     }
 }
 
-
 // ============================
 // MONITORAMENTO (DASHBOARD)
 // ============================
-
 /**
  * Carrega e renderiza a lista de URLs monitoradas.
  */
 async function loadURLs() {
     const urlsList = document.getElementById('urlsList');
     if (!urlsList) return;
-
     try {
         const response = await apiFetch('/urls');
         if (!response.ok) throw new Error('Falha ao buscar URLs');
-
         const urls = await response.json();
         updateStats(urls);
-
         if (urls.length === 0) {
             urlsList.innerHTML = `<div class="empty-state">
                 <p>Nenhum monitoramento ativo. Adicione uma URL acima.</p>
             </div>`;
             return;
         }
-
         urlsList.innerHTML = urls.map(url => renderURLCard(url)).join('');
-
     } catch (error) {
         console.error('Erro ao carregar URLs:', error);
         showNotification('Não foi possível atualizar as URLs.', 'error');
@@ -3242,7 +5259,6 @@ function renderURLCard(url) {
     const statusLabel = url.status === 'UP' ? 'ONLINE' : (url.status === 'DOWN' ? 'OFFLINE' : 'ALERTA');
     const ping = url.response_time ? `${(url.response_time * 1000).toFixed(0)}ms` : '--';
     const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString() : '--:--';
-
     return `
     <article class="url-card ${statusClass}">
         <div class="url-header">
@@ -3273,7 +5289,6 @@ function updateStats(urls) {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
     };
-
     setVal('statsOnline', urls.filter(u => u.status === 'UP').length);
     setVal('statsOffline', urls.filter(u => u.status === 'DOWN').length);
     setVal('statsWarning', urls.filter(u => u.status === 'WARNING').length);
@@ -3286,12 +5301,10 @@ function updateStats(urls) {
 async function addURL() {
     const urlInput = document.getElementById('newUrl');
     const nameInput = document.getElementById('newName');
-
     if (!urlInput.value || !urlInput.checkValidity()) {
         showNotification("Por favor, insira uma URL válida.", 'error');
         return;
     }
-
     try {
         const response = await apiFetch('/urls', {
             method: 'POST',
@@ -3300,7 +5313,6 @@ async function addURL() {
                 nickname: nameInput.value || '',
             })
         });
-
         if (response.ok) {
             showNotification("URL adicionada com sucesso!", 'success');
             urlInput.value = '';
@@ -3321,7 +5333,6 @@ async function addURL() {
  */
 async function deleteURL(id) {
     if (!confirm("Tem certeza que deseja remover este monitoramento?")) return;
-
     try {
         const response = await apiFetch(`/urls/${id}`, { method: 'DELETE' });
         if (response.ok) {
@@ -3335,11 +5346,9 @@ async function deleteURL(id) {
     }
 }
 
-
 // ============================
 // WHATSAPP (EVOLUTION API)
 // ============================
-
 /**
  * Gera o template HTML inicial para a seção do WhatsApp.
  * @returns {string}
@@ -3385,17 +5394,13 @@ function whatsappTemplate() {
 async function loadWhatsAppStatus() {
     const section = document.getElementById('section-whatsapp');
     if (!section) return;
-
     if (!document.getElementById('whatsappStatusContainer')) {
         section.innerHTML = whatsappTemplate();
     }
-
     try {
         const response = await apiFetch('/whatsapp/status');
         const data = await response.json();
-
         updateWhatsAppUI(data);
-
     } catch (error) {
         console.error("Erro ao verificar status do WhatsApp:", error);
         const statusContainer = document.getElementById('whatsappStatusContainer');
@@ -3412,7 +5417,6 @@ function updateWhatsAppUI(data) {
     const connectForm = document.getElementById('connectForm');
     const connectedActions = document.getElementById('connectedActions');
     const qrContainer = document.getElementById('qrCodeContainer');
-
     if (data.connected) {
         statusContainer.innerHTML = `
             <div class="status-indicator success">
@@ -3434,7 +5438,6 @@ function updateWhatsAppUI(data) {
             </div>`;
         connectForm.style.display = 'block';
         connectedActions.style.display = 'none';
-
         if (data.qr_code) {
             showQRCode(data.qr_code);
             startWhatsAppPolling();
@@ -3446,20 +5449,18 @@ function updateWhatsAppUI(data) {
  * Inicia o processo de conexão, solicitando um QR Code ao backend.
  */
 async function connectWhatsApp() {
+    // REMOVIDO: O prompt que pedia o número
     const qrContainer = document.getElementById('qrCodeContainer');
     const qrWrapper = document.getElementById('qrCodeImageWrapper');
-
     qrContainer.style.display = 'block';
     qrWrapper.innerHTML = `<div class="spinner"></div><p style="margin-top:10px">Iniciando instância...</p>`;
-
     try {
         const response = await apiFetch('/whatsapp/connect', {
             method: 'POST',
-            body: JSON.stringify({ number: "5500000000000" }) // Número fictício
+            // Enviamos um objeto vazio ou com número nulo, já que o backend agora aceita
+            body: JSON.stringify({ number: "" })
         });
-
         const data = await response.json();
-
         if (response.ok) {
             if (data.qr_code) {
                 showQRCode(data.qr_code);
@@ -3485,7 +5486,6 @@ function showQRCode(base64Code) {
     const qrContainer = document.getElementById('qrCodeContainer');
     const qrWrapper = document.getElementById('qrCodeImageWrapper');
     if (!qrContainer || !qrWrapper) return;
-
     qrContainer.style.display = 'block';
     const src = base64Code.startsWith('data:') ? base64Code : `data:image/png;base64,${base64Code}`;
     qrWrapper.innerHTML = `<img src="${src}" alt="QR Code para conexão com WhatsApp" class="qrcode-image">`;
@@ -3496,27 +5496,21 @@ function showQRCode(base64Code) {
  */
 function startWhatsAppPolling() {
     if (whatsappPollingInterval) clearInterval(whatsappPollingInterval);
-
     pollingAttempts = 0;
     console.log("Iniciando Polling do status do WhatsApp...");
-
     whatsappPollingInterval = setInterval(async () => {
         pollingAttempts++;
-
         if (pollingAttempts > MAX_POLLING_ATTEMPTS) {
             stopWhatsAppPolling();
             const qrWrapper = document.getElementById('qrCodeImageWrapper');
             if (qrWrapper) qrWrapper.innerHTML = `<p style="color: var(--danger)">Tempo limite excedido. Tente gerar um novo QR Code.</p>`;
             return;
         }
-
         try {
             const response = await apiFetch('/whatsapp/status');
             if (!response.ok) return;
-
             const data = await response.json();
             console.log(`Polling #${pollingAttempts}:`, data);
-
             if (data.connected) {
                 stopWhatsAppPolling();
                 document.getElementById('qrCodeContainer').style.display = 'none';
@@ -3546,44 +5540,191 @@ function stopWhatsAppPolling() {
  * Desconecta a instância do WhatsApp.
  */
 async function disconnectWhatsApp() {
-    if (!confirm("Deseja realmente desconectar a instância do WhatsApp?")) return;
+    if (!confirm("Deseja realmente desconectar a instância do WhatsApp? Isso parará o envio de notificações.")) {
+        return;
+    }
     try {
         const response = await apiFetch('/whatsapp/disconnect', { method: 'POST' });
         if (response.ok) {
-            showNotification("Instância desconectada.", 'info');
+            showNotification("Instância desconectada com sucesso.", 'info');
+            // Recarrega o status para mostrar o botão de conectar novamente
             loadWhatsAppStatus();
         } else {
-            showNotification("Falha ao desconectar.", 'error');
+            const data = await response.json();
+            showNotification(data.detail || "Falha ao desconectar.", 'error');
         }
     } catch (e) {
+        console.error(e);
         showNotification("Erro de conexão ao desconectar.", 'error');
     }
 }
 
 /**
- * Envia uma notificação de teste para um número informado.
+ * Envia uma notificação de teste para um número informado na hora.
  */
 async function testWhatsAppNotification() {
     const number = prompt("Digite o número para receber o teste (DDI+DDD+Número):\nEx: 5511999999999");
     if (!number) return;
-
     try {
         const response = await apiFetch('/whatsapp/test-notification', {
             method: 'POST',
             body: JSON.stringify({ number: number })
         });
-
         const data = await response.json();
         if (response.ok) {
-            showNotification(data.message, 'success');
+            showNotification(data.message || "Teste enviado!", 'success');
         } else {
             showNotification(data.detail || 'Falha no envio.', 'error');
         }
     } catch (error) {
+        console.error(error);
         showNotification('Erro de conexão ao enviar teste.', 'error');
     }
 }
 
+// ============================
+// TELEGRAM
+// ============================
+/**
+ * Carrega as configurações do Telegram.
+ */
+async function loadTelegramSettings() {
+    try {
+        const response = await apiFetch('/users/me');
+        if (response.ok) {
+            const user = await response.json();
+            const tokenInput = document.getElementById('telegramToken');
+            if (tokenInput) tokenInput.value = user.telegram_token || '';
+            const chatInput = document.getElementById('telegramChatId');
+            if (chatInput) chatInput.value = user.telegram_chat_id || '';
+        }
+    } catch (error) {
+        console.error("Erro ao carregar Telegram:", error);
+    }
+}
+
+/**
+ * Salva as configurações do Telegram.
+ */
+async function saveTelegramSettings() {
+    const token = document.getElementById('telegramToken').value.trim();
+    const chatId = document.getElementById('telegramChatId').value.trim();
+
+    // Validação: Ou preenche tudo, ou limpa tudo. Não pode deixar um só preenchido.
+    if ((token && !chatId) || (!token && chatId)) {
+        showNotification("Para ativar, preencha tanto o Token quanto o Chat ID.", 'error');
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/users/me/settings', {
+            method: 'PATCH',
+            body: JSON.stringify({
+                telegram_token: token,
+                telegram_chat_id: chatId
+            })
+        });
+        if (response.ok) {
+            showNotification("Telegram configurado com sucesso!", 'success');
+        } else {
+            showNotification("Erro ao salvar Telegram.", 'error');
+        }
+    } catch (error) {
+        console.error(error);
+        showNotification("Erro de conexão.", 'error');
+    }
+}
+
+/**
+ * Envia uma mensagem de teste para o Telegram.
+ */
+async function testTelegram() {
+    showNotification("Enviando teste...", 'info');
+
+    try {
+        const response = await apiFetch('/users/me/telegram/test', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            showNotification("Teste enviado! Verifique seu Telegram.", 'success');
+        } else {
+            const err = await response.json();
+            showNotification(`Erro: ${err.detail}`, 'error');
+        }
+
+    } catch (error) {
+        console.error(error);
+        showNotification("Erro de conexão ao enviar teste.", 'error');
+    }
+}
+
+// ============================
+// CONFIGURAÇÕES (SETTINGS)
+// ============================
+/**
+ * Carrega as configurações atuais do usuário e preenche o formulário.
+ */
+async function loadSettings() {
+    try {
+        const response = await apiFetch('/users/me'); // Reutiliza a rota /me que agora traz os flags
+        if (response.ok) {
+            const user = await response.json();
+            // Preenche telefone
+            const phoneInput = document.getElementById('settingsPhone');
+            if (phoneInput) phoneInput.value = user.whatsapp_number || '';
+            // Preenche checkboxes
+            const checkDown = document.getElementById('checkNotifyDown');
+            if (checkDown) checkDown.checked = user.notify_when_down;
+            const checkUp = document.getElementById('checkNotifyUp');
+            if (checkUp) checkUp.checked = user.notify_when_up;
+            const checkSlow = document.getElementById('checkNotifySlow');
+            if (checkSlow) checkSlow.checked = user.notify_when_slow;
+        }
+    } catch (error) {
+        console.error("Erro ao carregar configurações:", error);
+    }
+}
+
+/**
+ * Envia as novas configurações para o backend.
+ */
+async function saveSettings() {
+    const phoneInput = document.getElementById('settingsPhone');
+    const phone = phoneInput ? phoneInput.value.replace(/\D/g, '') : ''; // Remove não-números
+    const checkDown = document.getElementById('checkNotifyDown');
+    const notifyDown = checkDown ? checkDown.checked : true;
+    const checkUp = document.getElementById('checkNotifyUp');
+    const notifyUp = checkUp ? checkUp.checked : true;
+    const checkSlow = document.getElementById('checkNotifySlow');
+    const notifySlow = checkSlow ? checkSlow.checked : false;
+    // Validação básica de telefone se preenchido
+    if (phone && phone.length < 10) {
+        showNotification("Número de telefone parece inválido.", 'error');
+        return;
+    }
+    try {
+        const response = await apiFetch('/users/me/settings', {
+            method: 'PATCH',
+            body: JSON.stringify({
+                whatsapp_number: phone,
+                notify_when_down: notifyDown,
+                notify_when_up: notifyUp,
+                notify_when_slow: notifySlow
+            })
+        });
+        if (response.ok) {
+            showNotification("Configurações salvas com sucesso!", 'success');
+            // Atualiza info do usuário globalmente se necessário
+            loadUserInfo();
+        } else {
+            showNotification("Erro ao salvar configurações.", 'error');
+        }
+    } catch (error) {
+        console.error(error);
+        showNotification("Erro de conexão ao salvar.", 'error');
+    }
+}
 ============================================================
 FILE: frontend\assets\js\script.js
 ============================================================

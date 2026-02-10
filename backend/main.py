@@ -2,6 +2,7 @@
 import time
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo  # Import para corrigir o Fuso Horário
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -11,7 +12,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 from models import User, Client
-from routes import auth, users, urls, whatsapp, clients
+# --- ATUALIZAÇÃO: Adicionado 'backup' aos imports ---
+from routes import auth, users, urls, whatsapp, clients, backup
 
 # Utilitários de envio
 from telegram_utils import send_telegram_message
@@ -42,6 +44,8 @@ app.include_router(users.router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)
+# --- ATUALIZAÇÃO: Registrando a rota de backup/importação ---
+app.include_router(backup.router)
 
 
 # ==========================================
@@ -56,8 +60,16 @@ def check_and_send_reminders():
     # Cria uma nova sessão de banco de dados para esta thread
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # --- CORREÇÃO DE FUSO HORÁRIO ---
+        # Define o timezone do Brasil para garantir que 'hoje' seja calculado corretamente
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+
+        now = datetime.now(tz_brazil)
         now_time = now.strftime("%H:%M")
+
+        # Define a data de hoje baseada no Brasil (e não no UTC do servidor)
+        today = now.date()
+        # --------------------------------
 
         # --- DEBUG: Mostra que o scheduler está vivo ---
         # print(f"⏰ Scheduler Check: {now} (Procurando agendamentos para {now_time})")
@@ -86,7 +98,8 @@ def check_and_send_reminders():
 
             # 2. Busca clientes deste usuário
             user_clients = db.query(Client).filter(Client.owner_id == user.id).all()
-            today = datetime.now().date()
+
+            # OBS: A variável 'today' já foi definida corretamente lá em cima com o timezone
 
             print(f"      📂 Analisando {len(user_clients)} clientes...")
 
@@ -121,7 +134,7 @@ def check_and_send_reminders():
                 # 2. Lógica de Vencido (Qualquer dia negativo)
                 # Envia se estiver vencido há 1 ou mais dias, desde que a opção esteja ativa
                 elif days_diff < 0 and client.notify_after_expiration:
-                    days_overdue = abs(days_diff) # Converte -1 para 1, -5 para 5, etc.
+                    days_overdue = abs(days_diff)  # Converte -1 para 1, -5 para 5, etc.
                     msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
                 # Se encontrou uma regra válida, envia
