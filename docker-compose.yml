@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: nexus_backend
+    restart: always
+    volumes:
+      # Persistência do Banco de Dados SQLite
+      - ./backend/monitor_dns.db:/app/monitor_dns.db
+      # Persistência das sessões do WhatsApp (se houver arquivos gerados)
+      - ./backend/sessions:/app/sessions
+    env_file:
+      - ./backend/.env
+    networks:
+      - nexus_network
+
+  frontend:
+    build: ./frontend
+    container_name: nexus_frontend
+    restart: always
+    ports:
+      - "80:80" # Porta Externa : Porta Interna do Container
+    depends_on:
+      - backend
+    networks:
+      - nexus_network
+
+networks:
+  nexus_network:
+    driver: bridge

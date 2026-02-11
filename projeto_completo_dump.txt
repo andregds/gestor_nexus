@@ -790,6 +790,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 ============================================================
 FILE: backend\database.py
 ============================================================
+# backend/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -798,9 +799,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Carrega a URL do banco de dados do arquivo .env
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./monitor_dns.db")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# Cria um dicionário de argumentos de conexão vazio.
+engine_args = {}
+
+# Lógica para definir argumentos baseados no tipo de banco
+if DATABASE_URL.startswith("sqlite"):
+    # Configurações específicas para SQLite (Desenvolvimento local)
+    engine_args["connect_args"] = {"check_same_thread": False}
+else:
+    # --- CONFIGURAÇÕES CRUCIAIS PARA MYSQL (Produção) ---
+    # pool_recycle: Recria a conexão a cada 1 hora (3600s) para evitar o timeout padrão do MySQL (8h)
+    engine_args["pool_recycle"] = 3600
+    # pool_pre_ping: Testa a conexão com um "SELECT 1" antes de usar. 
+    # Se a conexão caiu, ele reconecta automaticamente sem dar erro na aplicação.
+    engine_args["pool_pre_ping"] = True
+    # pool_size: Define o número de conexões mantidas abertas (opcional, padrão é 5)
+    engine_args["pool_size"] = 10
+    # max_overflow: Quantas conexões extras podem ser criadas se o pool estiver cheio
+    engine_args["max_overflow"] = 20
+
+# Passa os argumentos para o create_engine usando o operador **
+engine = create_engine(DATABASE_URL, **engine_args)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -810,15 +833,15 @@ def get_db():
         yield db
     finally:
         db.close()
-
 ============================================================
 FILE: backend\main.py
 ============================================================
 # backend/main.py
 import time
-import asyncio
+import httpx
+import socket  # <-- NOVO: Necessário para obter o IP
 from datetime import datetime
-from zoneinfo import ZoneInfo  # Import para corrigir o Fuso Horário
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -827,14 +850,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # Imports locais
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
-from models import User, Client
-# --- ATUALIZAÇÃO: Adicionado 'backup' aos imports ---
-from routes import auth, users, urls, whatsapp, clients, backup
+# --- ATUALIZAÇÃO: Importar TODOS os modelos necessários ---
+from models import User, Client, MonitoredURL
+from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers
 
-# Utilitários de envio
-from telegram_utils import send_telegram_message
-from whatsapp_utils import send_whatsapp_notification
-
+# --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
+from core.utils import generate_reminder_message
+from core.config import EVOLUTION_API_URL
+from whatsapp_utils import evolution_headers
+from models import User, Client, MonitoredURL # Garanta que MonitoredURL está aqui
 # Cria as tabelas no banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
 
@@ -860,51 +884,39 @@ app.include_router(users.router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)
-# --- ATUALIZAÇÃO: Registrando a rota de backup/importação ---
 app.include_router(backup.router)
+app.include_router(admin.router)
+app.include_router(resellers.router)
 
-
-# ==========================================
-# LÓGICA DO AGENDADOR (SCHEDULER)
-# ==========================================
+# =================================================================
+# TAREFA 1: VERIFICADOR DE LEMBRETES DE COBRANÇA (SEU CÓDIGO ATUAL)
+# =================================================================
 
 def check_and_send_reminders():
     """
-    Roda a cada minuto.
-    Verifica se há usuários configurados para receber notificações neste minuto exato.
+    Roda a cada minuto para enviar lembretes de cobrança de clientes.
     """
-    # Cria uma nova sessão de banco de dados para esta thread
     db = SessionLocal()
     try:
-        # --- CORREÇÃO DE FUSO HORÁRIO ---
-        # Define o timezone do Brasil para garantir que 'hoje' seja calculado corretamente
         tz_brazil = ZoneInfo("America/Sao_Paulo")
-
         now = datetime.now(tz_brazil)
         now_time = now.strftime("%H:%M")
-
-        # Define a data de hoje baseada no Brasil (e não no UTC do servidor)
         today = now.date()
-        # --------------------------------
 
-        # --- DEBUG: Mostra que o scheduler está vivo ---
-        # print(f"⏰ Scheduler Check: {now} (Procurando agendamentos para {now_time})")
-
-        # 1. Busca usuários que configuraram este horário exato
         users_list = db.query(User).filter(User.notification_time == now_time).all()
 
-        if users_list:
-            print(f"🔔 Encontrados {len(users_list)} usuário(s) agendados para {now_time}")
+        if not users_list:
+            return
+
+        print(f"🔔 Encontrados {len(users_list)} usuário(s) para lembretes de cobrança às {now_time}")
 
         for user in users_list:
-            print(f"   👤 Verificando usuário: {user.name} (ID: {user.id})")
+            print(f"   👤 Verificando cobranças para: {user.name} (ID: {user.id})")
 
-            # Verifica se o agendamento está ativado
             if not user.notifications_enabled:
                 print(f"      ⚠️ Agendamento DESATIVADO pelo usuário. Pulando.")
                 continue
 
-            # Verifica canais
             has_whatsapp = user.whatsapp_connected
             has_telegram = bool(user.telegram_token and user.telegram_chat_id)
 
@@ -912,10 +924,9 @@ def check_and_send_reminders():
                 print(f"      ⚠️ Nenhum canal de notificação conectado. Pulando.")
                 continue
 
-            # 2. Busca clientes deste usuário
             user_clients = db.query(Client).filter(Client.owner_id == user.id).all()
-
-            # OBS: A variável 'today' já foi definida corretamente lá em cima com o timezone
+            if not user_clients:
+                continue
 
             print(f"      📂 Analisando {len(user_clients)} clientes...")
 
@@ -923,84 +934,164 @@ def check_and_send_reminders():
                 if not client.reminder_enabled:
                     continue
 
-                # Calcula dias para vencer
                 days_diff = (client.expiration_date - today).days
 
-                # --- LÓGICA DA FLAG DE DIAS ---
-                # Tenta converter a configuração de dias do cliente para inteiro (padrão 3 se falhar)
                 try:
                     days_alert_threshold = int(client.reminder_days_before)
                 except (ValueError, TypeError):
                     days_alert_threshold = 3
 
-                msg = ""
-
-                # --- NOVA LÓGICA DINÂMICA ---
-
-                # 1. Lógica de Vencimento Próximo (Intervalo de 0 até X dias configurados)
-                # Ex: Se configurou 5, entra aqui se faltar 5, 4, 3, 2, 1 ou 0 dias.
+                should_send = False
                 if 0 <= days_diff <= days_alert_threshold:
-                    if days_diff == 0:
-                        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-                    elif days_diff == 1:
-                        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-                    else:
-                        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-
-                # 2. Lógica de Vencido (Qualquer dia negativo)
-                # Envia se estiver vencido há 1 ou mais dias, desde que a opção esteja ativa
+                    should_send = True
                 elif days_diff < 0 and client.notify_after_expiration:
-                    days_overdue = abs(days_diff)  # Converte -1 para 1, -5 para 5, etc.
-                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+                    should_send = True
 
-                # Se encontrou uma regra válida, envia
-                if msg:
+                if should_send:
+                    msg = generate_reminder_message(client.name, days_diff)
+                    if not msg:
+                        continue
+
                     print(f"         🚀 ENVIANDO MENSAGEM para {client.name} (Motivo: {days_diff} dias)")
                     channel = client.notification_channel or "whatsapp"
 
-                    # --- ENVIO VIA WHATSAPP ---
-                    if channel == "whatsapp" and has_whatsapp:
-                        if client.whatsapp:
-                            try:
-                                asyncio.run(send_whatsapp_notification(
-                                    number=client.whatsapp,
-                                    message=msg,
-                                    instance_name=user.whatsapp_instance
-                                ))
+                    # --- ENVIO VIA WHATSAPP (SÍNCRONO) ---
+                    if channel == "whatsapp" and has_whatsapp and client.whatsapp:
+                        try:
+                            payload = {
+                                "number": client.whatsapp,
+                                "options": {"delay": 1200, "presence": "composing"},
+                                "textMessage": {"text": msg}
+                            }
+                            url = f"{EVOLUTION_API_URL}/message/sendText/{user.whatsapp_instance}"
+                            response = httpx.post(url, headers=evolution_headers(), json=payload, timeout=10.0)
+                            if response.status_code in [200, 201]:
                                 print(f"            ✅ WhatsApp enviado com sucesso!")
-                            except Exception as e:
-                                print(f"            ❌ Erro ao enviar WhatsApp: {e}")
+                            else:
+                                print(f"            ❌ Erro ao enviar WhatsApp: {response.status_code} - {response.text}")
+                        except Exception as e:
+                            print(f"            ❌ Erro técnico ao enviar WhatsApp: {e}")
 
-                    # --- ENVIO VIA TELEGRAM ---
+                    # --- ENVIO VIA TELEGRAM (SÍNCRONO) ---
                     elif channel == "telegram" and has_telegram:
                         try:
-                            asyncio.run(send_telegram_message(
-                                token=user.telegram_token,
-                                chat_id=user.telegram_chat_id,
-                                message=f"🔔 *Lembrete Cliente: {client.name}*\n\n{msg}"
-                            ))
-                            print(f"            ✅ Telegram enviado com sucesso!")
+                            telegram_url = f"https://api.telegram.org/bot{user.telegram_token}/sendMessage"
+                            payload = {
+                                "chat_id": user.telegram_chat_id,
+                                "text": f"🔔 *Lembrete Cliente: {client.name}*\n\n{msg}",
+                                "parse_mode": "Markdown"
+                            }
+                            response = httpx.post(telegram_url, json=payload, timeout=10.0)
+                            if response.status_code == 200:
+                                print(f"            ✅ Telegram enviado com sucesso!")
+                            else:
+                                print(f"            ❌ Erro ao enviar Telegram: {response.status_code} - {response.text}")
                         except Exception as e:
-                            print(f"            ❌ Erro ao enviar Telegram: {e}")
+                            print(f"            ❌ Erro técnico ao enviar Telegram: {e}")
 
-                    time.sleep(2)  # Delay para evitar spam
+                    time.sleep(2) # Pequeno delay para não sobrecarregar as APIs
 
     except Exception as e:
-        print(f"❌ Erro Crítico no Scheduler: {e}")
+        print(f"❌ Erro Crítico no Scheduler de Cobranças: {e}")
     finally:
         db.close()
 
 
+# =================================================================
+# TAREFA 2: MONITOR DE URLS (NOVO CÓDIGO PARA CORRIGIR O PAINEL)
+# =================================================================
+
+def check_monitored_urls():
+    """
+    Roda a cada minuto para verificar o status das URLs monitoradas.
+    Esta função corrige o painel que não atualizava.
+    """
+    db = SessionLocal()
+    try:
+        urls_to_check = db.query(MonitoredURL).filter(MonitoredURL.is_active == True).all()
+        if not urls_to_check:
+            return  # Sai se não houver URLs ativas para checar
+
+        print(f"🔍 Iniciando verificação de {len(urls_to_check)} URLs ativas...")
+
+        for url_obj in urls_to_check:
+            status = "DOWN"
+            http_code = None
+            response_time = None
+            ip_address = None
+            error_message = None
+            error_type_name = None
+
+            try:
+                with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+                    start_time = time.time()
+                    response = client.get(url_obj.url)
+                    end_time = time.time()
+
+                response_time = (end_time - start_time) * 1000  # em ms
+                http_code = response.status_code
+
+                hostname = httpx.URL(url_obj.url).host
+                ip_address = socket.gethostbyname(hostname)
+
+                if 200 <= http_code < 400:
+                    status = "UP"
+                    print(f"  ✅ {url_obj.url} -> UP ({http_code})")
+                else:
+                    status = "DOWN"
+                    error_message = f"Status Code {http_code}"
+                    print(f"  ❌ {url_obj.url} -> DOWN ({http_code})")
+
+            except httpx.RequestError as e:
+                error_message = str(e)
+                error_type_name = type(e).__name__
+                print(f"  ❌ {url_obj.url} -> DOWN (Erro de Conexão: {e})")
+
+            except Exception as e:
+                error_message = str(e)
+                error_type_name = type(e).__name__
+                print(f"  ❌ {url_obj.url} -> DOWN (Erro Inesperado: {e})")
+
+            finally:
+                # --- AÇÃO MAIS IMPORTANTE: Atualiza o objeto no banco ---
+                url_obj.status = status
+                url_obj.http_code = http_code
+                url_obj.response_time = response_time
+                url_obj.ip_address = ip_address
+                url_obj.last_check = datetime.now(ZoneInfo("America/Sao_Paulo"))
+                url_obj.error = error_message
+                url_obj.error_type = error_type_name
+
+                # Salva as alterações no banco de dados. É ISSO que atualiza o site!
+                db.commit()
+
+    except Exception as e:
+        print(f"🔥 Erro Crítico no Scheduler de URLs: {e}")
+    finally:
+        db.close()
+
+
+# ==========================================
+# INICIALIZAÇÃO DO AGENDADOR (SCHEDULER)
+# ==========================================
+
 # Inicializa o Scheduler em segundo plano
-scheduler = BackgroundScheduler()
-scheduler.add_job(check_and_send_reminders, 'interval', minutes=1)
+scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
+
+# TAREFA 1: Envio de lembretes de cobrança (a cada minuto)
+scheduler.add_job(check_and_send_reminders, 'interval', minutes=1, id='job_reminders')
+
+# TAREFA 2: Monitoramento de URLs (a cada minuto)
+scheduler.add_job(check_monitored_urls, 'interval', minutes=1, id='job_url_monitor')
+
+# Inicia o agendador
 scheduler.start()
 
 
-@app.get("/", tags=["Geral"])
+@app.get("/", tags=["Geral"], include_in_schema=False)
 def root():
     return {
-        "app": "Monitor DNS com Notificações WhatsApp",
+        "app": "Nexus Monitor API",
         "status": "online",
         "version": "2.0.0",
         "docs": "/docs"
@@ -1014,12 +1105,13 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
     )
+
 ============================================================
 FILE: backend\models.py
 ============================================================
 # backend/models.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON, Float
+from sqlalchemy.orm import relationship, backref
 from database import Base
 
 
@@ -1027,97 +1119,86 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    name = Column(String(255), index=True)
+    email = Column(String(255), unique=True, index=True)
+    hashed_password = Column(String(255))
+    is_active = Column(Boolean, default=True)
+    block_reason = Column(String(255), nullable=True)
+    role = Column(String(50), default="user")
+
+    permissions = Column(JSON, default={
+        "can_view_dashboard": True,
+        "can_view_clients": True,
+        "can_view_integrations": True,
+        "can_view_settings": True
+    })
+
+    client_limit = Column(Integer, default=0)
 
     # Configurações do WhatsApp
-    whatsapp_number = Column(String, nullable=True)
-    whatsapp_instance = Column(String, nullable=True)
-    whatsapp_apikey = Column(String, nullable=True)
-    notification_channel = Column(String, default="whatsapp")
+    whatsapp_number = Column(String(50), nullable=True)
+    whatsapp_instance = Column(String(100), nullable=True)
+    whatsapp_apikey = Column(String(255), nullable=True)
+    notification_channel = Column(String(50), default="whatsapp")
 
     # Configurações do Telegram
-    telegram_token = Column(String, nullable=True)
-    telegram_chat_id = Column(String, nullable=True)
+    telegram_token = Column(String(255), nullable=True)
+    telegram_chat_id = Column(String(100), nullable=True)
 
-    # Flags de Notificação Globais
+    # Flags de Notificação
     notifications_enabled = Column(Boolean, default=True)
     notify_when_down = Column(Boolean, default=True)
     notify_when_up = Column(Boolean, default=True)
     notify_when_slow = Column(Boolean, default=False)
+    notification_time = Column(String(10), default="09:00", nullable=True)
 
-    # NOVO CAMPO: Horário de envio das cobranças (Ex: "09:00")
-    notification_time = Column(String, default="09:00", nullable=True)
+    # --- NOVO CAMPO: HIERARQUIA (PAI -> FILHO) ---
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    children = relationship("User", backref=backref('owner', remote_side=[id]))
+    # ---------------------------------------------
 
-    # Relacionamentos
     urls = relationship("MonitoredURL", back_populates="owner")
     clients = relationship("Client", back_populates="owner")
 
-    # --- PROPRIEDADE VIRTUAL CORRIGIDA ---
     @property
     def whatsapp_connected(self) -> bool:
-        """
-        Retorna True se o usuário tiver uma instância de WhatsApp criada.
-        Não depende mais do whatsapp_number, permitindo envio para terceiros
-        mesmo sem o número do admin salvo.
-        """
         return bool(self.whatsapp_instance)
-    # --------------------------------------
 
 
+# ... (Mantenha as classes MonitoredURL e Client como estão) ...
 class MonitoredURL(Base):
     __tablename__ = "monitored_urls"
-
     id = Column(Integer, primary_key=True, index=True)
-    url = Column(String, index=True)
-    nickname = Column(String, nullable=True)
-    status = Column(String, default="PENDING")
+    url = Column(String(255), index=True)
+    nickname = Column(String(100), nullable=True)
+    status = Column(String(50), default="PENDING")
     http_code = Column(Integer, nullable=True)
-    response_time = Column(Integer, nullable=True)
-    ip_address = Column(String, nullable=True)
-
-    # CORREÇÃO: Alterado de Date para DateTime para salvar horas/minutos/segundos
+    response_time = Column(Float, nullable=True)
+    ip_address = Column(String(50), nullable=True)
     last_check = Column(DateTime, nullable=True)
-
-    error = Column(String, nullable=True)
-    error_type = Column(String, nullable=True)
-
+    error = Column(String(500), nullable=True)
+    error_type = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-
     owner = relationship("User", back_populates="urls")
 
 
 class Client(Base):
     __tablename__ = "clients"
-
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    login = Column(String, index=True)
-    server_name = Column(String)
-    whatsapp = Column(String)
-
-    # Mantido como Date, pois validade de assinatura geralmente não precisa de hora exata
+    name = Column(String(255), index=True)
+    login = Column(String(100), index=True)
+    server_name = Column(String(100))
+    whatsapp = Column(String(50))
     expiration_date = Column(Date)
-
-    notes = Column(String, nullable=True)
-    m3u8_url = Column(String, nullable=True)
-
-    # NOVO CAMPO: Para salvar campos dinâmicos (ex: {"MAC": "00:11...", "App": "IPTV Smarters"})
+    notes = Column(String(500), nullable=True)
+    m3u8_url = Column(String(500), nullable=True)
     custom_fields = Column(JSON, nullable=True)
-
-    # --- NOVO CAMPO ADICIONADO ---
-    # Canal preferencial de notificação: 'whatsapp', 'telegram', etc.
-    notification_channel = Column(String, default="whatsapp")
-    # -----------------------------
-
-    # Flags
+    notification_channel = Column(String(50), default="whatsapp")
     notify_downtime = Column(Boolean, default=True)
     reminder_enabled = Column(Boolean, default=True)
-    reminder_days_before = Column(String, default="3")
+    reminder_days_before = Column(String(10), default="3")
     notify_after_expiration = Column(Boolean, default=True)
-
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
 ============================================================
@@ -1614,9 +1695,92 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 ============================================================
+FILE: backend\core\utils.py
+============================================================
+# backend/core/utils.py
+from typing import Optional
+
+def generate_reminder_message(client_name: str, days_diff: int) -> Optional[str]:
+    """
+    Gera a mensagem de lembrete com base na diferença de dias.
+    Retorna a mensagem formatada ou None se nenhuma regra for aplicável.
+    """
+    if days_diff == 0:
+        return f"Olá {client_name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+    elif days_diff == 1:
+        return f"Olá {client_name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+    elif days_diff > 1:
+        # Esta mensagem só será usada no envio manual, pois o agendador respeita o 'reminder_days_before'
+        return f"Olá {client_name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+    elif days_diff < 0:
+        days_overdue = abs(days_diff)
+        return f"Olá {client_name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+
+    return None
+
+============================================================
 FILE: backend\core\__init__.py
 ============================================================
 
+============================================================
+FILE: backend\routes\admin.py
+============================================================
+# backend/routes/admin.py
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import List
+
+from core.dependencies import get_db, get_current_user
+from models import User
+from schemas.user import UserResponse # Reutilizamos a resposta que já tem role e permissions
+
+router = APIRouter(prefix="/admin", tags=["Administração"])
+
+# --- Dependência de Segurança ---
+def get_super_admin(current_user: User = Depends(get_current_user)):
+    """Verifica se o usuário logado é um super_admin."""
+    if current_user.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado. Apenas Super Administradores podem acessar este recurso."
+        )
+    return current_user
+
+# --- Rotas de Admin ---
+@router.get("/users", response_model=List[UserResponse], dependencies=[Depends(get_super_admin)])
+def list_all_users(db: Session = Depends(get_db)):
+    """
+    (Apenas Super Admin) Retorna uma lista de todos os usuários do sistema.
+    """
+    return db.query(User).all()
+
+# --- NOVA ROTA: Promover Usuário ---
+@router.put("/users/{user_id}/promote-to-super-admin", dependencies=[Depends(get_super_admin)])
+def promote_user_to_super_admin(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    (Apenas Super Admin) Promove um usuário específico para o nível de 'super_admin'.
+    """
+    # Busca o usuário que será promovido
+    user_to_promote = db.query(User).filter(User.id == user_id).first()
+
+    if not user_to_promote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuário com ID {user_id} não encontrado."
+        )
+
+    if user_to_promote.role == "super_admin":
+        return {"message": f"O usuário '{user_to_promote.name}' já é um super administrador."}
+
+    # Altera a role e salva no banco
+    user_to_promote.role = "super_admin"
+    db.commit()
+    db.refresh(user_to_promote)
+
+    return {"message": f"Usuário '{user_to_promote.name}' promovido a super administrador com sucesso!"}
 ============================================================
 FILE: backend\routes\auth.py
 ============================================================
@@ -1675,6 +1839,16 @@ def login(
             detail="E-mail ou senha incorretos.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # --- VERIFICAÇÃO DE BLOQUEIO ---
+    if not user.is_active:
+        reason = user.block_reason if user.block_reason else "Entre em contato com o suporte."
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Acesso bloqueado: {reason}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # -------------------------------
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -2066,7 +2240,7 @@ class ClientResponse(ClientCreate):
     owner_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # <--- CORRIGIDO AQUI (Era orm_mode = True)
 
 
 # ==========================================
@@ -2366,6 +2540,257 @@ async def send_manual_reminder(
     else:
         print(f"❌ Erro no envio manual: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")
+============================================================
+FILE: backend\routes\resellers.py
+============================================================
+# backend/routes/resellers.py
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from typing import List
+from pydantic import BaseModel, Field
+
+from schemas.user import UserResponse, UserCreate, BlockUserRequest
+from core.security import get_password_hash
+from core.dependencies import get_db, get_current_user
+from models import User
+
+router = APIRouter(prefix="/resellers", tags=["Revendedores"])
+
+
+# ... (Schemas PromoteRequest, ResellerUpdate, PasswordResetRequest mantêm-se iguais) ...
+class PromoteRequest(BaseModel):
+    credits: int
+
+
+class ResellerUpdate(BaseModel):
+    name: str
+    email: str
+    client_limit: int
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: str = Field(..., min_length=6)
+
+
+def get_reseller_or_super_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role not in ["reseller", "super_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado."
+        )
+    return current_user
+
+
+# --- ROTA: Criar um novo usuário (com vínculo de pai/filho) ---
+@router.post("/create-user", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def create_new_user(
+        user_in: UserCreate,
+        db: Session = Depends(get_db),
+        current_admin: User = Depends(get_reseller_or_super_admin)
+):
+    db_user = db.query(User).filter(User.email == user_in.email).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Este email já está cadastrado.")
+
+    hashed_password = get_password_hash(user_in.password)
+
+    # AQUI ESTÁ A MUDANÇA: Salvamos o owner_id
+    new_user = User(
+        name=user_in.name,
+        email=user_in.email,
+        hashed_password=hashed_password,
+        role="user",
+        client_limit=0,
+        owner_id=current_admin.id  # <--- Vínculo criado
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+
+# --- Rotas de Leitura (COM FILTRO DE PRIVACIDADE) ---
+
+@router.get("/", response_model=List[UserResponse], dependencies=[Depends(get_reseller_or_super_admin)])
+def list_all_resellers(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    """
+    Lista revendedores.
+    - Super Admin: Vê TODOS os revendedores.
+    - Revendedor: Vê apenas os revendedores que ELE criou (sub-revendedores).
+    """
+    query = db.query(User).filter(User.role == 'reseller')
+
+    if current_user.role != 'super_admin':
+        # Filtra apenas os filhos deste usuário
+        query = query.filter(User.owner_id == current_user.id)
+
+    return query.all()
+
+
+@router.get("/promotable", response_model=List[UserResponse], dependencies=[Depends(get_reseller_or_super_admin)])
+def list_promotable_users(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    """
+    Lista usuários comuns para promoção.
+    - Super Admin: Vê TODOS.
+    - Revendedor: Vê apenas os usuários que ELE criou.
+    """
+    query = db.query(User).filter(User.role == 'user')
+
+    if current_user.role != 'super_admin':
+        # Filtra apenas os filhos deste usuário
+        query = query.filter(User.owner_id == current_user.id)
+
+    return query.all()
+
+
+# ... (O restante das rotas promote, update, reset-password, toggle-active continuam iguais) ...
+# Apenas certifique-se de manter as importações e a lógica de saldo que já corrigimos anteriormente.
+
+@router.put("/promote/{user_id}", response_model=UserResponse)
+def promote_user_to_reseller(
+        user_id: int,
+        promote_data: PromoteRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    admin_user = db.query(User).filter(User.id == current_user.id).first()
+
+    # Adicionar filtro de segurança: Revendedor só pode promover seus próprios usuários
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        query = query.filter(User.owner_id == current_user.id)
+
+    user_to_promote = query.first()
+
+    if not user_to_promote:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado ou você não tem permissão.")
+
+    if user_to_promote.role != "user":
+        raise HTTPException(status_code=400, detail="Apenas usuários 'user' podem ser promovidos.")
+
+    credits_to_give = promote_data.credits
+    if credits_to_give < 0:
+        raise HTTPException(status_code=400, detail="O limite não pode ser negativo.")
+
+    if admin_user.role == 'reseller':
+        if admin_user.client_limit < credits_to_give:
+            raise HTTPException(status_code=400, detail=f"Saldo insuficiente. Você tem {admin_user.client_limit}.")
+        admin_user.client_limit -= credits_to_give
+
+    user_to_promote.role = "reseller"
+    user_to_promote.client_limit = credits_to_give
+
+    db.commit()
+    db.refresh(user_to_promote)
+    db.refresh(admin_user)
+    return user_to_promote
+
+
+@router.put("/{user_id}", response_model=UserResponse)
+def update_reseller(
+        user_id: int,
+        update_data: ResellerUpdate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    # Filtro de segurança
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        # Permite editar a si mesmo OU seus filhos
+        if user_id != current_user.id:
+            query = query.filter(User.owner_id == current_user.id)
+
+    target_user = query.first()
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Revendedor não encontrado.")
+
+    admin_user = db.query(User).filter(User.id == current_user.id).first()
+
+    if target_user.id == admin_user.id:
+        pass  # Auto-edição ignora limite
+
+    old_limit = target_user.client_limit
+    new_limit = update_data.client_limit
+    diff = new_limit - old_limit
+
+    if diff != 0:
+        if admin_user.role != 'super_admin':
+            if diff > 0:
+                if admin_user.client_limit < diff:
+                    raise HTTPException(status_code=400, detail="Saldo insuficiente.")
+                admin_user.client_limit -= diff
+            else:
+                admin_user.client_limit += abs(diff)
+        target_user.client_limit = new_limit
+
+    target_user.name = update_data.name
+    target_user.email = update_data.email
+
+    db.commit()
+    db.refresh(target_user)
+    if admin_user.id != target_user.id:
+        db.refresh(admin_user)
+
+    return target_user
+
+
+@router.put("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_reseller_password(
+        user_id: int,
+        request_body: PasswordResetRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        query = query.filter(User.owner_id == current_user.id)
+
+    target_user = query.first()
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    target_user.hashed_password = get_password_hash(request_body.new_password)
+    db.commit()
+    return
+
+
+@router.put("/{user_id}/toggle-active", response_model=UserResponse)
+def toggle_reseller_status(
+        user_id: int,
+        block_data: BlockUserRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        query = query.filter(User.owner_id == current_user.id)
+
+    target_user = query.first()
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Você não pode bloquear a si mesmo.")
+
+    if target_user.is_active:
+        target_user.is_active = False
+        target_user.block_reason = block_data.reason if block_data.reason else "Bloqueio administrativo."
+    else:
+        target_user.is_active = True
+        target_user.block_reason = None
+
+    db.commit()
+    db.refresh(target_user)
+    return target_user
 ============================================================
 FILE: backend\routes\urls.py
 ============================================================
@@ -2758,11 +3183,17 @@ FILE: backend\schemas\auth.py
 ============================================================
 # backend/schemas/auth.py
 from pydantic import BaseModel
+from typing import Optional
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+    class Config:
+        from_attributes = True  # <--- AQUI ESTAVA O "orm_mode = True"
 ============================================================
 FILE: backend\schemas\client.py
 ============================================================
@@ -2846,7 +3277,7 @@ FILE: backend\schemas\user.py
 ============================================================
 # backend/schemas/user.py
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class UserCreate(BaseModel):
@@ -2855,16 +3286,19 @@ class UserCreate(BaseModel):
     password: str
 
 
-# CORREÇÃO: Todos os campos agora são Optional com valor padrão None.
-# Isso permite enviar apenas os dados do Telegram sem precisar enviar as flags de notificação junto.
 class UserSettingsUpdate(BaseModel):
     whatsapp_number: Optional[str] = None
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-
     notify_when_down: Optional[bool] = None
     notify_when_up: Optional[bool] = None
     notify_when_slow: Optional[bool] = None
+
+
+# --- NOVO SCHEMA PARA BLOQUEIO ---
+class BlockUserRequest(BaseModel):
+    reason: Optional[str] = None
+# ---------------------------------
 
 
 class UserResponse(BaseModel):
@@ -2875,17 +3309,23 @@ class UserResponse(BaseModel):
     notifications_enabled: bool
     whatsapp_number: Optional[str] = None
     whatsapp_instance: Optional[str] = None
-
-    # Adicionamos os campos do Telegram na resposta para o frontend carregar os dados salvos
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-
     notify_when_down: bool
     notify_when_up: bool
     notify_when_slow: bool
 
+    # --- NOVOS CAMPOS NA RESPOSTA DA API ---
+    role: str
+    permissions: Dict[str, Any]
+    client_limit: int
+    is_active: bool
+    block_reason: Optional[str] = None  # <-- CAMPO ADICIONADO AQUI
+    # ---------------------------------------
+
     class Config:
         from_attributes = True
+
 ============================================================
 FILE: backend\schemas\whatsapp.py
 ============================================================
@@ -4000,28 +4440,40 @@ FILE: frontend\dashboard.html
             </div>
             <nav class="sidebar-menu">
                 <!-- Link Dashboard (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link active" data-section="dashboard">
+                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link">
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
 
                 <!-- Link WhatsApp (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="whatsapp">
+                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
 
                 <!-- Link Telegram (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="telegram">
+                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
 
                 <!-- Link Configurações (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="settings">
+                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <!-- ================================================== -->
+                <!-- ATUALIZAÇÃO: Link para Revendedores adicionado aqui -->
+                <!-- ================================================== -->
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" style="display: none;">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+
+                <!-- Link Admin (controlado por ROLE) -->
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" style="display: none;">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -4220,6 +4672,7 @@ FILE: frontend\dashboard.html
     <script src="assets/js/dashboard.js"></script>
 </body>
 </html>
+
 ============================================================
 FILE: frontend\import_clients.html
 ============================================================
@@ -5118,6 +5571,518 @@ FILE: frontend\register.html
 </body>
 </html>
 ============================================================
+FILE: frontend\resell.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Revendedores</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* Ajustes de Layout */
+        body { background-color: #f1f5f9; }
+        main.main-content { padding: 2rem; width: 100%; }
+        .section {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
+        }
+        .section-title {
+            color: #1e293b;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 1rem;
+        }
+
+        /* Formulários */
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: #475569; font-weight: 600; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #0f172a;
+        }
+
+        /* Botões */
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;
+            color: white;
+            margin-right: 5px;
+            font-weight: 500;
+        }
+        .btn-promote {
+            background-color: #2563eb; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-promote:hover { background-color: #1d4ed8; }
+
+        .btn-register {
+            background-color: #10b981; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600; width: 100%;
+        }
+        .btn-register:hover { background-color: #059669; }
+
+        .btn-edit { background-color: #f59e0b; }
+        .btn-edit:hover { background-color: #d97706; }
+
+        .btn-reset { background-color: #64748b; }
+        .btn-reset:hover { background-color: #475569; }
+
+        .btn-toggle-active.active { background-color: #ef4444; }
+        .btn-toggle-active.active:hover { background-color: #dc2626; }
+
+        .btn-toggle-active.blocked { background-color: #22c55e; }
+        .btn-toggle-active.blocked:hover { background-color: #16a34a; }
+
+        /* Tabela */
+        .table-responsive { overflow-x: auto; }
+        .table { width: 100%; border-collapse: collapse; text-align: left; }
+        .table th, .table td { padding: 12px 15px; border-bottom: 1px solid #e2e8f0; }
+        .table th { background-color: #f8fafc; font-weight: 600; color: #475569; }
+        .badge-role-reseller {
+            background-color: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .blocked-row {
+            background-color: #fee2e2 !important;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+        .blocked-row td { color: #7f1d1d; }
+
+        .register-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        @media (max-width: 768px) { .register-grid { grid-template-columns: 1fr; } }
+
+        .credits-display {
+            background-color: #e0f2fe; color: #0369a1; padding: 0.5rem 1rem;
+            border-radius: 6px; font-weight: bold; margin-top: 5px; display: inline-block;
+        }
+
+        /* --- ESTILOS DO MODAL --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem;
+        }
+        .modal-footer {
+            display: flex; justify-content: flex-end; gap: 10px; margin-top: 1.5rem;
+        }
+        .btn-cancel {
+            background-color: #94a3b8; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+        }
+        .btn-save {
+            background-color: #2563eb; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-wrapper" class="dashboard-container">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Voltar ao Dashboard
+                </a>
+                <a href="resell.html" class="sidebar-link active">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role" id="userRole">...</div>
+                <div class="credits-display" id="userCredits">Limite: ...</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 10px; display:block;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="reseller-panel" style="display: none;">
+
+                <!-- SEÇÃO 1: CADASTRAR -->
+                <div class="section">
+                    <h2 class="section-title">1. Cadastrar Novo Usuário</h2>
+                    <p style="margin-bottom: 1rem; color: #64748b;">Cadastre um usuário aqui para que ele apareça na lista de promoção abaixo.</p>
+                    <form id="register-form">
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Nome Completo</label>
+                                <input type="text" id="reg-name" required placeholder="Ex: João Silva">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="reg-email" required placeholder="Ex: joao@email.com">
+                            </div>
+                        </div>
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Senha</label>
+                                <input type="password" id="reg-password" required placeholder="******">
+                            </div>
+                            <div class="form-group">
+                                <label>Confirmar Senha</label>
+                                <input type="password" id="reg-confirm-password" required placeholder="******">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-register">Cadastrar Usuário</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 2: PROMOVER -->
+                <div class="section">
+                    <h2 class="section-title">2. Promover a Revendedor</h2>
+                    <form id="promote-form">
+                        <div class="form-group">
+                            <label for="user-to-promote">Selecione um Usuário para Promover</label>
+                            <select id="user-to-promote" required>
+                                <option value="">Carregando usuários...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="credits-to-give">Limite de Clientes</label>
+                            <input type="number" id="credits-to-give" required min="1" placeholder="Ex: 50" value="10">
+                            <small style="color: #64748b;">Isso será descontado do seu limite atual.</small>
+                        </div>
+                        <button type="submit" class="btn-promote">Promover a Revendedor</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 3: LISTA -->
+                <div class="section">
+                    <h2 class="section-title">Revendedores Ativos</h2>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Função</th>
+                                    <th>Limite</th>
+                                    <th>Ações</th> <!-- Nova Coluna -->
+                                </tr>
+                            </thead>
+                            <tbody id="resellers-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="access-denied" style="display: none;">
+                <h1>Acesso Negado</h1>
+                <p>Você não tem permissão para visualizar esta página.</p>
+                <a href="dashboard.html">Voltar ao Dashboard</a>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0; color: #1e293b;">Editar Revendedor</h3>
+                <span onclick="closeEditModal()" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            <form id="edit-form">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="edit-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="edit-email" required>
+                </div>
+                <div class="form-group">
+                    <label>Limite de Clientes</label>
+                    <input type="number" id="edit-limit" required min="0">
+                    <small style="color: #64748b;">Aumentar este valor descontará do seu saldo.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" onclick="closeEditModal()">Cancelar</button>
+                    <button type="submit" class="btn-save">Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- IMPORTAÇÃO DO SCRIPT PADRÃO -->
+    <script src="assets/js/main.js"></script>
+
+    <script>
+        // O token é usado aqui para verificação inicial de redirecionamento
+        const token = localStorage.getItem('token');
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Carrega info da sidebar e obtém o usuário atual (função do main.js)
+            const currentUser = await loadSidebarInfo();
+
+            if (!currentUser) {
+                // Se falhar (ex: token inválido), o main.js ou o catch aqui trata
+                return;
+            }
+
+            // Lógica específica desta página
+            if (['reseller', 'super_admin'].includes(currentUser.role)) {
+                document.getElementById('reseller-panel').style.display = 'block';
+                await loadResellers();
+                await loadUsersToPromote();
+            } else {
+                document.getElementById('access-denied').style.display = 'block';
+            }
+        });
+
+        async function loadResellers() {
+            try {
+                const resellers = await fetchAPI('/resellers/');
+                const listElement = document.getElementById('resellers-list');
+                listElement.innerHTML = '';
+
+                if (resellers.length === 0) {
+                    listElement.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nenhum revendedor encontrado.</td></tr>';
+                } else {
+                    resellers.forEach(user => {
+                        let limitDisplay = user.client_limit;
+                        if (user.role === 'super_admin') limitDisplay = "∞";
+
+                        // Cria o objeto user em string para passar para a função de edição
+                        const userStr = JSON.stringify(user).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+
+                        // Lógica visual de bloqueio
+                        const rowClass = !user.is_active ? 'blocked-row' : '';
+                        const toggleButtonText = user.is_active ? '🚫 Bloquear' : '✅ Desbloquear';
+                        const toggleButtonClass = user.is_active ? 'active' : 'blocked';
+
+                        listElement.innerHTML += `
+                            <tr class="${rowClass}">
+                                <td>${user.id}</td>
+                                <td>${user.name}</td>
+                                <td>${user.email}</td>
+                                <td><span class="badge-role-reseller">${user.role}</span></td>
+                                <td><strong>${limitDisplay}</strong></td>
+                                <td>
+                                    <button class="btn btn-edit" onclick='openEditModal(${userStr})'>✏️ Editar</button>
+                                    <button class="btn btn-reset" onclick="resetPassword(${user.id})">🔑 Resetar Senha</button>
+                                    <button class="btn btn-toggle-active ${toggleButtonClass}" onclick="toggleActive(${user.id}, ${user.is_active})">${toggleButtonText}</button>
+                                </td>
+                            </tr>`;
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function loadUsersToPromote() {
+            try {
+                const promotableUsers = await fetchAPI('/resellers/promotable');
+                const selectElement = document.getElementById('user-to-promote');
+                selectElement.innerHTML = '<option value="">Selecione um usuário</option>';
+
+                if (promotableUsers.length > 0) {
+                    promotableUsers.forEach(user => {
+                        selectElement.innerHTML += `<option value="${user.id}">${user.name} (${user.email})</option>`;
+                    });
+                } else {
+                     selectElement.innerHTML = '<option value="">Nenhum usuário comum disponível.</option>';
+                }
+            } catch(error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const confirmPass = document.getElementById('reg-confirm-password').value;
+
+            if (password !== confirmPass) {
+                alert("As senhas não coincidem!");
+                return;
+            }
+
+            try {
+                const newUser = await fetchAPI('/resellers/create-user', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                alert(`Usuário "${newUser.name}" cadastrado com sucesso! Agora você pode promovê-lo na lista abaixo.`);
+                document.getElementById('register-form').reset();
+                await loadUsersToPromote();
+
+            } catch (error) {
+                alert("Erro ao cadastrar: " + error.message);
+            }
+        });
+
+        document.getElementById('promote-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('user-to-promote').value;
+            const credits = document.getElementById('credits-to-give').value;
+
+            if (!userId) return alert('Selecione um usuário.');
+            if (!credits || credits < 1) return alert('Defina uma quantidade válida de limite.');
+
+            if (!confirm(`Promover este usuário a revendedor e definir limite de ${credits}?`)) return;
+
+            try {
+                await fetchAPI(`/resellers/promote/${userId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ credits: parseInt(credits) })
+                });
+
+                alert('Sucesso! Usuário promovido e limite definido.');
+                location.reload();
+
+            } catch (error) {
+                alert(`Erro: ${error.message}`);
+            }
+        });
+
+        // --- FUNÇÕES DO MODAL DE EDIÇÃO ---
+
+        function openEditModal(user) {
+            document.getElementById('edit-id').value = user.id;
+            document.getElementById('edit-name').value = user.name;
+            document.getElementById('edit-email').value = user.email;
+            document.getElementById('edit-limit').value = user.client_limit;
+
+            const modal = document.getElementById('editModal');
+            modal.style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        }
+
+        document.getElementById('edit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-id').value;
+            const name = document.getElementById('edit-name').value;
+            const email = document.getElementById('edit-email').value;
+            const limit = document.getElementById('edit-limit').value;
+
+            try {
+                await fetchAPI(`/resellers/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        name: name,
+                        email: email,
+                        client_limit: parseInt(limit)
+                    })
+                });
+
+                alert("Revendedor atualizado com sucesso!");
+                closeEditModal();
+                location.reload();
+
+            } catch (error) {
+                alert("Erro ao atualizar: " + error.message);
+            }
+        });
+
+        // --- FUNÇÕES DE AÇÃO ---
+
+        async function resetPassword(userId) {
+            const newPassword = prompt("Digite a NOVA senha para este usuário (mínimo 6 caracteres):");
+            if (!newPassword || newPassword.length < 6) {
+                alert("Operação cancelada ou senha inválida.");
+                return;
+            }
+
+            if (!confirm(`Tem certeza que deseja resetar a senha do usuário ID ${userId}?`)) return;
+
+            try {
+                await fetchAPI(`/resellers/${userId}/reset-password`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ new_password: newPassword })
+                });
+                alert("Senha resetada com sucesso!");
+
+            } catch (error) {
+                alert("Erro ao resetar senha: " + error.message);
+            }
+        }
+
+        async function toggleActive(userId, isActive) {
+            let reason = null;
+
+            if (isActive) {
+                reason = prompt("Digite o motivo do bloqueio (Ex: Falta de pagamento):");
+                if (reason === null) return;
+                if (reason.trim() === "") reason = "Motivo não especificado";
+
+                if (!confirm(`Tem certeza que deseja BLOQUEAR o usuário ID ${userId} pelo motivo: "${reason}"?`)) return;
+            } else {
+                if (!confirm(`Tem certeza que deseja DESBLOQUEAR o acesso do usuário ID ${userId}?`)) return;
+            }
+
+            try {
+                await fetchAPI(`/resellers/${userId}/toggle-active`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ reason: reason })
+                });
+
+                const action = isActive ? "bloqueado" : "desbloqueado";
+                alert(`Usuário ${action} com sucesso!`);
+                location.reload();
+            } catch (error) {
+                const action = isActive ? "bloquear" : "desbloquear";
+                alert(`Erro ao ${action} usuário: ` + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
+============================================================
 FILE: frontend\whatsapp.html
 ============================================================
 <!DOCTYPE html>
@@ -5616,6 +6581,45 @@ input:focus, select:focus {
         padding: 15px;
     }
 }
+
+/* Estilos da Sidebar - Informações do Usuário */
+.user-profile {
+    padding: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin-top: auto; /* Empurra para o final da sidebar se usar flexbox */
+}
+
+.user-info {
+    font-weight: bold;
+    color: #fff; /* Ajuste conforme a cor da sua sidebar */
+    margin-bottom: 0.2rem;
+}
+
+.user-role {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+}
+
+/* Estilo do Limite/Créditos */
+.credits-display {
+    background-color: #e0f2fe;
+    color: #0369a1;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    margin-top: 5px;
+    display: inline-block;
+    width: 100%; /* Ocupa a largura disponível */
+    text-align: center;
+}
+
+/* Estilo específico para Super Admin (Ilimitado) */
+.credits-display.unlimited {
+    background-color: #dcfce7;
+    color: #166534;
+}
 ============================================================
 FILE: frontend\assets\js\clients.js
 ============================================================
@@ -5750,7 +6754,7 @@ FILE: frontend\assets\js\dashboard.js
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
  * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
- * @version 2.6
+ * @version 2.7
  */
 // ============================
 // CONFIGURAÇÃO GLOBAL
@@ -5760,13 +6764,16 @@ let whatsappPollingInterval = null;
 let pollingAttempts = 0;
 const MAX_POLLING_ATTEMPTS = 40; // 40 tentativas * 3s = 2 minutos
 
+// --- ATUALIZAÇÃO: Variável para guardar dados do usuário logado ---
+let currentUser = null;
+
 // ============================
 // INICIALIZAÇÃO
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
-    // A verificação de auth agora é feita pelo apiFetch,
-    // mas mantemos uma inicial para o primeiro carregamento.
-    if (!localStorage.getItem('token')) {
+    // Verifica se o token existe no localStorage
+    const token = localStorage.getItem('token');
+    if (!token) {
         redirectToLogin();
         return;
     }
@@ -5778,12 +6785,12 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function loadPage() {
     setupSidebarNavigation();
-    loadUserInfo();
+    loadUserInfo(); // Esta função agora também cuida das permissões da UI
     loadURLs();
     loadWhatsAppStatus();
     loadSettings();
     loadTelegramSettings();
-    setInterval(loadURLs, 30000);
+    setInterval(loadURLs, 30000); // Atualiza os monitores a cada 30 segundos
 }
 
 // ============================
@@ -5834,7 +6841,7 @@ function showNotification(message, type = 'info') {
     setTimeout(() => {
         notification.style.opacity = '1';
         notification.style.transform = 'translateY(0)';
-    }, 10); // Pequeno delay para a transição funcionar
+    }, 10);
 
     setTimeout(() => {
         notification.style.opacity = '0';
@@ -5868,13 +6875,15 @@ async function apiFetch(path, options = {}) {
         if (response.status === 401) {
             showNotification("Sessão expirada ou não autorizada. Faça login novamente.", 'error');
             redirectToLogin();
-            return response; // Retorna a resposta 401 para que o chamador possa lidar com ela se necessário
+            // Retornar a resposta aqui é importante para que a cadeia de promessas não quebre
+            return response;
         }
 
         return response;
     } catch (error) {
         console.error('Erro na requisição API:', error);
-        throw error; // Re-lança o erro para ser tratado pela função chamadora
+        showNotification('Erro de conexão com o servidor.', 'error');
+        throw error;
     }
 }
 
@@ -5895,24 +6904,75 @@ function logout() {
     }
 }
 
+// =================================================
+// CONTROLE DE ACESSO E PERMISSÕES (LÓGICA CENTRAL)
+// =================================================
+
 /**
- * Carrega as informações do usuário logado e atualiza o nome no cabeçalho.
+ * Carrega as informações do usuário, guarda em currentUser e aplica as permissões na UI.
  */
 async function loadUserInfo() {
     try {
         const response = await apiFetch('/users/me');
         if (response.ok) {
-            const user = await response.json();
+            currentUser = await response.json(); // Armazena os dados do usuário
+
             const el = document.getElementById('userName');
-            if (el) el.textContent = user.name;
+            if (el) el.textContent = currentUser.name;
+
+            // Exibe o "cargo" do usuário de forma mais amigável
+            const roleEl = document.querySelector('.user-role');
+            if (roleEl) {
+                // Ex: 'super_admin' vira 'Super Admin'
+                const friendlyRole = currentUser.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                roleEl.textContent = friendlyRole;
+            }
+
+            // ✅ APLICA AS REGRAS DE VISIBILIDADE NA INTERFACE
+            applyUIPermissions();
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
     }
 }
 
+/**
+ * Mostra ou esconde elementos da UI com base no role e permissões do usuário.
+ * Esta é a função que faz a mágica de exibir os links corretos.
+ */
+function applyUIPermissions() {
+    if (!currentUser) return;
+
+    const { role, permissions } = currentUser;
+
+    // Função auxiliar para mostrar/esconder elementos
+    const setElementVisibility = (selector, isVisible) => {
+        const element = document.querySelector(selector);
+        if (element) {
+            // Usa 'block' ou 'flex' dependendo do elemento para garantir a visibilidade correta
+            element.style.display = isVisible ? 'block' : 'none';
+        }
+    };
+
+    // 1. Controle de Menus da Sidebar baseado nas PERMISSÕES do usuário
+    // (Requer que os links no HTML tenham o atributo 'data-permission-key')
+    setElementVisibility('[data-permission-key="dashboard"]', permissions.can_view_dashboard);
+    setElementVisibility('[data-permission-key="clients"]', permissions.can_view_clients);
+    setElementVisibility('[data-permission-key="integrations"]', permissions.can_view_integrations);
+    setElementVisibility('[data-permission-key="settings"]', permissions.can_view_settings);
+
+    // 2. Controle de menus específicos por CARGO (ROLE)
+    // (Requer que os links no HTML tenham o atributo 'data-role-required')
+    // Regra: O link de revendedor aparece para 'reseller' E para 'super_admin'
+    setElementVisibility('[data-role-required="reseller"]', role === 'reseller' || role === 'super_admin');
+
+    // Regra: O link de admin aparece APENAS para 'super_admin'
+    setElementVisibility('[data-role-required="super_admin"]', role === 'super_admin');
+}
+
+
 // ============================
-// NAVEGAÇÃO (CORRIGIDA)
+// NAVEGAÇÃO (SPA)
 // ============================
 /**
  * Configura a navegação da barra lateral para alternar entre as seções de conteúdo.
@@ -5927,23 +6987,24 @@ function setupSidebarNavigation() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
 
-            // Se o link tiver 'data-section', é uma navegação interna (SPA)
-            if (targetId) {
-                e.preventDefault(); // Impede o recarregamento apenas se for SPA
-
-                links.forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
-
-                sections.forEach(s => {
-                    s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
-                });
-
-                // Fecha a sidebar em telas pequenas após clicar em um link
-                if (window.innerWidth <= 768 && sidebar) {
-                    sidebar.classList.remove('active');
-                }
+            // Se o link não for para uma seção interna (ex: clients.html), deixa o navegador seguir
+            if (!targetId) {
+                return;
             }
-            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
+
+            e.preventDefault(); // Previne a navegação apenas para links de seção
+
+            links.forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+
+            sections.forEach(s => {
+                s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
+            });
+
+            // Fecha a sidebar no mobile após clicar
+            if (window.innerWidth <= 768 && sidebar) {
+                sidebar.classList.remove('active');
+            }
         });
     });
 
@@ -5975,7 +7036,7 @@ async function loadURLs() {
         urlsList.innerHTML = urls.map(url => renderURLCard(url)).join('');
     } catch (error) {
         console.error('Erro ao carregar URLs:', error);
-        showNotification('Não foi possível atualizar as URLs.', 'error');
+        // A notificação de erro já é mostrada pelo apiFetch
     }
 }
 
@@ -5987,8 +7048,9 @@ async function loadURLs() {
 function renderURLCard(url) {
     const statusClass = url.status === 'UP' ? 'status-up' : (url.status === 'DOWN' ? 'status-down' : 'status-warning');
     const statusLabel = url.status === 'UP' ? 'ONLINE' : (url.status === 'DOWN' ? 'OFFLINE' : 'ALERTA');
-    const ping = url.response_time ? `${(url.response_time * 1000).toFixed(0)}ms` : '--';
-    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString() : '--:--';
+    const ping = url.response_time != null ? `${(url.response_time).toFixed(0)}ms` : '--'; // Corrigido para não multiplicar por 1000 se o backend já manda em ms
+    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+
     return `
     <article class="url-card ${statusClass}">
         <div class="url-header">
@@ -6009,6 +7071,7 @@ function renderURLCard(url) {
         </div>
     </article>`;
 }
+
 
 /**
  * Atualiza as estatísticas gerais (Online, Offline, etc.).
@@ -6053,7 +7116,7 @@ async function addURL() {
             showNotification(`Erro: ${err.detail}`, 'error');
         }
     } catch (e) {
-        showNotification("Erro de conexão ao adicionar URL.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6072,7 +7135,7 @@ async function deleteURL(id) {
             showNotification("Falha ao remover monitoramento.", 'error');
         }
     } catch (e) {
-        showNotification("Erro de conexão ao remover URL.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6102,7 +7165,7 @@ function whatsappTemplate() {
                     <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
                     <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
                 </div>
-                <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
+                <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem; flex-wrap: wrap;">
                     <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
                     <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
                 </div>
@@ -6179,7 +7242,6 @@ function updateWhatsAppUI(data) {
  * Inicia o processo de conexão, solicitando um QR Code ao backend.
  */
 async function connectWhatsApp() {
-    // REMOVIDO: O prompt que pedia o número
     const qrContainer = document.getElementById('qrCodeContainer');
     const qrWrapper = document.getElementById('qrCodeImageWrapper');
     qrContainer.style.display = 'block';
@@ -6187,8 +7249,7 @@ async function connectWhatsApp() {
     try {
         const response = await apiFetch('/whatsapp/connect', {
             method: 'POST',
-            // Enviamos um objeto vazio ou com número nulo, já que o backend agora aceita
-            body: JSON.stringify({ number: "" })
+            body: JSON.stringify({ number: "" }) // O número pode ser opcional dependendo da sua API
         });
         const data = await response.json();
         if (response.ok) {
@@ -6204,7 +7265,7 @@ async function connectWhatsApp() {
         }
     } catch (error) {
         qrContainer.style.display = 'none';
-        showNotification("Erro de conexão ao tentar conectar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6277,15 +7338,13 @@ async function disconnectWhatsApp() {
         const response = await apiFetch('/whatsapp/disconnect', { method: 'POST' });
         if (response.ok) {
             showNotification("Instância desconectada com sucesso.", 'info');
-            // Recarrega o status para mostrar o botão de conectar novamente
             loadWhatsAppStatus();
         } else {
             const data = await response.json();
             showNotification(data.detail || "Falha ao desconectar.", 'error');
         }
     } catch (e) {
-        console.error(e);
-        showNotification("Erro de conexão ao desconectar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6307,8 +7366,7 @@ async function testWhatsAppNotification() {
             showNotification(data.detail || 'Falha no envio.', 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification('Erro de conexão ao enviar teste.', 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6320,6 +7378,15 @@ async function testWhatsAppNotification() {
  */
 async function loadTelegramSettings() {
     try {
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const tokenInput = document.getElementById('telegramToken');
+            if (tokenInput) tokenInput.value = currentUser.telegram_token || '';
+            const chatInput = document.getElementById('telegramChatId');
+            if (chatInput) chatInput.value = currentUser.telegram_chat_id || '';
+            return;
+        }
+        // Fallback caso seja chamado antes
         const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
@@ -6340,7 +7407,6 @@ async function saveTelegramSettings() {
     const token = document.getElementById('telegramToken').value.trim();
     const chatId = document.getElementById('telegramChatId').value.trim();
 
-    // Validação: Ou preenche tudo, ou limpa tudo. Não pode deixar um só preenchido.
     if ((token && !chatId) || (!token && chatId)) {
         showNotification("Para ativar, preencha tanto o Token quanto o Chat ID.", 'error');
         return;
@@ -6360,8 +7426,7 @@ async function saveTelegramSettings() {
             showNotification("Erro ao salvar Telegram.", 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6370,22 +7435,18 @@ async function saveTelegramSettings() {
  */
 async function testTelegram() {
     showNotification("Enviando teste...", 'info');
-
     try {
         const response = await apiFetch('/users/me/telegram/test', {
             method: 'POST'
         });
-
         if (response.ok) {
             showNotification("Teste enviado! Verifique seu Telegram.", 'success');
         } else {
             const err = await response.json();
             showNotification(`Erro: ${err.detail}`, 'error');
         }
-
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão ao enviar teste.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -6397,13 +7458,24 @@ async function testTelegram() {
  */
 async function loadSettings() {
     try {
-        const response = await apiFetch('/users/me'); // Reutiliza a rota /me que agora traz os flags
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const phoneInput = document.getElementById('settingsPhone');
+            if (phoneInput) phoneInput.value = currentUser.whatsapp_number || '';
+            const checkDown = document.getElementById('checkNotifyDown');
+            if (checkDown) checkDown.checked = currentUser.notify_when_down;
+            const checkUp = document.getElementById('checkNotifyUp');
+            if (checkUp) checkUp.checked = currentUser.notify_when_up;
+            const checkSlow = document.getElementById('checkNotifySlow');
+            if (checkSlow) checkSlow.checked = currentUser.notify_when_slow;
+            return;
+        }
+        // Fallback
+        const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
-            // Preenche telefone
             const phoneInput = document.getElementById('settingsPhone');
             if (phoneInput) phoneInput.value = user.whatsapp_number || '';
-            // Preenche checkboxes
             const checkDown = document.getElementById('checkNotifyDown');
             if (checkDown) checkDown.checked = user.notify_when_down;
             const checkUp = document.getElementById('checkNotifyUp');
@@ -6420,15 +7492,11 @@ async function loadSettings() {
  * Envia as novas configurações para o backend.
  */
 async function saveSettings() {
-    const phoneInput = document.getElementById('settingsPhone');
-    const phone = phoneInput ? phoneInput.value.replace(/\D/g, '') : ''; // Remove não-números
-    const checkDown = document.getElementById('checkNotifyDown');
-    const notifyDown = checkDown ? checkDown.checked : true;
-    const checkUp = document.getElementById('checkNotifyUp');
-    const notifyUp = checkUp ? checkUp.checked : true;
-    const checkSlow = document.getElementById('checkNotifySlow');
-    const notifySlow = checkSlow ? checkSlow.checked : false;
-    // Validação básica de telefone se preenchido
+    const phone = document.getElementById('settingsPhone')?.value.replace(/\D/g, '') || '';
+    const notifyDown = document.getElementById('checkNotifyDown')?.checked ?? true;
+    const notifyUp = document.getElementById('checkNotifyUp')?.checked ?? true;
+    const notifySlow = document.getElementById('checkNotifySlow')?.checked ?? false;
+
     if (phone && phone.length < 10) {
         showNotification("Número de telefone parece inválido.", 'error');
         return;
@@ -6445,16 +7513,113 @@ async function saveSettings() {
         });
         if (response.ok) {
             showNotification("Configurações salvas com sucesso!", 'success');
-            // Atualiza info do usuário globalmente se necessário
-            loadUserInfo();
+            loadUserInfo(); // Recarrega os dados do usuário para garantir consistência
         } else {
             showNotification("Erro ao salvar configurações.", 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão ao salvar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
+
+============================================================
+FILE: frontend\assets\js\main.js
+============================================================
+// frontend/assets/js/main.js
+
+const API_URL = 'http://127.0.0.1:8000';
+
+/**
+ * Função genérica para chamadas à API.
+ * Gerencia automaticamente o token e erros padrão.
+ */
+async function fetchAPI(endpoint, options = {}) {
+    const token = localStorage.getItem('token');
+
+    const defaultOptions = {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    };
+
+    const mergedOptions = {
+        ...defaultOptions,
+        ...options,
+        headers: {...defaultOptions.headers, ...options.headers}
+    };
+
+    const response = await fetch(`${API_URL}${endpoint}`, mergedOptions);
+
+    if (!response.ok) {
+         const errorData = await response.json().catch(() => ({ detail: `Erro ${response.status}` }));
+         throw new Error(errorData.detail);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+    return response.json();
+}
+
+/**
+ * Carrega as informações do usuário na Sidebar (Nome, Role, Limite).
+ */
+async function loadSidebarInfo() {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+
+    try {
+        const response = await fetch(`${API_URL}/users/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            const user = await response.json();
+
+            const nameEl = document.getElementById('userName');
+            const roleEl = document.getElementById('userRole');
+            const creditsEl = document.getElementById('userCredits');
+
+            if (nameEl) nameEl.textContent = user.name;
+            if (roleEl) roleEl.textContent = user.role;
+
+            // Lógica de exibição do limite
+            if (creditsEl) {
+                if (user.role === 'super_admin') {
+                    creditsEl.textContent = "Limite: Ilimitado";
+                    creditsEl.classList.add('unlimited'); // Adiciona classe para estilizar via CSS
+                    creditsEl.style.backgroundColor = "#dcfce7"; // Fallback
+                    creditsEl.style.color = "#166534"; // Fallback
+                } else {
+                    creditsEl.textContent = `Limite: ${user.client_limit}`;
+                    creditsEl.classList.remove('unlimited');
+                    creditsEl.style.backgroundColor = "#e0f2fe"; // Fallback
+                    creditsEl.style.color = "#0369a1"; // Fallback
+                }
+            }
+            return user;
+        }
+    } catch (error) {
+        console.error("Erro ao carregar sidebar:", error);
+    }
+    return null;
+}
+
+function logout() {
+    if(confirm("Deseja sair?")) {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+    }
+}
+
+// --- NOVO: Executa automaticamente ao carregar a página ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Verifica se não é a página de login para evitar erros
+    if (!window.location.pathname.includes('login.html')) {
+        loadSidebarInfo();
+    }
+});
 ============================================================
 FILE: frontend\assets\js\script.js
 ============================================================

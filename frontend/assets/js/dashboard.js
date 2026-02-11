@@ -7,7 +7,9 @@
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
-const API_URL = 'http://localhost:8000';
+//const API_URL = 'http://localhost:8000';
+const API_URL = 'https://painel.gestornexus.com.br';
+
 let whatsappPollingInterval = null;
 let pollingAttempts = 0;
 const MAX_POLLING_ATTEMPTS = 40; // 40 tentativas * 3s = 2 minutos
