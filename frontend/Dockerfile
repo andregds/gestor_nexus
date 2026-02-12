@@ -1,7 +1,7 @@
 # Usa a imagem do Nginx
 FROM nginx:alpine
 
-# Remove a configuração padrão do Nginx
+# Remove a configuraão padrão do Nginx
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copia a nossa configuração personalizada
