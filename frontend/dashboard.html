@@ -20,28 +20,40 @@
             </div>
             <nav class="sidebar-menu">
                 <!-- Link Dashboard (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link active" data-section="dashboard">
+                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link">
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
 
                 <!-- Link WhatsApp (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="whatsapp">
+                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
 
                 <!-- Link Telegram (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="telegram">
+                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
 
                 <!-- Link Configurações (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="settings">
+                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <!-- ================================================== -->
+                <!-- ATUALIZAÇÃO: Link para Revendedores adicionado aqui -->
+                <!-- ================================================== -->
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" style="display: none;">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+
+                <!-- Link Admin (controlado por ROLE) -->
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" style="display: none;">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">

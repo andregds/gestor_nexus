@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
+from zoneinfo import ZoneInfo  # Import essencial para corrigir o Fuso Horário
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
@@ -56,7 +57,7 @@ class ClientResponse(ClientCreate):
     owner_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # <--- CORRIGIDO AQUI (Era orm_mode = True)
 
 
 # ==========================================
@@ -75,11 +76,25 @@ async def process_reminders_now(
     """
     # Busca todos os clientes do usuário
     clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
-    today = datetime.now().date()
+
+    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
+    try:
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        # Fallback caso o sistema não tenha tzdata (comum em Windows sem config)
+        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
+        tz_brazil = None
+
+    if tz_brazil:
+        today = datetime.now(tz_brazil).date()
+    else:
+        today = datetime.now().date()
+    # -----------------------------------------
+
     sent_count = 0
 
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
-    print(f"📅 Data do Servidor: {today}")
+    print(f"📅 Data considerada HOJE (BR): {today}")
     print(f"🔍 Filtro Selecionado: {filter_type}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
@@ -115,8 +130,6 @@ async def process_reminders_now(
             if days_diff == target_days:
                 should_send = True
             else:
-                # Debug para entender por que não enviou
-                # print(f"   Ignorado {client.name}: Faltam {days_diff} dias (Filtro pede {target_days})")
                 pass
 
         # 3. Filtro: Padrão (default) - Respeita a config do cliente
@@ -135,13 +148,15 @@ async def process_reminders_now(
         if should_send:
             print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
+            # Lógica estrita para evitar confusão entre Hoje e Vencido
             if days_diff == 0:
                 msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
             elif days_diff == 1:
                 msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
             elif days_diff > 1:
                 msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-            else:  # Negativo (Vencido)
+            elif days_diff < 0:
+                # Garante que dias negativos sejam tratados como VENCIDO
                 days_overdue = abs(days_diff)
                 msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
@@ -264,22 +279,40 @@ async def send_manual_reminder(
     if not client:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
-    today = datetime.now().date()
+    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
+    try:
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
+        tz_brazil = None
+
+    if tz_brazil:
+        today = datetime.now(tz_brazil).date()
+    else:
+        today = datetime.now().date()
+    # -----------------------------------------
+
     days_diff = (client.expiration_date - today).days
+
+    # DEBUG: Verifique isso no terminal do servidor se o erro persistir
+    print(f"DEBUG MANUAL: Hoje={today}, Vencimento={client.expiration_date}, Diff={days_diff}")
+
     msg = ""
 
-    # Lógica de mensagens
-    if days_diff == 3:
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em 3 dias. Evite bloqueios!"
-    elif days_diff == 1:
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff == 0:
+    # Lógica de mensagens REVISADA E ESTRITA
+    if days_diff == 0:
+        # EXATAMENTE HOJE
         msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+    elif days_diff == 1:
+        # AMANHÃ
+        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+    elif days_diff > 1:
+        # FUTURO (2 dias ou mais)
+        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
     elif days_diff < 0:
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu. Entre em contato para reativar."
-    else:
-        formatted_date = client.expiration_date.strftime('%d/%m/%Y')
-        msg = f"Olá {client.name}! 📅 Lembrete: Sua assinatura está ativa e vence dia {formatted_date}."
+        # PASSADO (Vencido)
+        days_overdue = abs(days_diff)
+        msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"

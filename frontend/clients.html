@@ -101,6 +101,34 @@
         .close-modal { position: absolute; top: 1rem; right: 1rem; cursor: pointer; font-size: 1.5rem; }
         .dynamic-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .dynamic-field-row input { flex: 1; }
+
+        /* --- NOVO CSS PARA O SUBMENU --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem; /* Indentação para parecer filho */
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1); /* Fundo levemente mais escuro */
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8; /* Cor mais apagada */
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover {
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -120,9 +148,21 @@
                 <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
+
+                <!-- LINK CLIENTES (MANTIDO INTACTO) -->
                 <a href="clients.html" class="sidebar-link active">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
+                <!-- SUBMENU ADICIONADO ABAIXO -->
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                </div>
+
                 <a href="whatsapp.html" class="sidebar-link">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
@@ -190,7 +230,7 @@
                         <span class="schedule-label">Envio Automático</span>
                         <span class="schedule-time" id="displayScheduleTime">--:--</span>
                     </div>
-                    
+
                     <label class="switch" title="Ativar/Desativar Envio Automático">
                         <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
                         <span class="slider round"></span>
