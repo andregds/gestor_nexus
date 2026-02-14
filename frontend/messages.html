@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens Pré-Prontas | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 0.5rem;
+            color: #6b7280;
+        }
+
+        button[type="submit"] {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #2563eb;
+        }
+
+        .message-list {
+            margin-top: 2rem;
+        }
+
+        .message-item {
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            background: #f8fafc;
+        }
+
+        .message-item h4 {
+            margin: 0 0 0.5rem 0;
+            color: #1e293b;
+        }
+
+        .message-item p {
+            margin: 0;
+            color: #475569;
+        }
+
+        .message-item button {
+            min-width: 90px;
+            padding: 0.5rem 1.2rem;
+            margin-right: 10px;
+            margin-top: 8px;
+            font-size: 1rem;
+            border-radius: 4px;
+            border: none;
+            background: #3b82f6;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .message-item button:last-child {
+            margin-right: 0;
+        }
+
+        .message-item button:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <a href="messages.html" class="sidebar-link active">
+                    <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                </a>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <h1>Mensagens Pré-Prontas</h1>
+            <p>Gerencie mensagens para vencimentos, cobranças e outras notificações.</p>
+
+            <form id="message-form">
+                <div class="form-group">
+                    <label for="message-type">Tipo de Mensagem:</label>
+                    <select id="message-type" name="message-type">
+                        <option value="vencido">Vencido</option>
+                        <option value="vence_1">Vence em 1</option>
+                        <option value="vence_2">Vence em 2</option>
+                        <option value="vence_3">Vence em 3</option>
+                        <option value="vence_4">Vence em 4</option>
+                        <option value="cobranca">Cobrança</option>
+                        <option value="especial">Data Especial</option>
+                        <option value="manual">Manual</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="message-content">Conteúdo da Mensagem:</label>
+                    <textarea id="message-content" name="message-content" rows="5" placeholder="Digite sua mensagem aqui..."></textarea>
+                    <div style="margin-top:8px; font-size:0.95em; color:#64748b; background:#f1f5f9; border-radius:4px; padding:6px 10px;">
+                        <strong>Variáveis disponíveis:</strong>
+                        <span style="display:inline-block;margin-right:10px;">{cliente} = Nome do cliente</span>
+                        <span style="display:inline-block;margin-right:10px;">{vencimento} = Data de vencimento</span>
+                        <span style="display:inline-block;margin-right:10px;">{dias} = Dias para vencimento</span>
+                        <span style="display:inline-block;margin-right:10px;">{valor} = Valor da fatura</span>
+                        <span style="display:inline-block;margin-right:10px;">{login} = Login do cliente</span>
+                        <span style="display:inline-block;margin-right:10px;">{whatsapp} = WhatsApp do cliente</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="message-image">Anexar Imagem (opcional):</label>
+                    <input type="file" id="message-image" name="message-image" accept="image/jpeg, image/png" />
+                    <small>Tamanho máximo: 5MB</small>
+                </div>
+
+                <button type="submit">Salvar Mensagem</button>
+            </form>
+
+            <div class="form-group">
+                <label for="custom-message-type">Criar Novo Tipo de Mensagem:</label>
+                <input type="text" id="custom-message-type" placeholder="Digite o novo tipo de mensagem...">
+                <button type="button" onclick="addCustomMessageType()">Adicionar Tipo</button>
+            </div>
+
+            <div class="message-list">
+                <div class="message-item">
+                    <h4>Mensagem de Vencimento</h4>
+                    <p>"Prezado cliente, sua fatura vence em breve. Por favor, regularize o pagamento."</p>
+                </div>
+                <div class="message-item">
+                    <h4>Mensagem de Cobrança</h4>
+                    <p>"Prezado cliente, identificamos um pagamento pendente. Entre em contato para regularizar."</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const messageList = document.querySelector('.message-list');
+        const API_URL = 'http://127.0.0.1:8000/api/messages'; // URL do endpoint do backend
+
+        // Exemplo de mensagens salvas (simulação de dados do backend)
+        const savedMessages = [
+            {
+                id: 1,
+                type: 'vencimento',
+                content: 'Prezado cliente, sua fatura vence amanhã. Regularize o pagamento para evitar interrupções.',
+                is_default: true,
+            },
+            {
+                id: 2,
+                type: 'cobranca',
+                content: 'Detectamos um pagamento pendente. Por favor, entre em contato para regularizar.',
+                is_default: true,
+            },
+        ];
+
+        // Preview da imagem anexada
+        const messageImageInput = document.getElementById('message-image');
+        const imagePreview = document.createElement('img');
+        imagePreview.style.maxWidth = '120px';
+        imagePreview.style.maxHeight = '120px';
+        imagePreview.style.display = 'none';
+        messageImageInput.parentNode.appendChild(imagePreview);
+
+        messageImageInput.addEventListener('change', function () {
+            const file = this.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('A imagem deve ter no máximo 5MB.');
+                    this.value = '';
+                    imagePreview.style.display = 'none';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.style.display = 'none';
+            }
+        });
+
+        // Renderiza mensagens salvas na lista (exibe imagem se houver)
+        function renderMessages() {
+            messageList.innerHTML = '';
+            savedMessages.forEach((message) => {
+                const messageItem = document.createElement('div');
+                messageItem.classList.add('message-item');
+                let imgHtml = '';
+                if (message.image) {
+                    let imgSrc = message.image;
+                    if (imgSrc.startsWith('/')) {
+                        imgSrc = imgSrc.replace(/^\//, '');
+                    }
+                    imgHtml = `<img src="/${imgSrc}" alt="Imagem anexada" style="width:20px;height:20px;object-fit:cover;display:inline-block;margin-right:8px;vertical-align:middle;border-radius:4px;" onerror="this.style.display='none'" />`;
+                }
+                // UX-friendly title
+                let title = '';
+                if (message.type === 'vencido') {
+                    title = 'Vencido';
+                } else if (message.type.startsWith('vence_')) {
+                    const num = message.type.replace('vence_', '');
+                    title = `Vence em ${num}`;
+                } else if (message.type === 'cobranca') {
+                    title = 'Cobrança';
+                } else if (message.type === 'especial') {
+                    title = 'Data Especial';
+                } else if (message.type === 'manual') {
+                    title = 'Manual';
+                } else {
+                    title = capitalizeFirstLetter(message.type);
+                }
+                messageItem.innerHTML = `
+                    <h4>${imgHtml}${title}${message.is_default ? ' <span style="color:#2563eb;font-size:0.9em">(Padrão)</span>' : ''}</h4>
+                    <p>${message.content}</p>
+                    <button onclick="editMessage(${message.id})">Editar</button>
+                    <button onclick="deleteMessage(${message.id})">Deletar</button>
+                `;
+                messageList.appendChild(messageItem);
+            });
+        }
+
+        // Atualiza o select de tipos de mensagem com os tipos padrão
+        function updateMessageTypeSelect() {
+            const types = new Set(savedMessages.map(msg => msg.type));
+            messageTypeSelect.innerHTML = '';
+            types.forEach(type => {
+                let text = '';
+                if (type === 'vencido') {
+                    text = 'Vencido';
+                } else if (type.startsWith('vence_')) {
+                    const num = type.replace('vence_', '');
+                    text = `Vence em ${num}`;
+                } else if (type === 'cobranca') {
+                    text = 'Cobrança';
+                } else if (type === 'especial') {
+                    text = 'Data Especial';
+                } else if (type === 'manual') {
+                    text = 'Manual';
+                } else {
+                    text = capitalizeFirstLetter(type);
+                }
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = text;
+                messageTypeSelect.appendChild(option);
+            });
+        }
+
+        // Função utilitária para buscar o token salvo
+        function getAuthHeaders() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return {};
+            }
+            return { 'Authorization': 'Bearer ' + token };
+        }
+
+        // Função para buscar mensagens do backend
+        async function fetchMessages() {
+            try {
+                const response = await fetch(API_URL, {
+                    headers: getAuthHeaders()
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    savedMessages.length = 0;
+                    data.forEach(msg => savedMessages.push(msg));
+                    renderMessages();
+                    updateMessageTypeSelect();
+                }
+            } catch (error) {
+                console.error('Erro ao buscar mensagens:', error);
+            }
+        }
+
+        // Função para editar mensagem (agora permite editar padrão também)
+        async function editMessage(id) {
+            const message = savedMessages.find((msg) => msg.id === id);
+            if (message) {
+                document.getElementById('message-type').value = message.type;
+                document.getElementById('message-content').value = message.content;
+                // Rolar até a área da mensagem
+                const contentBox = document.getElementById('message-content');
+                if (contentBox) {
+                    contentBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    contentBox.focus();
+                }
+                // Para editar, ao submeter, faz PUT
+                messageForm.onsubmit = async function (event) {
+                    event.preventDefault();
+                    const messageType = document.getElementById('message-type').value;
+                    const messageContent = document.getElementById('message-content').value;
+                    const messageImage = document.getElementById('message-image').files[0];
+                    const formData = new FormData();
+                    formData.append('type', messageType);
+                    formData.append('content', messageContent);
+                    if (messageImage) {
+                        formData.append('image', messageImage);
+                    }
+                    try {
+                        const response = await fetch(`${API_URL}/${id}`, {
+                            method: 'PUT',
+                            body: formData,
+                            headers: getAuthHeaders()
+                        });
+                        if (response.ok) {
+                            await fetchMessages();
+                            messageForm.reset();
+                            alert('Mensagem editada com sucesso!');
+                            messageForm.onsubmit = null; // volta ao normal
+                        } else if (response.status === 401) {
+                            alert('Erro de autenticação. Faça login novamente para editar mensagens.');
+                        } else {
+                            alert('Erro ao editar a mensagem.');
+                        }
+                    } catch (error) {
+                        alert('Erro ao editar a mensagem.');
+                    }
+                };
+            }
+        }
+
+        // Função para deletar mensagem
+        async function deleteMessage(id) {
+            if (confirm('Tem certeza que deseja deletar esta mensagem?')) {
+                try {
+                    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    if (response.ok) {
+                        await fetchMessages();
+                        alert('Mensagem deletada com sucesso!');
+                    } else {
+                        alert('Erro ao deletar a mensagem.');
+                    }
+                } catch (error) {
+                    alert('Erro ao deletar a mensagem.');
+                }
+            }
+        }
+
+        // Função para capitalizar a primeira letra
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+
+        const messageTypeSelect = document.getElementById('message-type');
+
+        function addCustomMessageType() {
+            const customTypeInput = document.getElementById('custom-message-type');
+            const newType = customTypeInput.value.trim();
+
+            if (newType) {
+                // Verifica se o tipo já existe
+                const exists = Array.from(messageTypeSelect.options).some(option => option.value === newType);
+
+                if (!exists) {
+                    // Adiciona o novo tipo ao select
+                    const newOption = document.createElement('option');
+                    newOption.value = newType;
+                    newOption.textContent = capitalizeFirstLetter(newType);
+                    messageTypeSelect.appendChild(newOption);
+
+                    // Limpa o campo de entrada
+                    customTypeInput.value = '';
+                    alert(`Novo tipo de mensagem '${newType}' adicionado com sucesso!`);
+                } else {
+                    alert('Este tipo de mensagem já existe.');
+                }
+            } else {
+                alert('Por favor, insira um nome válido para o novo tipo de mensagem.');
+            }
+        }
+
+        const messageForm = document.getElementById('message-form');
+
+        // Adiciona evento de envio ao formulário
+        messageForm.addEventListener('submit', async function (event) {
+            event.preventDefault(); // Impede o envio padrão do formulário
+
+            const messageType = document.getElementById('message-type').value;
+            const messageContent = document.getElementById('message-content').value;
+            const messageImage = document.getElementById('message-image').files[0];
+
+            if (messageContent.trim() === '') {
+                alert('O conteúdo da mensagem não pode estar vazio.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('type', messageType);
+            formData.append('content', messageContent);
+            if (messageImage) {
+                formData.append('image', messageImage);
+            }
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData,
+                    headers: getAuthHeaders()
+                });
+
+                if (response.ok) {
+                    await fetchMessages();
+                    messageForm.reset();
+                    alert('Mensagem criada com sucesso!');
+                } else if (response.status === 401) {
+                    alert('Erro de autenticação. Faça login novamente para salvar mensagens.');
+                } else {
+                    alert('Erro ao salvar a mensagem. Tente novamente.');
+                }
+            } catch (error) {
+                console.error('Erro ao salvar a mensagem:', error);
+                alert('Erro ao salvar a mensagem. Verifique sua conexão e tente novamente.');
+            }
+        });
+
+        // Inicializa a renderização das mensagens ao carregar
+        fetchMessages();
+    </script>
+</body>
+</html>

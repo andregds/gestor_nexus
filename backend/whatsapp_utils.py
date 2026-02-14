@@ -4,6 +4,8 @@ import re
 import httpx
 from fastapi import HTTPException
 from core.config import EVOLUTION_API_URL, EVOLUTION_API_KEY
+import base64
+import os
 
 logger = logging.getLogger("uvicorn")
 
@@ -127,6 +129,36 @@ async def send_whatsapp_notification(number: str, message: str, instance_name: s
             raise he
         except Exception as e:
             logger.error(f"Exceção envio: {e}")
+            return False
+
+
+async def send_whatsapp_image(number: str, image_path: str, caption: str, instance_name: str):
+    if not EVOLUTION_API_URL or not instance_name:
+        return False
+    clean_number = re.sub(r'\D', '', str(number))
+    # Lê a imagem e converte para base64
+    with open(image_path, "rb") as img_file:
+        image_b64 = base64.b64encode(img_file.read()).decode("utf-8")
+    payload = {
+        "number": clean_number,
+        "options": {"delay": 1200, "presence": "composing"},
+        "mediaMessage": {
+            "mediatype": "image",
+            "fileName": os.path.basename(image_path),
+            "caption": caption,
+            "media": image_b64
+        }
+    }
+    url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=evolution_headers(), json=payload, timeout=15.0)
+            if response.status_code in [200, 201]:
+                return True
+            logger.error(f"Erro envio imagem: {response.status_code} - {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Exceção envio imagem: {e}")
             return False
 
 

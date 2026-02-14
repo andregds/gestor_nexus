@@ -1,0 +1,1 @@
+pip install fastapi uvicorn sqlalchemy httpx python-dotenv apscheduler jinja2 python-multipart requests

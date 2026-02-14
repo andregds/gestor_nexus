@@ -1,4 +1,6 @@
 # backend/main.py
+import sys
+import os
 import time
 import httpx
 import socket  # <-- NOVO: Necessário para obter o IP
@@ -8,13 +10,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi.staticfiles import StaticFiles
+
+# Adiciona o diretório `backend` ao sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Imports locais
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 # --- ATUALIZAÇÃO: Importar TODOS os modelos necessários ---
 from models import User, Client, MonitoredURL
-from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers
+from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers, messages
+from routes import messages as messages_route
 
 # --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
 from core.utils import generate_reminder_message
@@ -40,6 +47,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Monta o diretório de imagens anexas como estático
+app.mount("/imagens_anexas", StaticFiles(directory="imagens_anexas"), name="imagens_anexas")
+
 # Inclui os routers
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -49,6 +59,7 @@ app.include_router(clients.router)
 app.include_router(backup.router)
 app.include_router(admin.router)
 app.include_router(resellers.router)
+app.include_router(messages.router)
 
 # =================================================================
 # TAREFA 1: VERIFICADOR DE LEMBRETES DE COBRANÇA (SEU CÓDIGO ATUAL)
@@ -110,7 +121,10 @@ def check_and_send_reminders():
                     should_send = True
 
                 if should_send:
-                    msg = generate_reminder_message(client.name, days_diff)
+                    # Busca mensagem pré-pronta
+                    msg = get_predefined_message(days_diff, client.name)
+                    if not msg:
+                        msg = generate_reminder_message(client.name, days_diff)
                     if not msg:
                         continue
 
@@ -158,6 +172,29 @@ def check_and_send_reminders():
     finally:
         db.close()
 
+
+def get_predefined_message(days_diff, client_name):
+    # Mapeia days_diff para o tipo de mensagem
+    if days_diff < 0:
+        msg_type = "vencido"
+    elif days_diff == 0:
+        msg_type = "vence_1"
+    elif days_diff == 1:
+        msg_type = "vence_2"
+    elif days_diff == 2:
+        msg_type = "vence_3"
+    elif days_diff == 3:
+        msg_type = "vence_4"
+    else:
+        msg_type = None
+    if not msg_type:
+        return None
+    # Busca a mensagem do tipo correto
+    for msg in messages_route.messages:
+        if msg["type"] == msg_type:
+            # Personaliza o nome do cliente, se necessário
+            return msg["content"].replace("{cliente}", client_name)
+    return None
 
 # =================================================================
 # TAREFA 2: MONITOR DE URLS (NOVO CÓDIGO PARA CORRIGIR O PAINEL)

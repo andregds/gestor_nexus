@@ -6,14 +6,16 @@ from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
 from zoneinfo import ZoneInfo  # Import essencial para corrigir o Fuso Horário
+import os
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
 from models import User, Client
 from telegram_utils import send_telegram_message
+from routes import messages as messages_route  # NOVO IMPORT PARA MENSAGENS
 
 # --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
-from whatsapp_utils import send_whatsapp_notification
+from whatsapp_utils import send_whatsapp_notification, send_whatsapp_image
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -150,28 +152,62 @@ async def process_reminders_now(
 
             # Lógica estrita para evitar confusão entre Hoje e Vencido
             if days_diff == 0:
-                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+                msg_type = "vence_1"
             elif days_diff == 1:
-                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-            elif days_diff > 1:
-                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+                msg_type = "vence_2"
+            elif days_diff == 2:
+                msg_type = "vence_3"
+            elif days_diff == 3:
+                msg_type = "vence_4"
             elif days_diff < 0:
-                # Garante que dias negativos sejam tratados como VENCIDO
-                days_overdue = abs(days_diff)
-                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
-
+                msg_type = "vencido"
+            else:
+                msg_type = None
+            # Busca mensagem pré-pronta
+            msg = None
+            image_path = None
+            for m in messages_route.messages:
+                if m["type"] == msg_type:
+                    msg = render_message_template(m["content"], client, days_diff)
+                    if m.get("image"):
+                        # Caminho absoluto ao projeto
+                        rel_path = m["image"].lstrip("/")
+                        abs_path = os.path.join(os.getcwd(), rel_path)
+                        if os.path.isfile(abs_path):
+                            image_path = abs_path
+                        else:
+                            image_path = None
+                    break
+            if not msg:
+                # fallback antigo
+                if days_diff == 0:
+                    msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+                elif days_diff == 1:
+                    msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+                elif days_diff > 1:
+                    msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+                elif days_diff < 0:
+                    days_overdue = abs(days_diff)
+                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
             # --- ENVIO ---
             channel = client.notification_channel or "whatsapp"
             success = False
-
             # Envio WhatsApp
             if channel == "whatsapp" and has_whatsapp:
                 try:
-                    success = await send_whatsapp_notification(
-                        number=client.whatsapp,
-                        message=msg,
-                        instance_name=current_user.whatsapp_instance
-                    )
+                    if image_path:
+                        success = await send_whatsapp_image(
+                            number=client.whatsapp,
+                            image_path=image_path,
+                            caption=msg,
+                            instance_name=current_user.whatsapp_instance
+                        )
+                    else:
+                        success = await send_whatsapp_notification(
+                            number=client.whatsapp,
+                            message=msg,
+                            instance_name=current_user.whatsapp_instance
+                        )
                     if success:
                         print(f"   -> WhatsApp enviado com sucesso!")
                     else:
@@ -274,45 +310,53 @@ async def send_manual_reminder(
         current_user: User = Depends(get_current_user)
 ):
     """Força o envio da mensagem de cobrança para um cliente específico."""
-
     client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
 
-    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
-    try:
-        tz_brazil = ZoneInfo("America/Sao_Paulo")
-    except Exception:
-        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
-        tz_brazil = None
-
-    if tz_brazil:
-        today = datetime.now(tz_brazil).date()
-    else:
-        today = datetime.now().date()
-    # -----------------------------------------
-
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     days_diff = (client.expiration_date - today).days
 
-    # DEBUG: Verifique isso no terminal do servidor se o erro persistir
-    print(f"DEBUG MANUAL: Hoje={today}, Vencimento={client.expiration_date}, Diff={days_diff}")
+    # Busca mensagem pré-pronta igual ao agendador
+    def get_predefined_message_and_image(days_diff, client_name):
+        if days_diff < 0:
+            msg_type = "vencido"
+        elif days_diff == 0:
+            msg_type = "vence_1"
+        elif days_diff == 1:
+            msg_type = "vence_2"
+        elif days_diff == 2:
+            msg_type = "vence_3"
+        elif days_diff == 3:
+            msg_type = "vence_4"
+        else:
+            msg_type = None
+        if not msg_type:
+            return None, None
+        for msg in messages_route.messages:
+            if msg["type"] == msg_type:
+                image_path = msg.get("image")
+                if image_path:
+                    image_path = image_path.lstrip("/")
+                    if not os.path.isfile(image_path):
+                        image_path = None
+                return msg["content"].replace("{cliente}", client_name), image_path
+        return None, None
 
-    msg = ""
-
-    # Lógica de mensagens REVISADA E ESTRITA
-    if days_diff == 0:
-        # EXATAMENTE HOJE
-        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-    elif days_diff == 1:
-        # AMANHÃ
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff > 1:
-        # FUTURO (2 dias ou mais)
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-    elif days_diff < 0:
-        # PASSADO (Vencido)
-        days_overdue = abs(days_diff)
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+    msg, image_path = get_predefined_message_and_image(days_diff, client.name)
+    if not msg:
+        # fallback antigo
+        if days_diff == 0:
+            msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+        elif days_diff == 1:
+            msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+        elif days_diff > 1:
+            msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+        elif days_diff < 0:
+            days_overdue = abs(days_diff)
+            msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+    else:
+        msg = render_message_template(msg, client, days_diff)
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -325,11 +369,19 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
 
         try:
-            success = await send_whatsapp_notification(
-                number=client.whatsapp,
-                message=msg,
-                instance_name=current_user.whatsapp_instance
-            )
+            if image_path:
+                success = await send_whatsapp_image(
+                    number=client.whatsapp,
+                    image_path=image_path,
+                    caption=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
+            else:
+                success = await send_whatsapp_notification(
+                    number=client.whatsapp,
+                    message=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
             if not success:
                 error_detail = "A Evolution API retornou erro ou falha no envio."
         except Exception as e:
@@ -357,3 +409,24 @@ async def send_manual_reminder(
     else:
         print(f"❌ Erro no envio manual: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")
+
+
+# Função utilitária para substituir variáveis na mensagem
+
+def render_message_template(template, client, days_diff=None):
+    valor = getattr(client, 'valor', '') if hasattr(client, 'valor') else ''
+    vencimento = getattr(client, 'expiration_date', '') if hasattr(client, 'expiration_date') else ''
+    login = getattr(client, 'login', '') if hasattr(client, 'login') else ''
+    whatsapp = getattr(client, 'whatsapp', '') if hasattr(client, 'whatsapp') else ''
+    return (
+        template
+        .replace('{cliente}', client.name)
+        .replace('{dias}', str(days_diff) if days_diff is not None else '')
+        .replace('{valor}', str(valor))
+        .replace('{vencimento}', str(vencimento))
+        .replace('{login}', str(login))
+        .replace('{whatsapp}', str(whatsapp))
+    )
+
+# Exemplo de uso na função de envio manual e agendado:
+# msg = render_message_template(msg["content"], client, days_diff)
