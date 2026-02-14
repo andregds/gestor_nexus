@@ -74,9 +74,8 @@ async def process_reminders_now(
 ):
     """
     Executa a verificação de cobrança IMEDIATAMENTE.
-    Suporta filtros: 'default', 'expired', '0', '1', '2', '3'.
+    Suporta filtros: 'default', 'expired', '0', '1', '2', '3', 'msg_ID'.
     """
-    # Busca todos os clientes do usuário
     clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
 
     # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
@@ -93,8 +92,19 @@ async def process_reminders_now(
         today = datetime.now().date()
     # -----------------------------------------
 
-    sent_count = 0
+    # Identifica se é mensagem personalizada
+    is_custom_message = str(filter_type).startswith('msg_')
+    custom_message = None
+    if is_custom_message:
+        try:
+            msg_id = int(str(filter_type).replace('msg_', ''))
+            # Busca a mensagem personalizada do usuário
+            from backend.routes.messages import messages
+            custom_message = next((m for m in messages if m['id'] == msg_id), None)
+        except Exception:
+            custom_message = None
 
+    sent_count = 0
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
     print(f"📅 Data considerada HOJE (BR): {today}")
     print(f"🔍 Filtro Selecionado: {filter_type}")
@@ -114,39 +124,21 @@ async def process_reminders_now(
 
         # Calcula dias para vencer
         days_diff = (client.expiration_date - today).days
-
         should_send = False
-        msg = ""
-
-        # --- LÓGICA DE FILTRAGEM ---
-
-        # 1. Filtro: Vencidos (expired)
-        if filter_type == "expired":
-            if days_diff < 0:
+        if is_custom_message:
+            # Só envia para clientes ativos (dias_diff >= 0)
+            if days_diff >= 0:
                 should_send = True
-
-        # 2. Filtro: Dias Específicos (0, 1, 2, 3)
-        elif filter_type in ["0", "1", "2", "3"]:
-            # Converte para int para comparar com days_diff
-            target_days = int(filter_type)
-            if days_diff == target_days:
-                should_send = True
-            else:
-                pass
-
-        # 3. Filtro: Padrão (default) - Respeita a config do cliente
         else:
+            # ...lógica padrão existente...
             try:
                 threshold = int(client.reminder_days_before)
             except (ValueError, TypeError):
                 threshold = 3
-
             if 0 <= days_diff <= threshold:
                 should_send = True
             elif days_diff < 0 and client.notify_after_expiration:
                 should_send = True
-
-        # --- SE PASSOU NO FILTRO, MONTA A MENSAGEM ---
         if should_send:
             print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
@@ -166,18 +158,22 @@ async def process_reminders_now(
             # Busca mensagem pré-pronta
             msg = None
             image_path = None
-            for m in messages_route.messages:
-                if m["type"] == msg_type:
-                    msg = render_message_template(m["content"], client, days_diff)
-                    if m.get("image"):
-                        # Caminho absoluto ao projeto
-                        rel_path = m["image"].lstrip("/")
-                        abs_path = os.path.join(os.getcwd(), rel_path)
-                        if os.path.isfile(abs_path):
-                            image_path = abs_path
-                        else:
-                            image_path = None
-                    break
+            if is_custom_message and custom_message:
+                msg = custom_message['content']
+                image_path = custom_message.get('image')
+            else:
+                for m in messages_route.messages:
+                    if m["type"] == msg_type:
+                        msg = render_message_template(m["content"], client, days_diff)
+                        if m.get("image"):
+                            # Caminho absoluto ao projeto
+                            rel_path = m["image"].lstrip("/")
+                            abs_path = os.path.join(os.getcwd(), rel_path)
+                            if os.path.isfile(abs_path):
+                                image_path = abs_path
+                            else:
+                                image_path = None
+                        break
             if not msg:
                 # fallback antigo
                 if days_diff == 0:

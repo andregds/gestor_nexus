@@ -746,6 +746,7 @@
 
         // 1. Abre o modal para escolher o filtro
         function runBatchProcess() {
+            updateBatchFilterWithMessages();
             document.getElementById('batchModal').style.display = 'flex';
         }
 
@@ -777,6 +778,54 @@
                 alert("Erro de conexão ao tentar executar a rotina.");
             }
         }
+
+        // Adiciona opções de mensagens personalizadas ao select de Critério de Envio
+        async function updateBatchFilterWithMessages() {
+            const batchFilter = document.getElementById('batchFilter');
+            if (!batchFilter) return;
+            // Salva as opções padrão
+            const defaultOptions = [
+                { value: 'default', text: '⚡ Padrão (Respeitar configuração de cada cliente)' },
+                { value: '3', text: '📅 Vencimento em 3 Dias' },
+                { value: '2', text: '📅 Vencimento em 2 Dias' },
+                { value: '1', text: '⏰ Vencimento em 1 Dia (Amanhã)' },
+                { value: '0', text: '🚨 Vencimento Hoje' },
+                { value: 'expired', text: '❌ Vencidos (Ontem ou antes)' }
+            ];
+            // Limpa o select
+            batchFilter.innerHTML = '';
+            // Adiciona as opções padrão
+            defaultOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                batchFilter.appendChild(option);
+            });
+            // Busca mensagens do backend
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('http://127.0.0.1:8000/api/messages', {
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+                });
+                if (response.ok) {
+                    const messages = await response.json();
+                    // Adiciona apenas mensagens não padrão (is_default === false)
+                    messages.filter(msg => !msg.is_default).forEach(msg => {
+                        const option = document.createElement('option');
+                        option.value = 'msg_' + msg.id;
+                        option.textContent = `💬 ${msg.type ? capitalizeFirstLetter(msg.type) : 'Mensagem'}: ${msg.content.substring(0, 30)}...`;
+                        batchFilter.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                // Silencioso
+            }
+        }
+        // Função utilitária para capitalizar
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
     </script>
 </body>
 </html>
+
