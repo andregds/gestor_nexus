@@ -145,12 +145,12 @@
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- LINK CLIENTES (MANTIDO INTACTO) -->
-                <a href="clients.html" class="sidebar-link active">
+                <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
                 <!-- SUBMENU ADICIONADO ABAIXO -->
@@ -166,14 +166,43 @@
                     </a>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link">
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -388,6 +417,7 @@
         </div>
     </div>
 
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
 
     <script>

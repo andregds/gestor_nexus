@@ -22,6 +22,31 @@ class User(Base):
         "can_view_settings": True
     })
 
+    # Feature flags controlam visibilidade de menus/páginas por usuário
+    feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
+        # admin continua desligado por padrão para não expor o console a quem não for super_admin
+        "admin": False,
+    })
+
+    # Padrão opcional aplicado aos filhos de um revendedor (herdado quando não houver override no filho)
+    reseller_feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
+        "admin": False,
+    })
+
     client_limit = Column(Integer, default=0)
 
     # Configurações do WhatsApp
@@ -54,11 +79,10 @@ class User(Base):
         return bool(self.whatsapp_instance)
 
 
-# ... (Mantenha as classes MonitoredURL e Client como estão) ...
 class MonitoredURL(Base):
     __tablename__ = "monitored_urls"
     id = Column(Integer, primary_key=True, index=True)
-    url = Column(String(255), index=True)
+    url = Column(String(2048), index=True)
     nickname = Column(String(100), nullable=True)
     status = Column(String(50), default="PENDING")
     http_code = Column(Integer, nullable=True)
@@ -90,3 +114,73 @@ class Client(Base):
     notify_after_expiration = Column(Boolean, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_type = Column(String(50), index=True, unique=True)
+    content = Column(String(1024))
+    image_path = Column(String(255), nullable=True)
+    is_default = Column(Boolean, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    owner = relationship("User")
+
+
+# ==================================================
+# NOVOS MODELOS PARA PRODUTOS, PLANOS, ETC.
+# ==================================================
+
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), index=True, unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User")
+    products = relationship("Product", back_populates="category")
+
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), index=True, nullable=False)
+    description = Column(String(1024), nullable=True)
+    price = Column(Float, nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    category = relationship("Category", back_populates="products")
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    price = Column(Float, nullable=False)
+    billing_cycle = Column(String(50), nullable=False)  # e.g., "monthly", "yearly"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    features = relationship("Feature", secondary="plan_features", back_populates="plans")
+
+
+class Feature(Base):
+    __tablename__ = "features"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    plans = relationship("Plan", secondary="plan_features", back_populates="features")
+
+
+class PlanFeature(Base):
+    __tablename__ = "plan_features"
+    plan_id = Column(Integer, ForeignKey("plans.id"), primary_key=True)
+    feature_id = Column(Integer, ForeignKey("features.id"), primary_key=True)

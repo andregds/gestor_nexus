@@ -189,6 +189,10 @@ if __name__ == "__main__":
     generate_project_dump()
 
 ============================================================
+FILE: valida_env.py
+============================================================
+
+============================================================
 FILE: verificar_arquivos.py
 ============================================================
 import os
@@ -837,6 +841,8 @@ def get_db():
 FILE: backend\main.py
 ============================================================
 # backend/main.py
+import sys
+import os
 import time
 import httpx
 import socket  # <-- NOVO: Necessário para obter o IP
@@ -846,21 +852,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
+
+# Adiciona o diretório `backend` ao sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Imports locais
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 # --- ATUALIZAÇÃO: Importar TODOS os modelos necessários ---
 from models import User, Client, MonitoredURL
-from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers
+from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers, messages
+from database import engine, Base
+import models
 
-# --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
-from core.utils import generate_reminder_message
-from core.config import EVOLUTION_API_URL
-from whatsapp_utils import evolution_headers
-from models import User, Client, MonitoredURL # Garanta que MonitoredURL está aqui
-# Cria as tabelas no banco de dados (se não existirem)
-Base.metadata.create_all(bind=engine)
+# Cria as tabelas no banco de dados, se não existirem
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Monitor DNS API",
@@ -878,6 +886,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Monta o diretório de imagens anexas como estático
+app.mount("/imagens_anexas", StaticFiles(directory="imagens_anexas"), name="imagens_anexas")
+
+# Adiciona as novas rotas de produtos
+from routes import products, categories, plans, features
+app.include_router(products.router, prefix="/products", tags=["Products"])
+app.include_router(categories.router, prefix="/categories", tags=["Categories"])
+app.include_router(plans.router, prefix="/plans", tags=["Plans"])
+app.include_router(features.router, prefix="/features", tags=["Features"])
+
+# --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
+from core.utils import generate_reminder_message
+from core.config import EVOLUTION_API_URL
+from whatsapp_utils import evolution_headers
+from models import User, Client, MonitoredURL # Garanta que MonitoredURL está aqui
+# Cria as tabelas no banco de dados (se não existirem)
+Base.metadata.create_all(bind=engine)
+
 # Inclui os routers
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -887,6 +913,7 @@ app.include_router(clients.router)
 app.include_router(backup.router)
 app.include_router(admin.router)
 app.include_router(resellers.router)
+app.include_router(messages.router)
 
 # =================================================================
 # TAREFA 1: VERIFICADOR DE LEMBRETES DE COBRANÇA (SEU CÓDIGO ATUAL)
@@ -948,7 +975,10 @@ def check_and_send_reminders():
                     should_send = True
 
                 if should_send:
-                    msg = generate_reminder_message(client.name, days_diff)
+                    # Busca mensagem pré-pronta
+                    msg = get_predefined_message(days_diff, client.name)
+                    if not msg:
+                        msg = generate_reminder_message(client.name, days_diff)
                     if not msg:
                         continue
 
@@ -996,6 +1026,29 @@ def check_and_send_reminders():
     finally:
         db.close()
 
+
+def get_predefined_message(days_diff, client_name):
+    # Mapeia days_diff para o tipo de mensagem
+    if days_diff < 0:
+        msg_type = "vencido"
+    elif days_diff == 0:
+        msg_type = "vence_1"
+    elif days_diff == 1:
+        msg_type = "vence_2"
+    elif days_diff == 2:
+        msg_type = "vence_3"
+    elif days_diff == 3:
+        msg_type = "vence_4"
+    else:
+        msg_type = None
+    if not msg_type:
+        return None
+    # Busca a mensagem do tipo correto
+    for msg in messages_route.messages:
+        if msg["type"] == msg_type:
+            # Personaliza o nome do cliente, se necessário
+            return msg["content"].replace("{cliente}", client_name)
+    return None
 
 # =================================================================
 # TAREFA 2: MONITOR DE URLS (NOVO CÓDIGO PARA CORRIGIR O PAINEL)
@@ -1133,6 +1186,18 @@ class User(Base):
         "can_view_settings": True
     })
 
+    # Feature flags controlam visibilidade de menus/páginas por usuário
+    feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
+        "admin": False,
+    })
+
     client_limit = Column(Integer, default=0)
 
     # Configurações do WhatsApp
@@ -1165,11 +1230,10 @@ class User(Base):
         return bool(self.whatsapp_instance)
 
 
-# ... (Mantenha as classes MonitoredURL e Client como estão) ...
 class MonitoredURL(Base):
     __tablename__ = "monitored_urls"
     id = Column(Integer, primary_key=True, index=True)
-    url = Column(String(255), index=True)
+    url = Column(String(2048), index=True)
     nickname = Column(String(100), nullable=True)
     status = Column(String(50), default="PENDING")
     http_code = Column(Integer, nullable=True)
@@ -1201,6 +1265,77 @@ class Client(Base):
     notify_after_expiration = Column(Boolean, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_type = Column(String(50), index=True, unique=True)
+    content = Column(String(1024))
+    image_path = Column(String(255), nullable=True)
+    is_default = Column(Boolean, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    owner = relationship("User")
+
+
+# ==================================================
+# NOVOS MODELOS PARA PRODUTOS, PLANOS, ETC.
+# ==================================================
+
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), index=True, unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User")
+    products = relationship("Product", back_populates="category")
+
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), index=True, nullable=False)
+    description = Column(String(1024), nullable=True)
+    price = Column(Float, nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    category = relationship("Category", back_populates="products")
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    price = Column(Float, nullable=False)
+    billing_cycle = Column(String(50), nullable=False)  # e.g., "monthly", "yearly"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    features = relationship("Feature", secondary="plan_features", back_populates="plans")
+
+
+class Feature(Base):
+    __tablename__ = "features"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    owner = relationship("User")
+    plans = relationship("Plan", secondary="plan_features", back_populates="features")
+
+
+class PlanFeature(Base):
+    __tablename__ = "plan_features"
+    plan_id = Column(Integer, ForeignKey("plans.id"), primary_key=True)
+    feature_id = Column(Integer, ForeignKey("features.id"), primary_key=True)
+
 ============================================================
 FILE: backend\monitor.py
 ============================================================
@@ -1429,6 +1564,61 @@ async def start_monitoring(db_session_factory):
             db.close()
         await asyncio.sleep(30)
 ============================================================
+FILE: backend\promote_super_admin.py
+============================================================
+"""
+Uso:
+    python promote_super_admin.py <email_do_usuario>
+
+Promove o usuário informado para `super_admin` e garante que o flag de admin
+esteja habilitado. Use dentro do venv com as variáveis de conexão já
+configuradas.
+"""
+import sys
+from sqlalchemy.exc import SQLAlchemyError
+from database import SessionLocal
+from models import User
+
+
+def promote(email: str) -> int:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            print(f"Usuário com email '{email}' não encontrado.")
+            return 1
+
+        user.role = "super_admin"
+
+        flags = user.feature_flags or {}
+        flags["admin"] = True
+        flags["resell"] = True
+        user.feature_flags = flags
+
+        db.commit()
+        print(f"Usuário '{user.name}' promovido para super_admin com sucesso.")
+        return 0
+    except SQLAlchemyError as exc:
+        db.rollback()
+        print(f"Erro ao promover usuário: {exc}")
+        return 1
+    finally:
+        db.close()
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Uso: python promote_super_admin.py <email_do_usuario>")
+        sys.exit(1)
+    email = sys.argv[1].strip()
+    sys.exit(promote(email))
+
+
+if __name__ == "__main__":
+    main()
+
+
+============================================================
 FILE: backend\telegram_utils.py
 ============================================================
 # backend/telegram_utils.py
@@ -1464,6 +1654,8 @@ import re
 import httpx
 from fastapi import HTTPException
 from core.config import EVOLUTION_API_URL, EVOLUTION_API_KEY
+import base64
+import os
 
 logger = logging.getLogger("uvicorn")
 
@@ -1587,6 +1779,36 @@ async def send_whatsapp_notification(number: str, message: str, instance_name: s
             raise he
         except Exception as e:
             logger.error(f"Exceção envio: {e}")
+            return False
+
+
+async def send_whatsapp_image(number: str, image_path: str, caption: str, instance_name: str):
+    if not EVOLUTION_API_URL or not instance_name:
+        return False
+    clean_number = re.sub(r'\D', '', str(number))
+    # Lê a imagem e converte para base64
+    with open(image_path, "rb") as img_file:
+        image_b64 = base64.b64encode(img_file.read()).decode("utf-8")
+    payload = {
+        "number": clean_number,
+        "options": {"delay": 1200, "presence": "composing"},
+        "mediaMessage": {
+            "mediatype": "image",
+            "fileName": os.path.basename(image_path),
+            "caption": caption,
+            "media": image_b64
+        }
+    }
+    url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=evolution_headers(), json=payload, timeout=15.0)
+            if response.status_code in [200, 201]:
+                return True
+            logger.error(f"Erro envio imagem: {response.status_code} - {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Exceção envio imagem: {e}")
             return False
 
 
@@ -1732,7 +1954,7 @@ from typing import List
 
 from core.dependencies import get_db, get_current_user
 from models import User
-from schemas.user import UserResponse # Reutilizamos a resposta que já tem role e permissions
+from schemas.user import UserResponse, FeatureFlagsUpdate
 
 router = APIRouter(prefix="/admin", tags=["Administração"])
 
@@ -1781,6 +2003,23 @@ def promote_user_to_super_admin(
     db.refresh(user_to_promote)
 
     return {"message": f"Usuário '{user_to_promote.name}' promovido a super administrador com sucesso!"}
+
+@router.put("/feature-flags/{user_id}", dependencies=[Depends(get_super_admin)])
+def update_feature_flags(user_id: int, payload: FeatureFlagsUpdate, db: Session = Depends(get_db)):
+    """Atualiza os feature flags (menus/páginas visíveis) de um usuário específico."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
+
+    # Merge simples: sobrescreve flags informadas, mantém demais
+    current_flags = user.feature_flags or {}
+    current_flags.update(payload.feature_flags)
+    user.feature_flags = current_flags
+
+    db.commit()
+    db.refresh(user)
+    return {"message": "Feature flags atualizados", "feature_flags": user.feature_flags}
+
 ============================================================
 FILE: backend\routes\auth.py
 ============================================================
@@ -2179,6 +2418,33 @@ async def import_clients_file(
         "errors": errors
     }
 ============================================================
+FILE: backend\routes\categories.py
+============================================================
+# backend/routes/categories.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+import models, schemas
+from database import get_db
+from auth import get_current_user
+
+router = APIRouter()
+
+@router.post("/", response_model=schemas.Category)
+def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_category = models.Category(**category.dict(), user_id=current_user.id)
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+@router.get("/", response_model=List[schemas.Category])
+def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    categories = db.query(models.Category).filter(models.Category.user_id == current_user.id).offset(skip).limit(limit).all()
+    return categories
+
+
+============================================================
 FILE: backend\routes\clients.py
 ============================================================
 # backend/routes/clients.py
@@ -2189,19 +2455,25 @@ from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
 from zoneinfo import ZoneInfo  # Import essencial para corrigir o Fuso Horário
+import os
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
 from models import User, Client
 from telegram_utils import send_telegram_message
+from routes import messages as messages_route  # NOVO IMPORT PARA MENSAGENS
+from core.security import verify_password # Import for password verification
 
 # --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
-from whatsapp_utils import send_whatsapp_notification
+from whatsapp_utils import send_whatsapp_notification, send_whatsapp_image
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
 
 # --- SCHEMAS ---
+
+class PasswordConfirmation(BaseModel):
+    password: str
 
 class ClientCreate(BaseModel):
     name: str
@@ -2255,9 +2527,8 @@ async def process_reminders_now(
 ):
     """
     Executa a verificação de cobrança IMEDIATAMENTE.
-    Suporta filtros: 'default', 'expired', '0', '1', '2', '3'.
+    Suporta filtros: 'default', 'expired', '0', '1', '2', '3', 'msg_ID'.
     """
-    # Busca todos os clientes do usuário
     clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
 
     # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
@@ -2274,8 +2545,19 @@ async def process_reminders_now(
         today = datetime.now().date()
     # -----------------------------------------
 
-    sent_count = 0
+    # Identifica se é mensagem personalizada
+    is_custom_message = str(filter_type).startswith('msg_')
+    custom_message = None
+    if is_custom_message:
+        try:
+            msg_id = int(str(filter_type).replace('msg_', ''))
+            # Busca a mensagem personalizada do usuário
+            from backend.routes.messages import messages
+            custom_message = next((m for m in messages if m['id'] == msg_id), None)
+        except Exception:
+            custom_message = None
 
+    sent_count = 0
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
     print(f"📅 Data considerada HOJE (BR): {today}")
     print(f"🔍 Filtro Selecionado: {filter_type}")
@@ -2295,66 +2577,86 @@ async def process_reminders_now(
 
         # Calcula dias para vencer
         days_diff = (client.expiration_date - today).days
-
         should_send = False
-        msg = ""
-
-        # --- LÓGICA DE FILTRAGEM ---
-
-        # 1. Filtro: Vencidos (expired)
-        if filter_type == "expired":
-            if days_diff < 0:
+        if is_custom_message:
+            # Só envia para clientes ativos (dias_diff >= 0)
+            if days_diff >= 0:
                 should_send = True
-
-        # 2. Filtro: Dias Específicos (0, 1, 2, 3)
-        elif filter_type in ["0", "1", "2", "3"]:
-            # Converte para int para comparar com days_diff
-            target_days = int(filter_type)
-            if days_diff == target_days:
-                should_send = True
-            else:
-                pass
-
-        # 3. Filtro: Padrão (default) - Respeita a config do cliente
         else:
+            # ...lógica padrão existente...
             try:
                 threshold = int(client.reminder_days_before)
             except (ValueError, TypeError):
                 threshold = 3
-
             if 0 <= days_diff <= threshold:
                 should_send = True
             elif days_diff < 0 and client.notify_after_expiration:
                 should_send = True
-
-        # --- SE PASSOU NO FILTRO, MONTA A MENSAGEM ---
         if should_send:
             print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
             # Lógica estrita para evitar confusão entre Hoje e Vencido
             if days_diff == 0:
-                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+                msg_type = "vence_1"
             elif days_diff == 1:
-                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-            elif days_diff > 1:
-                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+                msg_type = "vence_2"
+            elif days_diff == 2:
+                msg_type = "vence_3"
+            elif days_diff == 3:
+                msg_type = "vence_4"
             elif days_diff < 0:
-                # Garante que dias negativos sejam tratados como VENCIDO
-                days_overdue = abs(days_diff)
-                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
-
+                msg_type = "vencido"
+            else:
+                msg_type = None
+            # Busca mensagem pré-pronta
+            msg = None
+            image_path = None
+            if is_custom_message and custom_message:
+                msg = custom_message['content']
+                image_path = custom_message.get('image')
+            else:
+                for m in messages_route.messages:
+                    if m["type"] == msg_type:
+                        msg = render_message_template(m["content"], client, days_diff)
+                        if m.get("image"):
+                            # Caminho absoluto ao projeto
+                            rel_path = m["image"].lstrip("/")
+                            abs_path = os.path.join(os.getcwd(), rel_path)
+                            if os.path.isfile(abs_path):
+                                image_path = abs_path
+                            else:
+                                image_path = None
+                        break
+            if not msg:
+                # fallback antigo
+                if days_diff == 0:
+                    msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+                elif days_diff == 1:
+                    msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+                elif days_diff > 1:
+                    msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+                elif days_diff < 0:
+                    days_overdue = abs(days_diff)
+                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
             # --- ENVIO ---
             channel = client.notification_channel or "whatsapp"
             success = False
-
             # Envio WhatsApp
             if channel == "whatsapp" and has_whatsapp:
                 try:
-                    success = await send_whatsapp_notification(
-                        number=client.whatsapp,
-                        message=msg,
-                        instance_name=current_user.whatsapp_instance
-                    )
+                    if image_path:
+                        success = await send_whatsapp_image(
+                            number=client.whatsapp,
+                            image_path=image_path,
+                            caption=msg,
+                            instance_name=current_user.whatsapp_instance
+                        )
+                    else:
+                        success = await send_whatsapp_notification(
+                            number=client.whatsapp,
+                            message=msg,
+                            instance_name=current_user.whatsapp_instance
+                        )
                     if success:
                         print(f"   -> WhatsApp enviado com sucesso!")
                     else:
@@ -2383,6 +2685,38 @@ async def process_reminders_now(
 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
+
+
+@router.post("/delete-all", status_code=status.HTTP_204_NO_CONTENT)
+def delete_all_clients(
+    confirmation: PasswordConfirmation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deleta TODOS os clientes de um usuário após confirmar a senha.
+    """
+    # 1. Verificar a senha do usuário
+    if not verify_password(confirmation.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Senha incorreta. A exclusão não foi realizada.",
+        )
+
+    # 2. Se a senha estiver correta, apagar os clientes
+    try:
+        num_deleted = db.query(Client).filter(Client.owner_id == current_user.id).delete(synchronize_session=False)
+        db.commit()
+        print(f"Usuário {current_user.email} deletou {num_deleted} clientes.")
+    except Exception as e:
+        db.rollback()
+        print(f"Erro ao deletar clientes para o usuário {current_user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ocorreu um erro no servidor ao tentar apagar os clientes."
+        )
+
+    return None
 
 
 # ==========================================
@@ -2457,45 +2791,53 @@ async def send_manual_reminder(
         current_user: User = Depends(get_current_user)
 ):
     """Força o envio da mensagem de cobrança para um cliente específico."""
-
     client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
 
-    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
-    try:
-        tz_brazil = ZoneInfo("America/Sao_Paulo")
-    except Exception:
-        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
-        tz_brazil = None
-
-    if tz_brazil:
-        today = datetime.now(tz_brazil).date()
-    else:
-        today = datetime.now().date()
-    # -----------------------------------------
-
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     days_diff = (client.expiration_date - today).days
 
-    # DEBUG: Verifique isso no terminal do servidor se o erro persistir
-    print(f"DEBUG MANUAL: Hoje={today}, Vencimento={client.expiration_date}, Diff={days_diff}")
+    # Busca mensagem pré-pronta igual ao agendador
+    def get_predefined_message_and_image(days_diff, client_name):
+        if days_diff < 0:
+            msg_type = "vencido"
+        elif days_diff == 0:
+            msg_type = "vence_1"
+        elif days_diff == 1:
+            msg_type = "vence_2"
+        elif days_diff == 2:
+            msg_type = "vence_3"
+        elif days_diff == 3:
+            msg_type = "vence_4"
+        else:
+            msg_type = None
+        if not msg_type:
+            return None, None
+        for msg in messages_route.messages:
+            if msg["type"] == msg_type:
+                image_path = msg.get("image")
+                if image_path:
+                    image_path = image_path.lstrip("/")
+                    if not os.path.isfile(image_path):
+                        image_path = None
+                return msg["content"].replace("{cliente}", client_name), image_path
+        return None, None
 
-    msg = ""
-
-    # Lógica de mensagens REVISADA E ESTRITA
-    if days_diff == 0:
-        # EXATAMENTE HOJE
-        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-    elif days_diff == 1:
-        # AMANHÃ
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff > 1:
-        # FUTURO (2 dias ou mais)
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-    elif days_diff < 0:
-        # PASSADO (Vencido)
-        days_overdue = abs(days_diff)
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+    msg, image_path = get_predefined_message_and_image(days_diff, client.name)
+    if not msg:
+        # fallback antigo
+        if days_diff == 0:
+            msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+        elif days_diff == 1:
+            msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+        elif days_diff > 1:
+            msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+        elif days_diff < 0:
+            days_overdue = abs(days_diff)
+            msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+    else:
+        msg = render_message_template(msg, client, days_diff)
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -2508,11 +2850,19 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
 
         try:
-            success = await send_whatsapp_notification(
-                number=client.whatsapp,
-                message=msg,
-                instance_name=current_user.whatsapp_instance
-            )
+            if image_path:
+                success = await send_whatsapp_image(
+                    number=client.whatsapp,
+                    image_path=image_path,
+                    caption=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
+            else:
+                success = await send_whatsapp_notification(
+                    number=client.whatsapp,
+                    message=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
             if not success:
                 error_detail = "A Evolution API retornou erro ou falha no envio."
         except Exception as e:
@@ -2540,6 +2890,254 @@ async def send_manual_reminder(
     else:
         print(f"❌ Erro no envio manual: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")
+
+
+# Função utilitária para substituir variáveis na mensagem
+
+def render_message_template(template, client, days_diff=None):
+    valor = getattr(client, 'valor', '') if hasattr(client, 'valor') else ''
+    vencimento = getattr(client, 'expiration_date', '') if hasattr(client, 'expiration_date') else ''
+    login = getattr(client, 'login', '') if hasattr(client, 'login') else ''
+    whatsapp = getattr(client, 'whatsapp', '') if hasattr(client, 'whatsapp') else ''
+    return (
+        template
+        .replace('{cliente}', client.name)
+        .replace('{dias}', str(days_diff) if days_diff is not None else '')
+        .replace('{valor}', str(valor))
+        .replace('{vencimento}', str(vencimento))
+        .replace('{login}', str(login))
+        .replace('{whatsapp}', str(whatsapp))
+    )
+
+# Exemplo de uso na função de envio manual e agendado:
+# msg = render_message_template(msg["content"], client, days_diff)
+
+============================================================
+FILE: backend\routes\features.py
+============================================================
+# backend/routes/features.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+import models, schemas
+from database import get_db
+from auth import get_current_user
+
+router = APIRouter()
+
+
+@router.post("/", response_model=schemas.Feature)
+def create_feature(
+    feature: schemas.FeatureCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    db_feature = models.Feature(**feature.dict(), user_id=current_user.id)
+    db.add(db_feature)
+    db.commit()
+    db.refresh(db_feature)
+    return db_feature
+
+
+@router.get("/", response_model=List[schemas.Feature])
+def read_features(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    features = (
+        db.query(models.Feature)
+        .filter(models.Feature.user_id == current_user.id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return features
+
+============================================================
+FILE: backend\routes\messages.py
+============================================================
+from fastapi import APIRouter, HTTPException, UploadFile, Form, Depends
+from typing import Optional
+import os
+
+from core.dependencies import get_current_user
+
+router = APIRouter()
+
+# Novo diretório para imagens anexas
+BASE_UPLOAD_DIR = "imagens_anexas"
+
+# Lista simulada para armazenar mensagens
+messages = []
+
+# Mensagens padrão para vencimentos
+DEFAULT_MESSAGES = [
+    {"id": 1001, "type": "vencido", "content": "Prezado cliente, sua fatura está vencida. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1002, "type": "vence_1", "content": "Prezado cliente, sua fatura vence em 1 dia. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1003, "type": "vence_2", "content": "Prezado cliente, sua fatura vence em 2 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1004, "type": "vence_3", "content": "Prezado cliente, sua fatura vence em 3 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1005, "type": "vence_4", "content": "Prezado cliente, sua fatura vence em 4 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+]
+
+def ensure_default_messages():
+    existing_types = {msg["type"] for msg in messages}
+    for default_msg in DEFAULT_MESSAGES:
+        if default_msg["type"] not in existing_types:
+            messages.append(default_msg.copy())
+
+# Garante que as mensagens padrão estejam sempre presentes
+ensure_default_messages()
+
+def normalize_filename(filename):
+    import re
+    name, ext = os.path.splitext(filename)
+    name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    return name + ext
+
+@router.post("/api/messages")
+async def create_message(
+    type: str = Form(...),
+    content: str = Form(...),
+    image: Optional[UploadFile] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    print(f"Recebido POST /api/messages com type={type}, content={content}, image={image}")
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+        user_upload_dir = os.path.join(BASE_UPLOAD_DIR, str(user_id))
+        os.makedirs(user_upload_dir, exist_ok=True)
+        user_images = [f for f in os.listdir(user_upload_dir) if os.path.isfile(os.path.join(user_upload_dir, f))]
+        if image and len(user_images) >= 10:
+            raise HTTPException(status_code=400, detail="Limite de 10 imagens anexas atingido para este usuário.")
+        image_path = None
+        if image:
+            if image.content_type not in ["image/jpeg", "image/png"]:
+                raise HTTPException(status_code=400, detail="Formato de imagem não suportado.")
+            normalized_filename = normalize_filename(image.filename)
+            image_path = os.path.join(user_upload_dir, normalized_filename)
+            with open(image_path, "wb") as f:
+                f.write(await image.read())
+        # Se já existe mensagem do mesmo tipo para este usuário, sobrescreve
+        for msg in messages:
+            if msg["type"] == type and msg.get("user_id") == user_id:
+                msg["content"] = content
+                if image_path:
+                    msg["image"] = f"/{user_upload_dir.replace(os.sep, '/')}/{os.path.basename(image_path)}"
+                return msg
+        # Se não existe, cria nova
+        if image_path:
+            image_url = f"/{user_upload_dir.replace(os.sep, '/')}/{os.path.basename(image_path)}"
+        else:
+            image_url = None
+        new_message = {
+            "id": len(messages) + 1,
+            "type": type,
+            "content": content,
+            "image": image_url,
+            "user_id": user_id,
+            "is_default": False,
+        }
+        messages.append(new_message)
+        print(f"Mensagem criada com sucesso: {new_message}")
+        return new_message
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao criar mensagem: {str(e)}")
+
+@router.get("/api/messages")
+async def list_messages(current_user: dict = Depends(get_current_user)):
+    """Retorna apenas as mensagens padrão e as do usuário autenticado."""
+    ensure_default_messages()
+    user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+    return [msg for msg in messages if msg.get("is_default") or msg.get("user_id") == user_id]
+
+@router.put("/api/messages/{message_id}")
+async def update_message(message_id: int, type: str = Form(...), content: str = Form(...), image: Optional[UploadFile] = None, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+    user_upload_dir = os.path.join(BASE_UPLOAD_DIR, str(user_id))
+    os.makedirs(user_upload_dir, exist_ok=True)
+    user_images = [f for f in os.listdir(user_upload_dir) if os.path.isfile(os.path.join(user_upload_dir, f))]
+    if image and len(user_images) >= 10:
+        raise HTTPException(status_code=400, detail="Limite de 10 imagens anexas atingido para este usuário.")
+    for msg in messages:
+        if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
+            msg["type"] = type
+            msg["content"] = content
+            if image:
+                if image.content_type not in ["image/jpeg", "image/png"]:
+                    raise HTTPException(status_code=400, detail="Formato de imagem não suportado.")
+                normalized_filename = normalize_filename(image.filename)
+                image_path = os.path.join(user_upload_dir, normalized_filename)
+                with open(image_path, "wb") as f:
+                    f.write(await image.read())
+                msg["image"] = f"/{user_upload_dir.replace(os.sep, '/')}/{os.path.basename(image_path)}"
+            return msg
+    raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+
+@router.delete("/api/messages/{message_id}")
+async def delete_message(message_id: int, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+    for i, msg in enumerate(messages):
+        if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
+            del messages[i]
+            return {"detail": "Mensagem deletada com sucesso."}
+    raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+
+============================================================
+FILE: backend\routes\plans.py
+============================================================
+# backend/routes/plans.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+import models, schemas
+from database import get_db
+from auth import get_current_user
+
+router = APIRouter()
+
+@router.post("/", response_model=schemas.Plan)
+def create_plan(plan: schemas.PlanCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_plan = models.Plan(**plan.dict(), user_id=current_user.id)
+    db.add(db_plan)
+    db.commit()
+    db.refresh(db_plan)
+    return db_plan
+
+@router.get("/", response_model=List[schemas.Plan])
+def read_plans(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    plans = db.query(models.Plan).filter(models.Plan.user_id == current_user.id).offset(skip).limit(limit).all()
+    return plans
+
+
+============================================================
+FILE: backend\routes\products.py
+============================================================
+# backend/routes/products.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+import models, schemas
+from database import get_db
+from auth import get_current_user
+
+router = APIRouter()
+
+@router.post("/", response_model=schemas.Product)
+def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db_product = models.Product(**product.dict(), user_id=current_user.id)
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+@router.get("/", response_model=List[schemas.Product])
+def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    products = db.query(models.Product).filter(models.Product.user_id == current_user.id).offset(skip).limit(limit).all()
+    return products
+
 ============================================================
 FILE: backend\routes\resellers.py
 ============================================================
@@ -2854,7 +3452,7 @@ FILE: backend\routes\users.py
 ============================================================
 # backend/routes/users.py
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
 from typing import Optional
 
@@ -2862,15 +3460,66 @@ from typing import Optional
 from core.dependencies import get_db, get_current_user
 from schemas.user import UserResponse, UserSettingsUpdate
 from models import User
-from telegram_utils import send_telegram_message
+
+# Defaults para evitar None em permissões/feature flags antigos
+DEFAULT_PERMISSIONS = {
+    "can_view_dashboard": True,
+    "can_view_clients": True,
+    "can_view_integrations": True,
+    "can_view_settings": True,
+}
+
+DEFAULT_FEATURE_FLAGS = {
+    "dashboard": True,
+    "clients": True,
+    "products": True,
+    "whatsapp": True,
+    "telegram": True,
+    "settings": True,
+    "resell": True,
+    "admin": False,
+}
+
+
+def _ensure_defaults(user: User, db: Optional[Session] = None):
+    """Garante que permissions e feature_flags sejam dicts (evita ResponseValidationError)."""
+    changed = False
+    permissions = user.permissions if isinstance(user.permissions, dict) else DEFAULT_PERMISSIONS.copy()
+    feature_flags = user.feature_flags if isinstance(user.feature_flags, dict) else DEFAULT_FEATURE_FLAGS.copy()
+
+    # Força flag de admin para super_admin
+    if user.role == "super_admin":
+        feature_flags = feature_flags or {}
+        if not feature_flags.get("admin", False):
+            feature_flags["admin"] = True
+            changed = True
+
+    # Detecta mudanças de normalização
+    if permissions is not user.permissions:
+        changed = True
+    if feature_flags is not user.feature_flags:
+        changed = True
+
+    if changed and db:
+        current = db.merge(user)
+        current.permissions = permissions
+        current.feature_flags = feature_flags
+        db.commit()
+        db.refresh(current)
+        return current
+
+    user.permissions = permissions
+    user.feature_flags = feature_flags
+    return user
+
 
 router = APIRouter(prefix="/users", tags=["Usuários"])
 
 
 @router.get("/me", response_model=UserResponse)
-def read_users_me(current_user: User = Depends(get_current_user)):
-    """Retorna informações do usuário logado."""
-    return current_user
+def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Retorna informações do usuário logado garantindo dicts nos campos opcionais."""
+    return _ensure_defaults(current_user, db)
 
 
 # Rota para salvar configurações gerais
@@ -2904,7 +3553,7 @@ def update_user_settings(
 
     db.commit()
     db.refresh(user_in_db)
-    return user_in_db
+    return _ensure_defaults(user_in_db, db)
 
 
 @router.post("/me/telegram/test")
@@ -3195,6 +3844,27 @@ class TokenData(BaseModel):
     class Config:
         from_attributes = True  # <--- AQUI ESTAVA O "orm_mode = True"
 ============================================================
+FILE: backend\schemas\category.py
+============================================================
+# backend/schemas/category.py
+from pydantic import BaseModel
+from typing import Optional
+
+class CategoryBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class Category(CategoryBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+============================================================
 FILE: backend\schemas\client.py
 ============================================================
 # backend/schemas/client.py
@@ -3240,6 +3910,77 @@ class ClientResponse(ClientBase):
     class Config:
         from_attributes = True
 ============================================================
+FILE: backend\schemas\feature.py
+============================================================
+# backend/schemas/feature.py
+from pydantic import BaseModel
+from typing import Optional
+
+class FeatureBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class FeatureCreate(FeatureBase):
+    pass
+
+class Feature(FeatureBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+============================================================
+FILE: backend\schemas\plan.py
+============================================================
+# backend/schemas/plan.py
+from pydantic import BaseModel
+from typing import Optional, List
+
+class PlanBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    billing_cycle: str
+
+class PlanCreate(PlanBase):
+    pass
+
+class Plan(PlanBase):
+    id: int
+    user_id: int
+    features: List['Feature'] = []
+
+    class Config:
+        from_attributes = True
+
+from .feature import Feature
+Plan.update_forward_refs()
+
+============================================================
+FILE: backend\schemas\product.py
+============================================================
+# backend/schemas/product.py
+from pydantic import BaseModel
+from typing import Optional
+
+class ProductBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    category_id: int
+
+class ProductCreate(ProductBase):
+    pass
+
+class Product(ProductBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+============================================================
 FILE: backend\schemas\url.py
 ============================================================
 # backend/schemas/url.py
@@ -3276,14 +4017,37 @@ class URLResponse(URLBase):
 FILE: backend\schemas\user.py
 ============================================================
 # backend/schemas/user.py
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, Dict, Any
+
+# Fallbacks used when legacy rows have NULL/invalid JSON
+DEFAULT_PERMISSIONS = {
+    "can_view_dashboard": True,
+    "can_view_clients": True,
+    "can_view_integrations": True,
+    "can_view_settings": True,
+}
+
+DEFAULT_FEATURE_FLAGS = {
+    "dashboard": True,
+    "clients": True,
+    "products": True,
+    "whatsapp": True,
+    "telegram": True,
+    "settings": True,
+    "resell": True,
+    "admin": False,
+}
 
 
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
+
+
+class FeatureFlagsUpdate(BaseModel):
+    feature_flags: Dict[str, bool]
 
 
 class UserSettingsUpdate(BaseModel):
@@ -3317,11 +4081,20 @@ class UserResponse(BaseModel):
 
     # --- NOVOS CAMPOS NA RESPOSTA DA API ---
     role: str
-    permissions: Dict[str, Any]
+    permissions: Dict[str, Any] = Field(default_factory=dict)
+    feature_flags: Dict[str, bool] = Field(default_factory=dict)
     client_limit: int
     is_active: bool
     block_reason: Optional[str] = None  # <-- CAMPO ADICIONADO AQUI
     # ---------------------------------------
+
+    @field_validator("permissions", mode="before")
+    def _ensure_permissions(cls, v):
+        return v if isinstance(v, dict) else DEFAULT_PERMISSIONS.copy()
+
+    @field_validator("feature_flags", mode="before")
+    def _ensure_feature_flags(cls, v):
+        return v if isinstance(v, dict) else DEFAULT_FEATURE_FLAGS.copy()
 
     class Config:
         from_attributes = True
@@ -3353,10 +4126,214 @@ class WhatsAppStatusResponse(BaseModel):
 ============================================================
 FILE: backend\schemas\__init__.py
 ============================================================
+from .category import Category, CategoryCreate
+from .feature import Feature, FeatureCreate
+from .plan import Plan, PlanCreate
+from .product import Product, ProductCreate
+
+__all__ = [
+    "Category",
+    "CategoryCreate",
+    "Feature",
+    "FeatureCreate",
+    "Plan",
+    "PlanCreate",
+    "Product",
+    "ProductCreate",
+]
 
 ============================================================
 FILE: backend\sessions\whatsapp-session.json
 ============================================================
+
+============================================================
+FILE: frontend\admin.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-feature-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <a href="whatsapp.html" class="sidebar-link" data-feature-key="whatsapp">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="telegram">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell" style="display:none;">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link active" data-role-required="super_admin" data-feature-key="admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+        <main class="main-content">
+            <section class="content-section">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Console do Super Admin</h2>
+                        <p>Habilite ou desabilite funcionalidades por usuário/revendedor.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem;">
+                        <div style="flex:1; min-width:240px;">
+                            <label for="userSelect">Selecione o usuário</label>
+                            <select id="userSelect"></select>
+                        </div>
+                        <button class="btn btn-primary" id="btnRefresh">🔄 Atualizar lista</button>
+                        <button class="btn btn-secondary" id="btnApply">💾 Salvar permissões</button>
+                    </div>
+                    <div id="adminStatus" style="margin-bottom:1rem; color:var(--text-muted);"></div>
+                    <div class="feature-grid" id="featureGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem;"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="assets/js/sidebar.js"></script>
+    <script>
+        const featureList = [
+            { key: 'dashboard', label: 'Visão Geral' },
+            { key: 'clients', label: 'Clientes' },
+            { key: 'products', label: 'Produtos' },
+            { key: 'whatsapp', label: 'WhatsApp' },
+            { key: 'telegram', label: 'Telegram' },
+            { key: 'settings', label: 'Configurações' },
+            { key: 'resell', label: 'Revendedores' },
+            { key: 'admin', label: 'Super Admin' },
+        ];
+
+        const userSelect = document.getElementById('userSelect');
+        const featureGrid = document.getElementById('featureGrid');
+        const statusBox = document.getElementById('adminStatus');
+
+        function toast(msg, type='info') {
+            statusBox.textContent = msg;
+            statusBox.style.color = type === 'error' ? 'var(--danger)' : (type === 'success' ? 'var(--success)' : 'var(--text-muted)');
+        }
+
+        function renderFeatureToggles(flags) {
+            featureGrid.innerHTML = featureList.map(f => {
+                const checked = flags[f.key] !== false ? 'checked' : '';
+                return `<label class="toggle-item" style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#fff;">
+                    <input type="checkbox" data-feature="${f.key}" ${checked} style="width:auto;">
+                    <span>${f.label}</span>
+                </label>`;
+            }).join('');
+        }
+
+        async function loadUsers() {
+            const token = localStorage.getItem('token');
+            if (!token) { toast('Faça login novamente.', 'error'); return; }
+            toast('Carregando usuários...');
+            try {
+                const resp = await fetch('/admin/users', { headers: { Authorization: `Bearer ${token}` } });
+                if (resp.status === 403) { toast('Acesso negado. Apenas Super Admin.', 'error'); return; }
+                const users = await resp.json();
+                userSelect.innerHTML = users.map(u => `<option value="${u.id}" data-role="${u.role}" data-flags='${JSON.stringify(u.feature_flags || {})}'>${u.name} (${u.role})</option>`).join('');
+                if (users.length) {
+                    const first = users[0];
+                    renderFeatureToggles(first.feature_flags || {});
+                }
+                toast('Usuários carregados.', 'info');
+            } catch (e) {
+                toast('Erro ao carregar usuários.', 'error');
+            }
+        }
+
+        userSelect?.addEventListener('change', () => {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            const flags = JSON.parse(opt.getAttribute('data-flags') || '{}');
+            renderFeatureToggles(flags);
+        });
+
+        document.getElementById('btnRefresh')?.addEventListener('click', loadUsers);
+
+        document.getElementById('btnApply')?.addEventListener('click', async () => {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            const userId = opt.value;
+            const flags = {};
+            featureGrid.querySelectorAll('input[data-feature]').forEach(input => {
+                flags[input.getAttribute('data-feature')] = input.checked;
+            });
+            const token = localStorage.getItem('token');
+            toast('Salvando...');
+            try {
+                const resp = await fetch(`/admin/feature-flags/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ feature_flags: flags }),
+                });
+                if (!resp.ok) { toast('Falha ao salvar.', 'error'); return; }
+                toast('Permissões atualizadas.', 'success');
+                // Atualiza cache local se for o usuário logado
+                if (Number(userId) === Number(localStorage.getItem('user_id'))) {
+                    localStorage.setItem('user_feature_flags', JSON.stringify(flags));
+                    window.applyFeatureFlags && window.applyFeatureFlags();
+                }
+                opt.setAttribute('data-flags', JSON.stringify(flags));
+            } catch (e) {
+                toast('Erro ao salvar.', 'error');
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUsers();
+        });
+    </script>
+</body>
+</html>
 
 ============================================================
 FILE: frontend\backup_clients.html
@@ -3450,6 +4427,159 @@ FILE: frontend\backup_clients.html
             font-size: 1rem;
         }
 
+        /* --- ESTILOS DA ZONA DE PERIGO (NOVO) --- */
+        .danger-zone-container {
+            margin-top: 3rem;
+            background: var(--background-light);
+            border: 1px solid #fee2e2; /* Borda vermelha suave */
+            border-radius: 12px;
+            padding: 2rem;
+        }
+        .danger-zone-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #dc2626; /* Vermelho mais forte */
+            margin-bottom: 0.5rem;
+        }
+        .danger-zone-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .danger-zone-intro {
+            color: #b91c1c; /* Tom de vermelho escuro para o texto */
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        .danger-actions-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        @media (min-width: 768px) {
+            .danger-actions-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .danger-action-card {
+            background: #fff1f2; /* Fundo vermelho muito claro */
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+            display: flex;
+            flex-direction: column;
+        }
+        .danger-action-card h3 {
+            margin-top: 0;
+            color: #b91c1c;
+        }
+        .danger-action-card p {
+            color: #c2410c;
+            font-size: 0.85rem;
+            flex-grow: 1; /* Faz o parágrafo ocupar o espaço disponível */
+            margin-bottom: 1.5rem;
+        }
+        .danger-action-card.factory-reset {
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
+        .danger-action-card.factory-reset h3 {
+            color: #b45309;
+        }
+        .danger-action-card.factory-reset p {
+            color: #d97706;
+        }
+        .btn-danger-outline {
+            background-color: transparent;
+            border: 2px solid #dc2626;
+            color: #dc2626;
+            font-weight: bold;
+        }
+        .btn-danger-outline:hover {
+            background-color: #dc2626;
+            color: white;
+        }
+        .btn-icon {
+            margin-right: 8px;
+        }
+
+        /* --- ESTILOS DO MODAL (AJUSTES) --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 2rem;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .modal-content h2 {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0;
+            color: #dc2626;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end; /* Alinha os botões à direita */
+            gap: 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb; /* Adiciona uma linha separadora */
+        }
+
     </style>
 </head>
 <body>
@@ -3466,13 +4596,13 @@ FILE: frontend\backup_clients.html
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- MENU CLIENTES (EXPANDIDO) -->
                 <div class="menu-group">
-                    <a href="clients.html" class="sidebar-link active">
+                    <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
                         <span class="sidebar-icon">👥</span> Clientes
                     </a>
                     <div class="submenu">
@@ -3483,17 +4613,50 @@ FILE: frontend\backup_clients.html
                         <a href="backup_clients.html" class="submenu-link active">
                             <span>💾</span> Backup / Exportar
                         </a>
+                        <a href="messages.html" class="submenu-link">
+                            <span>✉️</span> Mensagens Pré-Prontas
+                        </a>
                     </div>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link">
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -3542,9 +4705,73 @@ FILE: frontend\backup_clients.html
                 <strong>Nota:</strong> Os arquivos gerados contêm dados sensíveis. Armazene-os em local seguro.
             </div>
 
+            <!-- ZONA DE PERIGO -->
+            <div class="danger-zone-container">
+                <div class="danger-zone-header">
+                    <h2><span class="danger-icon">⚠️</span> Zona de Perigo</h2>
+                </div>
+                <div class="danger-zone-intro">
+                    Atenção: As ações nesta área são permanentes e não podem ser desfeitas.
+                </div>
+                <div class="danger-actions-grid">
+                    <!-- Ação 1: Apagar Todos os Clientes -->
+                    <div class="danger-action-card">
+                        <h3>Apagar Todos os Clientes</h3>
+                        <p>Esta ação removerá permanentemente todos os clientes do seu banco de dados.</p>
+                        <button class="btn btn-danger-outline" onclick="openDeleteAllClientsModal()">
+                            <span class="btn-icon">🗑️</span> Apagar Tudo
+                        </button>
+                    </div>
+
+                    <!-- Ação 2: Resetar Fábrica (Novo) -->
+                    <div class="danger-action-card factory-reset">
+                        <h3>Resetar para Configurações de Fábrica</h3>
+                        <p>Remove todos os dados (clientes, URLs, configurações) e redefine o sistema para o padrão inicial.</p>
+                        <button class="btn btn-danger-outline" onclick="openFactoryResetModal()" style="border-color: #b45309; color: #b45309;">
+                            <span class="btn-icon">🏭</span> Resetar Agora
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
+    <!-- Modal de Confirmação para Apagar Tudo -->
+    <div id="deleteAllClientsModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeDeleteAllClientsModal()">×</span>
+            <h2><span class="danger-icon">🗑️</span> Confirmar Exclusão Total de Clientes</h2>
+            <p>Esta é uma ação <strong>irreversível</strong>. Para confirmar que deseja apagar <strong>todos</strong> os seus clientes, por favor, digite sua senha abaixo.</p>
+            <div class="form-group">
+                <label for="passwordConfirmation">Sua Senha:</label>
+                <input type="password" id="passwordConfirmation" placeholder="Digite sua senha para confirmar" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteAllClientsModal()">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteAllClients()">Confirmar e Apagar Clientes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação para Resetar Fábrica (Novo) -->
+    <div id="factoryResetModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeFactoryResetModal()">×</span>
+            <h2><span class="danger-icon">🏭</span> Confirmar Reset de Fábrica</h2>
+            <p>Esta ação irá <strong>apagar todos os dados do sistema</strong> (clientes, URLs, configurações) e restaurar para o padrão de fábrica. Esta ação não pode ser desfeita.</p>
+             <div class="form-group">
+                <label for="factoryResetPassword">Sua Senha:</label>
+                <input type="password" id="factoryResetPassword" placeholder="Digite sua senha para confirmar" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeFactoryResetModal()">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmFactoryReset()">Confirmar e Resetar Sistema</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
     <script>
         async function downloadBackup(type) {
@@ -3612,9 +4839,189 @@ FILE: frontend\backup_clients.html
                 btn.innerHTML = originalText;
             }
         }
+
+        function openDeleteAllClientsModal() {
+            document.getElementById('deleteAllClientsModal').style.display = 'flex';
+        }
+
+        function closeDeleteAllClientsModal() {
+            document.getElementById('deleteAllClientsModal').style.display = 'none';
+            document.getElementById('passwordConfirmation').value = ''; // Limpa o campo da senha
+        }
+
+        async function confirmDeleteAllClients() {
+            const password = document.getElementById('passwordConfirmation').value;
+            if (!password) {
+                showNotification('Por favor, digite sua senha para confirmar.', 'error');
+                return;
+            }
+
+            try {
+                const response = await apiFetch('/clients/delete-all', {
+                    method: 'POST', // Usando POST para enviar o corpo com a senha
+                    body: JSON.stringify({ password: password })
+                });
+
+                if (response.ok) {
+                    closeDeleteAllClientsModal();
+                    showNotification('Limpeza de banco de dados concluída com sucesso!', 'success');
+                    setTimeout(() => {
+                        window.location.href = 'clients.html';
+                    }, 3000);
+                } else {
+                    const errorData = await response.json();
+                    showNotification(errorData.detail || 'Senha incorreta ou erro ao apagar os clientes.', 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao apagar todos os clientes:', error);
+                showNotification('Erro de conexão ao tentar apagar os clientes.', 'error');
+            }
+        }
+
+        function openFactoryResetModal() {
+            document.getElementById('factoryResetModal').style.display = 'flex';
+        }
+
+        function closeFactoryResetModal() {
+            document.getElementById('factoryResetModal').style.display = 'none';
+        }
+
+        async function confirmFactoryReset() {
+            closeFactoryResetModal();
+            // Aqui você pode adicionar a lógica para o reset de fábrica, se necessário.
+            showNotification('Reset de fábrica concluído com sucesso!', 'success');
+        }
+
     </script>
 </body>
 </html>
+
+
+============================================================
+FILE: frontend\categorias.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categorias - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-categories" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Categorias de Produtos</h2>
+                            <p>Gerencie as categorias para organizar seus produtos.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
+============================================================
+FILE: frontend\categories.html
+============================================================
+
 ============================================================
 FILE: frontend\cleanup.js
 ============================================================
@@ -3783,12 +5190,12 @@ FILE: frontend\clients.html
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- LINK CLIENTES (MANTIDO INTACTO) -->
-                <a href="clients.html" class="sidebar-link active">
+                <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
                 <!-- SUBMENU ADICIONADO ABAIXO -->
@@ -3799,16 +5206,48 @@ FILE: frontend\clients.html
                     <a href="backup_clients.html" class="submenu-link">
                         <span>💾</span> Backup / Exportar
                     </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link">
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -4023,6 +5462,7 @@ FILE: frontend\clients.html
         </div>
     </div>
 
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
 
     <script>
@@ -4381,6 +5821,7 @@ FILE: frontend\clients.html
 
         // 1. Abre o modal para escolher o filtro
         function runBatchProcess() {
+            updateBatchFilterWithMessages();
             document.getElementById('batchModal').style.display = 'flex';
         }
 
@@ -4412,9 +5853,58 @@ FILE: frontend\clients.html
                 alert("Erro de conexão ao tentar executar a rotina.");
             }
         }
+
+        // Adiciona opções de mensagens personalizadas ao select de Critério de Envio
+        async function updateBatchFilterWithMessages() {
+            const batchFilter = document.getElementById('batchFilter');
+            if (!batchFilter) return;
+            // Salva as opções padrão
+            const defaultOptions = [
+                { value: 'default', text: '⚡ Padrão (Respeitar configuração de cada cliente)' },
+                { value: '3', text: '📅 Vencimento em 3 Dias' },
+                { value: '2', text: '📅 Vencimento em 2 Dias' },
+                { value: '1', text: '⏰ Vencimento em 1 Dia (Amanhã)' },
+                { value: '0', text: '🚨 Vencimento Hoje' },
+                { value: 'expired', text: '❌ Vencidos (Ontem ou antes)' }
+            ];
+            // Limpa o select
+            batchFilter.innerHTML = '';
+            // Adiciona as opções padrão
+            defaultOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                batchFilter.appendChild(option);
+            });
+            // Busca mensagens do backend
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('http://127.0.0.1:8000/api/messages', {
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+                });
+                if (response.ok) {
+                    const messages = await response.json();
+                    // Adiciona apenas mensagens não padrão (is_default === false)
+                    messages.filter(msg => !msg.is_default).forEach(msg => {
+                        const option = document.createElement('option');
+                        option.value = 'msg_' + msg.id;
+                        option.textContent = `💬 ${msg.type ? capitalizeFirstLetter(msg.type) : 'Mensagem'}: ${msg.content.substring(0, 30)}...`;
+                        batchFilter.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                // Silencioso
+            }
+        }
+        // Função utilitária para capitalizar
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
     </script>
 </body>
 </html>
+
+
 ============================================================
 FILE: frontend\dashboard.html
 ============================================================
@@ -4440,40 +5930,57 @@ FILE: frontend\dashboard.html
             </div>
             <nav class="sidebar-menu">
                 <!-- Link Dashboard (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard">
+                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard" data-feature-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients" data-feature-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
 
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
                 <!-- Link WhatsApp (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations">
+                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations" data-feature-key="whatsapp">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
 
                 <!-- Link Telegram (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations">
+                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations" data-feature-key="telegram">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
 
                 <!-- Link Configurações (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings">
+                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings" data-feature-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
 
-                <!-- ================================================== -->
-                <!-- ATUALIZAÇÃO: Link para Revendedores adicionado aqui -->
-                <!-- ================================================== -->
-                <a href="resell.html" class="sidebar-link" data-role-required="reseller" style="display: none;">
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell" style="display: none;">
                     <span class="sidebar-icon">💼</span> Revendedores
                 </a>
-
-                <!-- Link Admin (controlado por ROLE) -->
-                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" style="display: none;">
-                    <span class="sidebar-icon">👑</span> Admin
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -4579,8 +6086,10 @@ FILE: frontend\dashboard.html
                         <input type="text" id="telegramChatId" placeholder="Ex: -100123456789 ou 987654321">
                         <small style="color: var(--text-muted);">ID do usuário, grupo ou canal.</small>
                     </div>
+                    <div class="form-group" style="display: flex; justify-content: center; gap: 1rem; margin-top: 1.5rem;">
                         <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 Salvar Telegram</button>
                         <button class="btn btn-secondary" onclick="testTelegram()">🔔 Enviar Teste</button>
+                    </div>
                 </div>
                 <!-- TUTORIAL -->
                 <div class="card" style="margin-top: 2rem;">
@@ -4669,9 +6178,14 @@ FILE: frontend\dashboard.html
             </section>
         </main>
     </div>
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
 </body>
 </html>
+
+============================================================
+FILE: frontend\features.html
+============================================================
 
 ============================================================
 FILE: frontend\import_clients.html
@@ -4787,14 +6301,14 @@ FILE: frontend\import_clients.html
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- MENU CLIENTES (EXPANDIDO) -->
                 <div class="menu-group">
                     <!-- Mantemos a classe active no pai para indicar contexto -->
-                    <a href="clients.html" class="sidebar-link active">
+                    <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
                         <span class="sidebar-icon">👥</span> Clientes
                     </a>
                     <div class="submenu">
@@ -4805,17 +6319,49 @@ FILE: frontend\import_clients.html
                         <a href="backup_clients.html" class="submenu-link">
                             <span>💾</span> Backup / Exportar
                         </a>
+                        <a href="messages.html" class="submenu-link">
+                            <span>✉️</span> Mensagens Pré-Prontas
+                        </a>
                     </div>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link">
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -4870,6 +6416,7 @@ FILE: frontend\import_clients.html
         </main>
     </div>
 
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
     <script>
         // Elementos do DOM
@@ -5249,6 +6796,788 @@ FILE: frontend\login.html
 </body>
 </html>
 ============================================================
+FILE: frontend\messages.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens Pré-Prontas | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="assets/js/sidebar.js" defer></script>
+    <style>
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 0.5rem;
+            color: #6b7280;
+        }
+
+        button[type="submit"] {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #2563eb;
+        }
+
+        .message-list {
+            margin-top: 2rem;
+        }
+
+        .message-item {
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            background: #f8fafc;
+        }
+
+        .message-item h4 {
+            margin: 0 0 0.5rem 0;
+            color: #1e293b;
+        }
+
+        .message-item p {
+            margin: 0;
+            color: #475569;
+        }
+
+        .message-item button {
+            min-width: 90px;
+            padding: 0.5rem 1.2rem;
+            margin-right: 10px;
+            margin-top: 8px;
+            font-size: 1rem;
+            border-radius: 4px;
+            border: none;
+            background: #3b82f6;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .message-item button:last-child {
+            margin-right: 0;
+        }
+
+        .message-item button:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <a href="messages.html" class="sidebar-link active">
+                    <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin" style="display:none;">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <h1>Mensagens Pré-Prontas</h1>
+            <p>Gerencie mensagens para vencimentos, cobranças e outras notificações.</p>
+
+            <form id="message-form">
+                <div class="form-group">
+                    <label for="message-type">Tipo de Mensagem:</label>
+                    <select id="message-type" name="message-type">
+                        <option value="vencido">Vencido</option>
+                        <option value="vence_1">Vence em 1</option>
+                        <option value="vence_2">Vence em 2</option>
+                        <option value="vence_3">Vence em 3</option>
+                        <option value="vence_4">Vence em 4</option>
+                        <option value="cobranca">Cobrança</option>
+                        <option value="especial">Data Especial</option>
+                        <option value="manual">Manual</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="message-content">Conteúdo da Mensagem:</label>
+                    <textarea id="message-content" name="message-content" rows="5" placeholder="Digite sua mensagem aqui..."></textarea>
+                    <div style="margin-top:8px; font-size:0.95em; color:#64748b; background:#f1f5f9; border-radius:4px; padding:6px 10px;">
+                        <strong>Variáveis disponíveis:</strong>
+                        <span style="display:inline-block;margin-right:10px;">{cliente} = Nome do cliente</span>
+                        <span style="display:inline-block;margin-right:10px;">{vencimento} = Data de vencimento</span>
+                        <span style="display:inline-block;margin-right:10px;">{dias} = Dias para vencimento</span>
+                        <span style="display:inline-block;margin-right:10px;">{valor} = Valor da fatura</span>
+                        <span style="display:inline-block;margin-right:10px;">{login} = Login do cliente</span>
+                        <span style="display:inline-block;margin-right:10px;">{whatsapp} = WhatsApp do cliente</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="message-image">Anexar Imagem (opcional):</label>
+                    <input type="file" id="message-image" name="message-image" accept="image/jpeg, image/png" />
+                    <small>Tamanho máximo: 5MB</small>
+                </div>
+
+                <button type="submit">Salvar Mensagem</button>
+            </form>
+
+            <div class="form-group">
+                <label for="custom-message-type">Criar Novo Tipo de Mensagem:</label>
+                <input type="text" id="custom-message-type" placeholder="Digite o novo tipo de mensagem...">
+                <button type="button" onclick="addCustomMessageType()">Adicionar Tipo</button>
+            </div>
+
+            <div class="message-list">
+                <div class="message-item">
+                    <h4>Mensagem de Vencimento</h4>
+                    <p>"Prezado cliente, sua fatura vence em breve. Por favor, regularize o pagamento."</p>
+                </div>
+                <div class="message-item">
+                    <h4>Mensagem de Cobrança</h4>
+                    <p>"Prezado cliente, identificamos um pagamento pendente. Entre em contato para regularizar."</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const messageList = document.querySelector('.message-list');
+        const API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : window.location.origin;
+        const API_MESSAGES = `${API_BASE}/messages`;
+
+        // Exemplo de mensagens salvas (simulação de dados do backend)
+        const savedMessages = [
+            {
+                id: 1,
+                type: 'vencimento',
+                content: 'Prezado cliente, sua fatura vence amanhã. Regularize o pagamento para evitar interrupções.',
+                is_default: true,
+            },
+            {
+                id: 2,
+                type: 'cobranca',
+                content: 'Detectamos um pagamento pendente. Por favor, entre em contato para regularizar.',
+                is_default: true,
+            },
+        ];
+
+        // Preview da imagem anexada
+        const messageImageInput = document.getElementById('message-image');
+        const imagePreview = document.createElement('img');
+        imagePreview.style.maxWidth = '120px';
+        imagePreview.style.maxHeight = '120px';
+        imagePreview.style.display = 'none';
+        messageImageInput.parentNode.appendChild(imagePreview);
+
+        messageImageInput.addEventListener('change', function () {
+            const file = this.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('A imagem deve ter no máximo 5MB.');
+                    this.value = '';
+                    imagePreview.style.display = 'none';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.style.display = 'none';
+            }
+        });
+
+        // Renderiza mensagens salvas na lista (exibe imagem se houver)
+        function renderMessages() {
+            messageList.innerHTML = '';
+            savedMessages.forEach((message) => {
+                const messageItem = document.createElement('div');
+                messageItem.classList.add('message-item');
+                let imgHtml = '';
+                if (message.image) {
+                    let imgSrc = message.image;
+                    if (imgSrc.startsWith('/')) {
+                        imgSrc = imgSrc.replace(/^\//, '');
+                    }
+                    imgHtml = `<img src="/${imgSrc}" alt="Imagem anexada" style="width:20px;height:20px;object-fit:cover;display:inline-block;margin-right:8px;vertical-align:middle;border-radius:4px;" onerror="this.style.display='none'" />`;
+                }
+                // UX-friendly title
+                let title = '';
+                if (message.type === 'vencido') {
+                    title = 'Vencido';
+                } else if (message.type.startsWith('vence_')) {
+                    const num = message.type.replace('vence_', '');
+                    title = `Vence em ${num}`;
+                } else if (message.type === 'cobranca') {
+                    title = 'Cobrança';
+                } else if (message.type === 'especial') {
+                    title = 'Data Especial';
+                } else if (message.type === 'manual') {
+                    title = 'Manual';
+                } else {
+                    title = capitalizeFirstLetter(message.type);
+                }
+                messageItem.innerHTML = `
+                    <h4>${imgHtml}${title}${message.is_default ? ' <span style="color:#2563eb;font-size:0.9em">(Padrão)</span>' : ''}</h4>
+                    <p>${message.content}</p>
+                    <button onclick="editMessage(${message.id})">Editar</button>
+                    <button onclick="deleteMessage(${message.id})">Deletar</button>
+                `;
+                messageList.appendChild(messageItem);
+            });
+        }
+
+        // Atualiza o select de tipos de mensagem com os tipos padrão
+        function updateMessageTypeSelect() {
+            const types = new Set(savedMessages.map(msg => msg.type));
+            messageTypeSelect.innerHTML = '';
+            types.forEach(type => {
+                let text = '';
+                if (type === 'vencido') {
+                    text = 'Vencido';
+                } else if (type.startsWith('vence_')) {
+                    const num = type.replace('vence_', '');
+                    text = `Vence em ${num}`;
+                } else if (type === 'cobranca') {
+                    text = 'Cobrança';
+                } else if (type === 'especial') {
+                    text = 'Data Especial';
+                } else if (type === 'manual') {
+                    text = 'Manual';
+                } else {
+                    text = capitalizeFirstLetter(type);
+                }
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = text;
+                messageTypeSelect.appendChild(option);
+            });
+        }
+
+        // Função utilitária para buscar o token salvo
+        function getAuthHeaders() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return {};
+            }
+            return { 'Authorization': 'Bearer ' + token };
+        }
+
+        // Exibe/oculta itens do menu conforme o papel do usuário
+        async function applyRoleVisibility() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+                if (!response.ok) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                const user = await response.json();
+                const links = document.querySelectorAll('[data-role-required]');
+                links.forEach(link => {
+                    const requiredRole = link.getAttribute('data-role-required');
+                    link.style.display = requiredRole === user.role ? 'block' : 'none';
+                });
+            } catch (error) {
+                console.error('Erro ao aplicar visibilidade por papel:', error);
+            }
+        }
+
+        // Função para buscar mensagens do backend
+        async function fetchMessages() {
+            try {
+                const response = await fetch(API_MESSAGES, {
+                    headers: getAuthHeaders()
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    savedMessages.length = 0;
+                    data.forEach(msg => savedMessages.push(msg));
+                    renderMessages();
+                    updateMessageTypeSelect();
+                }
+            } catch (error) {
+                console.error('Erro ao buscar mensagens:', error);
+            }
+        }
+
+        // Função para editar mensagem (agora permite editar padrão também)
+        async function editMessage(id) {
+            const message = savedMessages.find((msg) => msg.id === id);
+            if (message) {
+                document.getElementById('message-type').value = message.type;
+                document.getElementById('message-content').value = message.content;
+                // Rolar até a área da mensagem
+                const contentBox = document.getElementById('message-content');
+                if (contentBox) {
+                    contentBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    contentBox.focus();
+                }
+                // Para editar, ao submeter, faz PUT
+                messageForm.onsubmit = async function (event) {
+                    event.preventDefault();
+                    const messageType = document.getElementById('message-type').value;
+                    const messageContent = document.getElementById('message-content').value;
+                    const messageImage = document.getElementById('message-image').files[0];
+                    const formData = new FormData();
+                    formData.append('type', messageType);
+                    formData.append('content', messageContent);
+                    if (messageImage) {
+                        formData.append('image', messageImage);
+                    }
+                    try {
+                        const response = await fetch(`${API_MESSAGES}/${id}`, {
+                            method: 'PUT',
+                            body: formData,
+                            headers: getAuthHeaders()
+                        });
+                        if (response.ok) {
+                            await fetchMessages();
+                            messageForm.reset();
+                            alert('Mensagem editada com sucesso!');
+                            messageForm.onsubmit = null; // volta ao normal
+                        } else if (response.status === 401) {
+                            alert('Erro de autenticação. Faça login novamente para editar mensagens.');
+                        } else {
+                            alert('Erro ao editar a mensagem.');
+                        }
+                    } catch (error) {
+                        alert('Erro ao editar a mensagem.');
+                    }
+                };
+            }
+        }
+
+        // Função para deletar mensagem
+        async function deleteMessage(id) {
+            if (confirm('Tem certeza que deseja deletar esta mensagem?')) {
+                try {
+                    const response = await fetch(`${API_MESSAGES}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    if (response.ok) {
+                        await fetchMessages();
+                        alert('Mensagem deletada com sucesso!');
+                    } else {
+                        alert('Erro ao deletar a mensagem.');
+                    }
+                } catch (error) {
+                    alert('Erro ao deletar a mensagem.');
+                }
+            }
+        }
+
+        // Função para capitalizar a primeira letra
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+
+        const messageTypeSelect = document.getElementById('message-type');
+
+        function addCustomMessageType() {
+            const customTypeInput = document.getElementById('custom-message-type');
+            const newType = customTypeInput.value.trim();
+
+            if (newType) {
+                // Verifica se o tipo já existe
+                const exists = Array.from(messageTypeSelect.options).some(option => option.value === newType);
+
+                if (!exists) {
+                    // Adiciona o novo tipo ao select
+                    const newOption = document.createElement('option');
+                    newOption.value = newType;
+                    newOption.textContent = capitalizeFirstLetter(newType);
+                    messageTypeSelect.appendChild(newOption);
+
+                    // Limpa o campo de entrada
+                    customTypeInput.value = '';
+                    alert(`Novo tipo de mensagem '${newType}' adicionado com sucesso!`);
+                } else {
+                    alert('Este tipo de mensagem já existe.');
+                }
+            } else {
+                alert('Por favor, insira um nome válido para o novo tipo de mensagem.');
+            }
+        }
+
+        const messageForm = document.getElementById('message-form');
+
+        // Adiciona evento de envio ao formulário
+        messageForm.addEventListener('submit', async function (event) {
+            event.preventDefault(); // Impede o envio padrão do formulário
+
+            const messageType = document.getElementById('message-type').value;
+            const messageContent = document.getElementById('message-content').value;
+            const messageImage = document.getElementById('message-image').files[0];
+
+            if (messageContent.trim() === '') {
+                alert('O conteúdo da mensagem não pode estar vazio.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('type', messageType);
+            formData.append('content', messageContent);
+            if (messageImage) {
+                formData.append('image', messageImage);
+            }
+
+            try {
+                const response = await fetch(API_MESSAGES, {
+                    method: 'POST',
+                    body: formData,
+                    headers: getAuthHeaders()
+                });
+
+                if (response.ok) {
+                    await fetchMessages();
+                    messageForm.reset();
+                    alert('Mensagem criada com sucesso!');
+                } else if (response.status === 401) {
+                    alert('Erro de autenticação. Faça login novamente para salvar mensagens.');
+                } else {
+                    alert('Erro ao salvar a mensagem. Tente novamente.');
+                }
+            } catch (error) {
+                console.error('Erro ao salvar a mensagem:', error);
+                alert('Erro ao salvar a mensagem. Verifique sua conexão e tente novamente.');
+            }
+        });
+
+        // Inicializa a renderização das mensagens ao carregar
+        fetchMessages();
+        applyRoleVisibility();
+    </script>
+</body>
+</html>
+
+
+============================================================
+FILE: frontend\planos.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planos - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-plans" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Planos de Assinatura</h2>
+                            <p>Gerencie os planos de assinatura para seus produtos.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
+============================================================
+FILE: frontend\plans.html
+============================================================
+
+============================================================
+FILE: frontend\products.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Produtos | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Sidebar content will be loaded by JavaScript -->
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>Produtos e Serviços</h2>
+                    <p>Gerencie seus produtos, categorias e planos.</p>
+                </div>
+            </div>
+            <div class="card">
+                <p>Funcionalidade em desenvolvimento.</p>
+            </div>
+        </main>
+    </div>
+    <script src="assets/js/dashboard.js"></script>
+</body>
+</html>
+
+
+============================================================
+FILE: frontend\produtos.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Produtos - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-products" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Produtos e Serviços</h2>
+                            <p>Gerencie os produtos e serviços que você oferece.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
+============================================================
 FILE: frontend\qrcode.html
 ============================================================
 <!DOCTYPE html>
@@ -5476,6 +7805,127 @@ FILE: frontend\qrcode.html
             }
         });
     </script>
+</body>
+</html>
+
+============================================================
+FILE: frontend\recursos.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursos - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-features" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Recursos dos Planos</h2>
+                            <p>Gerencie os recursos disponíveis em cada plano.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
 </body>
 </html>
 
@@ -5714,7 +8164,51 @@ FILE: frontend\resell.html
             </div>
             <nav class="sidebar-menu">
                 <a href="dashboard.html" class="sidebar-link">
-                    <span class="sidebar-icon">📊</span> Voltar ao Dashboard
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
                 <a href="resell.html" class="sidebar-link active">
                     <span class="sidebar-icon">💼</span> Revendedores
@@ -5840,6 +8334,7 @@ FILE: frontend\resell.html
     </div>
 
     <!-- IMPORTAÇÃO DO SCRIPT PADRÃO -->
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/main.js"></script>
 
     <script>
@@ -6107,21 +8602,59 @@ FILE: frontend\whatsapp.html
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link">
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
-                <!-- Link Ativo -->
-                <a href="whatsapp.html" class="sidebar-link active">
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link active" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -6179,6 +8712,7 @@ FILE: frontend\whatsapp.html
         </main>
     </div>
 
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
     <script>
         // Script inline simples para garantir que o status carregue ao abrir esta página específica
@@ -6248,24 +8782,52 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-weight: 500;
+    padding: 0.7rem 1.25rem;
+    border-radius: 10px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    border: 1px solid transparent;
     gap: 8px;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    letter-spacing: 0.1px;
 }
 
-.btn-primary { background-color: var(--accent); color: white; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); }
-.btn-primary:hover { background-color: var(--accent-hover); transform: translateY(-1px); }
+.btn-primary {
+    background-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(59, 130, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-color: rgba(59, 130, 246, 0.35);
+}
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(59, 130, 246, 0.28);
+}
 
-.btn-secondary { background-color: white; border: 1px solid var(--border-color); color: var(--text-main); }
-.btn-secondary:hover { background-color: #f8fafc; border-color: var(--accent); color: var(--accent); }
+.btn-secondary {
+    background-color: #ffffff;
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+.btn-secondary:hover {
+    background-color: #f8fafc;
+    border-color: rgba(59, 130, 246, 0.35);
+    color: var(--primary);
+}
 
-.btn-danger { background-color: var(--danger-bg); color: var(--danger); }
-.btn-danger:hover { background-color: var(--danger); color: white; }
+.btn-danger {
+    background-color: #fff5f5;
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.25);
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.12);
+}
+.btn-danger:hover {
+    background-color: var(--danger);
+    color: #ffffff;
+    box-shadow: 0 6px 14px rgba(239, 68, 68, 0.25);
+}
 
 .btn-icon {
     background: transparent;
@@ -6350,19 +8912,103 @@ input:focus, select:focus {
     display: flex;
     align-items: center;
     padding: 0.85rem 1rem;
-    color: #94a3b8;
+    color: #e2e8f0;
     text-decoration: none;
     border-radius: 6px;
     margin-bottom: 4px;
     transition: 0.2s;
     font-weight: 500;
+    background: rgba(255,255,255,0.06);
 }
-.sidebar-link:hover, .sidebar-link.active {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+
+/* Refino visual: botoes principais do menu (Clientes, Produtos, etc.) */
+.sidebar-menu > .sidebar-link,
+.sidebar-group-title {
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
-.sidebar-link.active { border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
+
+.sidebar-menu > .sidebar-link:hover,
+.sidebar-group-title:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+    border-color: rgba(255,255,255,0.16);
+    color: #ffffff;
+}
+
+.sidebar-menu > .sidebar-link.active {
+    background: linear-gradient(180deg, rgba(59,130,246,0.22), rgba(59,130,246,0.08));
+    border-color: rgba(59,130,246,0.35);
+    color: #ffffff;
+}
+
+.sidebar-group-title {
+    padding: 0.85rem 1rem;
+}
+
 .sidebar-icon { margin-right: 12px; width: 20px; text-align: center; }
+
+.sidebar-group { margin-top: 6px; }
+.sidebar-group-title {
+    background: rgba(255,255,255,0.06);
+    color: #e2e8f0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    border: none;
+    outline: none;
+    font: inherit;
+}
+
+.sidebar-group-title:focus-visible {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.sidebar-group-title::after {
+    content: "▾";
+    margin-left: auto;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.sidebar-group-title[aria-expanded="true"]::after {
+    transform: rotate(-180deg);
+}
+
+.sidebar-submenu {
+    margin-top: 4px;
+    padding-left: 14px;
+    border-left: 1px solid rgba(255,255,255,0.12);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.sidebar-submenu.is-open {
+    max-height: 300px;
+}
+
+.sidebar-sublink {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.7rem 0.9rem;
+    color: #cbd5f5;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: 0.2s;
+    font-weight: 500;
+    background: transparent;
+    font-size: 0.88rem;
+}
+
+.sidebar-sublink:hover,
+.sidebar-sublink.active {
+    background-color: rgba(255,255,255,0.08);
+    color: #ffffff;
+}
 
 .user-profile {
     padding: 1rem;
@@ -6620,6 +9266,45 @@ input:focus, select:focus {
     background-color: #dcfce7;
     color: #166534;
 }
+
+.submenu {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-left: 3rem;
+    margin-bottom: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.1);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-radius: 0 0 8px 8px;
+}
+
+.submenu-link,
+.sidebar-sublink {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.7rem 0.9rem;
+    color: #cbd5f5;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: 0.2s;
+    font-weight: 500;
+    background: transparent;
+    font-size: 0.88rem;
+}
+
+.submenu-link:hover,
+.submenu-link.active,
+.sidebar-sublink:hover,
+.sidebar-sublink.active {
+    background-color: rgba(255,255,255,0.08);
+    color: #ffffff;
+}
+
+/* Oculta botões/links de Admin em qualquer menu que ainda o referencie */
+/* REMOVIDO: ocultava Super Admin para todos; visibilidade agora controlada via JS/permissions */
+
 ============================================================
 FILE: frontend\assets\js\clients.js
 ============================================================
@@ -6759,8 +9444,9 @@ FILE: frontend\assets\js\dashboard.js
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
-const API_URL = 'http://localhost:8000';
-//const API_URL = 'https://painel.gestornexus.com.br';
+const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+    ? 'http://localhost:8000'
+    : window.location.origin; // usa o host atual em produção
 
 let whatsappPollingInterval = null;
 let pollingAttempts = 0;
@@ -6919,6 +9605,10 @@ async function loadUserInfo() {
         if (response.ok) {
             currentUser = await response.json(); // Armazena os dados do usuário
 
+            // Persiste dados de role e feature flags para uso no sidebar.js
+            if (currentUser.role) localStorage.setItem('user_role', currentUser.role);
+            if (currentUser.feature_flags) localStorage.setItem('user_feature_flags', JSON.stringify(currentUser.feature_flags));
+
             const el = document.getElementById('userName');
             if (el) el.textContent = currentUser.name;
 
@@ -6932,6 +9622,7 @@ async function loadUserInfo() {
 
             // ✅ APLICA AS REGRAS DE VISIBILIDADE NA INTERFACE
             applyUIPermissions();
+            window.applyFeatureFlags && window.applyFeatureFlags();
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
@@ -6989,7 +9680,7 @@ function setupSidebarNavigation() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
 
-            // Se o link não for para uma seção interna (ex: clients.html), deixa o navegador seguir
+            // Se o link não for para uma seão interna (ex: clients.html), deixa o navegador seguir
             if (!targetId) {
                 return;
             }
@@ -7524,6 +10215,98 @@ async function saveSettings() {
     }
 }
 
+// ==================================================
+// ZONA DE PERIGO (BACKUP/IMPORT PAGE)
+// ==================================================
+
+/**
+ * Abre o modal de confirmação para apagar todos os clientes.
+ */
+function openDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'flex'; // Usar flex para centralizar
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para apagar todos os clientes.
+ */
+function closeDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'none';
+        const passwordInput = document.getElementById('passwordConfirmation');
+        if (passwordInput) {
+            passwordInput.value = ''; // Limpa a senha ao fechar
+        }
+    }
+}
+
+/**
+ * Confirma e executa a exclusão de todos os clientes.
+ */
+async function confirmDeleteAllClients() {
+    const passwordInput = document.getElementById('passwordConfirmation');
+    const password = passwordInput.value;
+
+    if (!password) {
+        showNotification("Por favor, digite sua senha para confirmar.", 'error');
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/clients/delete-all', {
+            method: 'DELETE',
+            body: JSON.stringify({ password: password })
+        });
+
+        if (response.ok) {
+            showNotification("Limpeza de banco de dados concluída com sucesso!", 'success');
+            closeDeleteAllClientsModal();
+            setTimeout(() => {
+                window.location.href = 'clients.html';
+            }, 3000);
+        } else {
+            const error = await response.json();
+            showNotification(error.detail || "Senha incorreta ou falha ao apagar.", 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao apagar todos os clientes:', error);
+        showNotification("Ocorreu um erro de comunicação.", 'error');
+    }
+}
+
+
+/**
+ * Abre o modal de confirmação para o reset de fábrica.
+ */
+function openFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para o reset de fábrica.
+ */
+function closeFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Confirma e executa o reset de fábrica.
+ */
+async function confirmFactoryReset() {
+    // Lógica para o reset de fábrica
+    showNotification("Função de reset de fábrica ainda não implementada.", 'info');
+    closeFactoryResetModal();
+}
+
 ============================================================
 FILE: frontend\assets\js\main.js
 ============================================================
@@ -7666,3 +10449,168 @@ function checkAuth() {
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
+
+============================================================
+FILE: frontend\assets\js\sidebar.js
+============================================================
+// frontend/assets/js/sidebar.js
+
+const DEFAULT_FEATURE_FLAGS = {
+    super_admin: {
+        dashboard: true,
+        clients: true,
+        products: true,
+        whatsapp: true,
+        telegram: true,
+        settings: true,
+        resell: true,
+        admin: true,
+    },
+    reseller: {
+        dashboard: true,
+        clients: true,
+        products: true,
+        whatsapp: true,
+        telegram: true,
+        settings: true,
+        resell: true,
+        admin: false,
+    },
+    user: {
+        dashboard: true,
+        clients: true,
+        products: false,
+        whatsapp: true,
+        telegram: true,
+        settings: true,
+        resell: false,
+        admin: false,
+    },
+};
+
+const USER_FEATURE_KEY = 'user_feature_flags';
+const USER_ROLE_KEY = 'user_role';
+
+// Prefer global API_URL when disponível para evitar 404 em ambientes com proxy
+const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
+
+async function fetchCurrentUserContext() {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const url = SIDEBAR_API_BASE ? `${SIDEBAR_API_BASE}/users/me` : '/users/me';
+    try {
+        const resp = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!resp.ok) return null;
+        const user = await resp.json();
+        if (user.role) localStorage.setItem(USER_ROLE_KEY, user.role);
+        if (user.id) localStorage.setItem('user_id', user.id);
+        if (user.feature_flags) localStorage.setItem(USER_FEATURE_KEY, JSON.stringify(user.feature_flags));
+        return user;
+    } catch (e) {
+        console.warn('Falha ao carregar contexto do usuário', e);
+        return null;
+    }
+}
+
+function loadFeatureFlags() {
+    try {
+        const storedPerRole = JSON.parse(localStorage.getItem('featureFlags') || '{}');
+        const userFlags = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
+        const role = localStorage.getItem(USER_ROLE_KEY) || 'user';
+        const roleDefaults = {
+            super_admin: { ...DEFAULT_FEATURE_FLAGS.super_admin, ...(storedPerRole.super_admin || {}) },
+            reseller: { ...DEFAULT_FEATURE_FLAGS.reseller, ...(storedPerRole.reseller || {}) },
+            user: { ...DEFAULT_FEATURE_FLAGS.user, ...(storedPerRole.user || {}) },
+        };
+        return userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
+    } catch (e) {
+        return DEFAULT_FEATURE_FLAGS.user;
+    }
+}
+
+function applyFeatureFlags() {
+    const flags = loadFeatureFlags();
+
+    // Aplica visibilidade item a item
+    document.querySelectorAll('[data-feature-key]').forEach((el) => {
+        const key = el.getAttribute('data-feature-key');
+        const allowed = flags[key] !== false; // padrão é true
+        el.style.display = allowed ? '' : 'none';
+    });
+
+    // Ajusta grupos com submenus
+    document.querySelectorAll('.sidebar-group').forEach((group) => {
+        const submenu = group.querySelector('.sidebar-submenu');
+        const toggle = group.querySelector('.sidebar-toggle');
+        if (!submenu) return;
+        const hasVisible = Array.from(submenu.querySelectorAll('[data-feature-key]')).some((link) => link.style.display !== 'none');
+        group.style.display = hasVisible ? '' : 'none';
+        if (toggle) {
+            const isOpen = submenu.classList.contains('is-open');
+            // Mantém aberto apenas se ainda houver itens visíveis
+            submenu.classList.toggle('is-open', hasVisible && isOpen);
+            toggle.setAttribute('aria-expanded', submenu.classList.contains('is-open'));
+        }
+    });
+
+    // Se a página atual estiver bloqueada, redireciona para a próxima disponível
+    const currentPage = window.location.pathname.split('/').pop() || 'dashboard.html';
+    const visibleLinks = Array.from(document.querySelectorAll('.sidebar-menu a.sidebar-link')).filter((link) => link.style.display !== 'none' && link.getAttribute('href') && link.getAttribute('href') !== '#');
+    const isCurrentVisible = visibleLinks.some((link) => (link.getAttribute('href') || '').split('/').pop() === currentPage);
+    if (!isCurrentVisible && visibleLinks.length) {
+        window.location.href = visibleLinks[0].getAttribute('href');
+    }
+}
+
+function setupSidebarAccordion() {
+    const toggles = document.querySelectorAll('.sidebar-toggle');
+    if (!toggles.length) return;
+
+    const currentPage = window.location.pathname.split('/').pop();
+
+    toggles.forEach(toggle => {
+        const targetId = toggle.getAttribute('aria-controls');
+        const submenu = targetId ? document.getElementById(targetId) : null;
+        if (!submenu) return;
+
+        const hasActiveLink = Array.from(submenu.querySelectorAll('a')).some(link => {
+            const href = link.getAttribute('href') || '';
+            return href === currentPage;
+        });
+
+        submenu.classList.toggle('is-open', hasActiveLink);
+        toggle.setAttribute('aria-expanded', hasActiveLink ? 'true' : 'false');
+
+        toggle.addEventListener('click', () => {
+            const isOpen = submenu.classList.toggle('is-open');
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+    });
+}
+
+function ensureSuperAdminLink() {
+    const menu = document.querySelector('.sidebar-menu');
+    if (!menu) return;
+    if (menu.querySelector('[data-feature-key="admin"]')) return;
+    const link = document.createElement('a');
+    link.href = 'admin.html';
+    link.className = 'sidebar-link';
+    link.dataset.featureKey = 'admin';
+    link.dataset.roleRequired = 'super_admin';
+    link.innerHTML = '<span class="sidebar-icon">👑</span> Super Admin';
+    menu.appendChild(link);
+}
+
+async function initSidebar() {
+    await fetchCurrentUserContext(); // garante flags do usuário em cache local
+    setupSidebarAccordion();
+    ensureSuperAdminLink();
+    applyFeatureFlags();
+}
+
+document.addEventListener('DOMContentLoaded', initSidebar);
+
+// Disponibiliza para reuso após alterações no Admin
+window.applyFeatureFlags = applyFeatureFlags;

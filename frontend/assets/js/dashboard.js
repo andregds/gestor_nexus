@@ -7,8 +7,9 @@
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
-const API_URL = 'http://localhost:8000';
-//const API_URL = 'https://painel.gestornexus.com.br';
+const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+    ? 'http://localhost:8000'
+    : window.location.origin; // usa o host atual em produção
 
 let whatsappPollingInterval = null;
 let pollingAttempts = 0;
@@ -167,6 +168,10 @@ async function loadUserInfo() {
         if (response.ok) {
             currentUser = await response.json(); // Armazena os dados do usuário
 
+            // Persiste dados de role e feature flags para uso no sidebar.js
+            if (currentUser.role) localStorage.setItem('user_role', currentUser.role);
+            if (currentUser.feature_flags) localStorage.setItem('user_feature_flags', JSON.stringify(currentUser.feature_flags));
+
             const el = document.getElementById('userName');
             if (el) el.textContent = currentUser.name;
 
@@ -180,6 +185,7 @@ async function loadUserInfo() {
 
             // ✅ APLICA AS REGRAS DE VISIBILIDADE NA INTERFACE
             applyUIPermissions();
+            window.applyFeatureFlags && window.applyFeatureFlags();
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
@@ -206,7 +212,7 @@ function applyUIPermissions() {
 
     // 1. Controle de Menus da Sidebar baseado nas PERMISSÕES do usuário
     // (Requer que os links no HTML tenham o atributo 'data-permission-key')
-    setElementVisibility('[data-permission-key="dashboard"]', permissions.can_view_dashboard);
+    setElementVisibility('[data-permission-key="dashboard"]', true); // Dashboard sempre visível
     setElementVisibility('[data-permission-key="clients"]', permissions.can_view_clients);
     setElementVisibility('[data-permission-key="integrations"]', permissions.can_view_integrations);
     setElementVisibility('[data-permission-key="settings"]', permissions.can_view_settings);
@@ -237,7 +243,7 @@ function setupSidebarNavigation() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
 
-            // Se o link não for para uma seção interna (ex: clients.html), deixa o navegador seguir
+            // Se o link não for para uma seão interna (ex: clients.html), deixa o navegador seguir
             if (!targetId) {
                 return;
             }
@@ -770,4 +776,96 @@ async function saveSettings() {
     } catch (error) {
         // Erro já notificado pelo apiFetch
     }
+}
+
+// ==================================================
+// ZONA DE PERIGO (BACKUP/IMPORT PAGE)
+// ==================================================
+
+/**
+ * Abre o modal de confirmação para apagar todos os clientes.
+ */
+function openDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'flex'; // Usar flex para centralizar
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para apagar todos os clientes.
+ */
+function closeDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'none';
+        const passwordInput = document.getElementById('passwordConfirmation');
+        if (passwordInput) {
+            passwordInput.value = ''; // Limpa a senha ao fechar
+        }
+    }
+}
+
+/**
+ * Confirma e executa a exclusão de todos os clientes.
+ */
+async function confirmDeleteAllClients() {
+    const passwordInput = document.getElementById('passwordConfirmation');
+    const password = passwordInput.value;
+
+    if (!password) {
+        showNotification("Por favor, digite sua senha para confirmar.", 'error');
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/clients/delete-all', {
+            method: 'DELETE',
+            body: JSON.stringify({ password: password })
+        });
+
+        if (response.ok) {
+            showNotification("Limpeza de banco de dados concluída com sucesso!", 'success');
+            closeDeleteAllClientsModal();
+            setTimeout(() => {
+                window.location.href = 'clients.html';
+            }, 3000);
+        } else {
+            const error = await response.json();
+            showNotification(error.detail || "Senha incorreta ou falha ao apagar.", 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao apagar todos os clientes:', error);
+        showNotification("Ocorreu um erro de comunicação.", 'error');
+    }
+}
+
+
+/**
+ * Abre o modal de confirmação para o reset de fábrica.
+ */
+function openFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para o reset de fábrica.
+ */
+function closeFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Confirma e executa o reset de fábrica.
+ */
+async function confirmFactoryReset() {
+    // Lógica para o reset de fábrica
+    showNotification("Função de reset de fábrica ainda não implementada.", 'info');
+    closeFactoryResetModal();
 }

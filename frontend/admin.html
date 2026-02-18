@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-feature-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <a href="whatsapp.html" class="sidebar-link" data-feature-key="whatsapp">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="telegram">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell" style="display:none;">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link active" data-role-required="super_admin" data-feature-key="admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </aside>
+        <main class="main-content">
+            <section class="content-section">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>Console do Super Admin</h2>
+                        <p>Habilite ou desabilite funcionalidades por usuário ou defina padrões para filhos de um revendedor.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem;">
+                        <div style="flex:1; min-width:240px;">
+                            <label for="userSelect">Selecione o usuário</label>
+                            <select id="userSelect"></select>
+                        </div>
+                        <button class="btn btn-primary" id="btnRefresh">🔄 Atualizar lista</button>
+                        <button class="btn btn-secondary" id="btnApply">💾 Salvar permissões</button>
+                    </div>
+                    <div id="adminStatus" style="margin-bottom:1rem; color:var(--text-muted);"></div>
+                    <div class="feature-grid" id="featureGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem;"></div>
+                </div>
+
+                <div class="card" id="resellerCard" style="margin-top:1rem; display:none;">
+                    <div class="page-title" style="margin-bottom:0.75rem;">
+                        <h3 style="margin:0;">Padrão para filhos do revendedor</h3>
+                        <p style="margin:0; color:var(--text-muted);">O que os clientes/filhos herdam ao logar. (Não aplica imediatamente, vale no próximo login.)</p>
+                    </div>
+                    <div class="feature-grid" id="resellerGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem;"></div>
+                    <div style="margin-top:0.75rem; display:flex; justify-content:flex-end;">
+                        <button class="btn btn-secondary" id="btnApplyReseller">💾 Salvar padrão do revendedor</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="assets/js/sidebar.js"></script>
+    <script>
+        // Usa a mesma base do sidebar quando definida (evita 404 em servidores estáticos)
+        const API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
+         const featureList = [
+            { key: 'dashboard', label: 'Visão Geral' },
+            { key: 'clients', label: 'Clientes' },
+            { key: 'products', label: 'Produtos' },
+            { key: 'whatsapp', label: 'WhatsApp' },
+            { key: 'telegram', label: 'Telegram' },
+            { key: 'settings', label: 'Configurações' },
+            { key: 'resell', label: 'Revendedores' },
+            { key: 'admin', label: 'Super Admin' },
+        ];
+
+        const userSelect = document.getElementById('userSelect');
+        const featureGrid = document.getElementById('featureGrid');
+        const resellerGrid = document.getElementById('resellerGrid');
+        const resellerCard = document.getElementById('resellerCard');
+        const statusBox = document.getElementById('adminStatus');
+
+        function toast(msg, type='info') {
+            statusBox.textContent = msg;
+            statusBox.style.color = type === 'error' ? 'var(--danger)' : (type === 'success' ? 'var(--success)' : 'var(--text-muted)');
+        }
+
+        function renderFeatureToggles(flags) {
+            featureGrid.innerHTML = featureList.map(f => {
+                const checked = flags[f.key] !== false ? 'checked' : '';
+                return `<label class="toggle-item" style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#fff;">
+                    <input type="checkbox" data-feature="${f.key}" ${checked} style="width:auto;">
+                    <span>${f.label}</span>
+                </label>`;
+            }).join('');
+        }
+
+        function renderResellerToggles(flags) {
+            resellerGrid.innerHTML = featureList.map(f => {
+                const checked = flags[f.key] !== false ? 'checked' : '';
+                return `<label class="toggle-item" style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#fff;">
+                    <input type="checkbox" data-reseller-feature="${f.key}" ${checked} style="width:auto;">
+                    <span>${f.label}</span>
+                </label>`;
+            }).join('');
+        }
+
+        async function loadUsers() {
+            const token = localStorage.getItem('token');
+            if (!token) { toast('Faça login novamente.', 'error'); return; }
+            toast('Carregando usuários...');
+            try {
+                const resp = await fetch(`${API_BASE}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+                if (resp.status === 403) { toast('Acesso negado. Apenas Super Admin.', 'error'); return; }
+                const users = await resp.json();
+                userSelect.innerHTML = users.map(u => `<option value="${u.id}" data-role="${u.role}" data-flags='${JSON.stringify(u.feature_flags || {})}' data-reseller-flags='${JSON.stringify(u.reseller_feature_flags || {})}'>${u.name} (${u.role})</option>`).join('');
+                if (users.length) {
+                    const first = users[0];
+                    renderFeatureToggles(first.feature_flags || {});
+                    if (first.role === 'reseller') {
+                        renderResellerToggles(first.reseller_feature_flags || {});
+                        resellerCard.style.display = '';
+                    } else {
+                        resellerCard.style.display = 'none';
+                    }
+                }
+                toast('Usuários carregados.', 'info');
+            } catch (e) {
+                toast('Erro ao carregar usuários.', 'error');
+            }
+        }
+
+        function handleUserChange() {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            const flags = JSON.parse(opt.getAttribute('data-flags') || '{}');
+            const resellerFlags = JSON.parse(opt.getAttribute('data-reseller-flags') || '{}');
+            const role = opt.getAttribute('data-role');
+            renderFeatureToggles(flags);
+            if (role === 'reseller') {
+                renderResellerToggles(resellerFlags);
+                resellerCard.style.display = '';
+            } else {
+                resellerCard.style.display = 'none';
+            }
+        }
+
+        userSelect?.addEventListener('change', handleUserChange);
+
+        document.getElementById('btnRefresh')?.addEventListener('click', loadUsers);
+
+        document.getElementById('btnApply')?.addEventListener('click', async () => {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            const userId = opt.value;
+            const flags = {};
+            featureGrid.querySelectorAll('input[data-feature]').forEach(input => {
+                flags[input.getAttribute('data-feature')] = input.checked;
+            });
+            const token = localStorage.getItem('token');
+            toast('Salvando...');
+            try {
+                const resp = await fetch(`${API_BASE}/admin/feature-flags/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ feature_flags: flags }),
+                });
+                if (!resp.ok) { toast('Falha ao salvar.', 'error'); return; }
+                toast('Permissões atualizadas.', 'success');
+                // Atualiza cache local se for o usuário logado
+                if (Number(userId) === Number(localStorage.getItem('user_id'))) {
+                    localStorage.setItem('user_feature_flags', JSON.stringify(flags));
+                    window.applyFeatureFlags && window.applyFeatureFlags();
+                }
+                opt.setAttribute('data-flags', JSON.stringify(flags));
+            } catch (e) {
+                toast('Erro ao salvar.', 'error');
+            }
+        });
+
+        document.getElementById('btnApplyReseller')?.addEventListener('click', async () => {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            if (opt.getAttribute('data-role') !== 'reseller') {
+                toast('Somente para revendedores.', 'error');
+                return;
+            }
+            const userId = opt.value;
+            const flags = {};
+            resellerGrid.querySelectorAll('input[data-reseller-feature]').forEach(input => {
+                flags[input.getAttribute('data-reseller-feature')] = input.checked;
+            });
+            const token = localStorage.getItem('token');
+            toast('Salvando padrão do revendedor...');
+            try {
+                const resp = await fetch(`${API_BASE}/admin/reseller-feature-flags/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ reseller_feature_flags: flags }),
+                });
+                if (!resp.ok) { toast('Falha ao salvar.', 'error'); return; }
+                toast('Padrão do revendedor atualizado.', 'success');
+                opt.setAttribute('data-reseller-flags', JSON.stringify(flags));
+            } catch (e) {
+                toast('Erro ao salvar.', 'error');
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUsers();
+        });
+     </script>
+ </body>
+ </html>

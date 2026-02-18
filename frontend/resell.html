@@ -64,6 +64,9 @@
         .btn-reset { background-color: #64748b; }
         .btn-reset:hover { background-color: #475569; }
 
+        .btn-delete { background-color: #ef4444; }
+        .btn-delete:hover { background-color: #dc2626; }
+
         .btn-toggle-active.active { background-color: #ef4444; }
         .btn-toggle-active.active:hover { background-color: #dc2626; }
 
@@ -139,7 +142,51 @@
             </div>
             <nav class="sidebar-menu">
                 <a href="dashboard.html" class="sidebar-link">
-                    <span class="sidebar-icon">📊</span> Voltar ao Dashboard
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
                 <a href="resell.html" class="sidebar-link active">
                     <span class="sidebar-icon">💼</span> Revendedores
@@ -265,6 +312,7 @@
     </div>
 
     <!-- IMPORTAÇÃO DO SCRIPT PADRÃO -->
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/main.js"></script>
 
     <script>
@@ -327,6 +375,7 @@
                                     <button class="btn btn-edit" onclick='openEditModal(${userStr})'>✏️ Editar</button>
                                     <button class="btn btn-reset" onclick="resetPassword(${user.id})">🔑 Resetar Senha</button>
                                     <button class="btn btn-toggle-active ${toggleButtonClass}" onclick="toggleActive(${user.id}, ${user.is_active})">${toggleButtonText}</button>
+                                    <button class="btn btn-delete" onclick="deleteReseller(${user.id})">🗑️ Deletar</button>
                                 </td>
                             </tr>`;
                     });
@@ -502,6 +551,18 @@
             } catch (error) {
                 const action = isActive ? "bloquear" : "desbloquear";
                 alert(`Erro ao ${action} usuário: ` + error.message);
+            }
+        }
+
+        async function deleteReseller(userId) {
+            if (!confirm(`Tem certeza que deseja DELETAR o usuário ID ${userId}? Esta ação é irreversível.`)) return;
+
+            try {
+                await fetchAPI(`/resellers/${userId}`, { method: 'DELETE' });
+                alert('Usuário removido com sucesso!');
+                location.reload();
+            } catch (error) {
+                alert('Erro ao deletar usuário: ' + error.message);
             }
         }
     </script>

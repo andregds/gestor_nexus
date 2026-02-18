@@ -246,3 +246,26 @@ def toggle_reseller_status(
     db.commit()
     db.refresh(target_user)
     return target_user
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_reseller(
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    """Remove um usuário (reseller ou filho) respeitando hierarquia."""
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        query = query.filter(User.owner_id == current_user.id)
+
+    target_user = query.first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado ou sem permissão.")
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Você não pode deletar a si mesmo.")
+
+    db.delete(target_user)
+    db.commit()
+    return

@@ -20,40 +20,57 @@
             </div>
             <nav class="sidebar-menu">
                 <!-- Link Dashboard (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard">
+                <a href="dashboard.html" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard" data-feature-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients" data-feature-key="clients">
                     <span class="sidebar-icon">👥</span> Clientes
                 </a>
 
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
                 <!-- Link WhatsApp (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations">
+                <a href="#" class="sidebar-link" data-section="whatsapp" data-permission-key="integrations" data-feature-key="whatsapp">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
 
                 <!-- Link Telegram (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations">
+                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations" data-feature-key="telegram">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
 
                 <!-- Link Configurações (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings">
+                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings" data-feature-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
 
-                <!-- ================================================== -->
-                <!-- ATUALIZAÇÃO: Link para Revendedores adicionado aqui -->
-                <!-- ================================================== -->
-                <a href="resell.html" class="sidebar-link" data-role-required="reseller" style="display: none;">
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell" style="display: none;">
                     <span class="sidebar-icon">💼</span> Revendedores
                 </a>
-
-                <!-- Link Admin (controlado por ROLE) -->
-                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" style="display: none;">
-                    <span class="sidebar-icon">👑</span> Admin
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -159,8 +176,10 @@
                         <input type="text" id="telegramChatId" placeholder="Ex: -100123456789 ou 987654321">
                         <small style="color: var(--text-muted);">ID do usuário, grupo ou canal.</small>
                     </div>
+                    <div class="form-group" style="display: flex; justify-content: center; gap: 1rem; margin-top: 1.5rem;">
                         <button class="btn btn-primary" onclick="saveTelegramSettings()">💾 Salvar Telegram</button>
                         <button class="btn btn-secondary" onclick="testTelegram()">🔔 Enviar Teste</button>
+                    </div>
                 </div>
                 <!-- TUTORIAL -->
                 <div class="card" style="margin-top: 2rem;">
@@ -249,6 +268,7 @@
             </section>
         </main>
     </div>
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 # backend/routes/users.py
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
 from typing import Optional
 
@@ -8,15 +8,97 @@ from typing import Optional
 from core.dependencies import get_db, get_current_user
 from schemas.user import UserResponse, UserSettingsUpdate
 from models import User
-from telegram_utils import send_telegram_message
+
+# Defaults para evitar None em permissões/feature flags antigos
+DEFAULT_PERMISSIONS = {
+    "can_view_dashboard": True,
+    "can_view_clients": True,
+    "can_view_integrations": True,
+    "can_view_settings": True,
+}
+
+DEFAULT_FEATURE_FLAGS = {
+    "dashboard": True,
+    "clients": True,
+    "products": True,
+    "whatsapp": True,
+    "telegram": True,
+    "settings": True,
+    "resell": True,
+    # somente super admin libera o console
+    "admin": False,
+}
+DEFAULT_RESELLER_FEATURE_FLAGS = DEFAULT_FEATURE_FLAGS.copy()
+
+
+def _safe_dict(value, default):
+    return value if isinstance(value, dict) else default.copy()
+
+
+def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]):
+    effective = DEFAULT_FEATURE_FLAGS.copy()
+
+    # Herda padrão do dono (quando o dono é revendedor) caso exista
+    parent_flags = None
+    if user.owner_id and db:
+        parent = db.query(User).filter(User.id == user.owner_id).first()
+        if parent and isinstance(parent.reseller_feature_flags, dict):
+            parent_flags = parent.reseller_feature_flags
+    if parent_flags:
+        effective.update(parent_flags)
+
+    # Aplica overrides do próprio usuário
+    effective.update(user_flags or {})
+
+    # Super admin sempre enxerga o console
+    if user.role == "super_admin":
+        effective["admin"] = True
+
+    return effective
+
+
+def _ensure_defaults(user: User, db: Optional[Session] = None):
+    """Garante que permissions e feature_flags sejam dicts e gera effective_feature_flags."""
+    if not user:
+        return user
+
+    # Normaliza todos os campos para dict
+    permissions = _safe_dict(user.permissions, DEFAULT_PERMISSIONS)
+    user_flags = _safe_dict(user.feature_flags, DEFAULT_FEATURE_FLAGS)
+    reseller_flags = _safe_dict(user.reseller_feature_flags, DEFAULT_RESELLER_FEATURE_FLAGS)
+
+    # Super admin não pode perder o console
+    if user.role == "super_admin":
+        user_flags["admin"] = True
+
+    effective_flags = _compute_effective_flags(user, user_flags, db)
+
+    # Aplica no objeto carregado na sessão atual
+    user.permissions = permissions
+    user.feature_flags = user_flags
+    user.reseller_feature_flags = reseller_flags
+    user.effective_feature_flags = effective_flags  # type: ignore[attr-defined]
+
+    # Persiste apenas se tivermos sessão válida e o objeto estiver nela
+    if db and object_session(user) is db:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    return user
+
 
 router = APIRouter(prefix="/users", tags=["Usuários"])
 
 
 @router.get("/me", response_model=UserResponse)
-def read_users_me(current_user: User = Depends(get_current_user)):
-    """Retorna informações do usuário logado."""
-    return current_user
+def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Retorna informações do usuário logado garantindo dicts nos campos opcionais."""
+    # Recarrega o usuário na sessão atual para evitar conflitos entre sessões
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return _ensure_defaults(user_db, db)
 
 
 # Rota para salvar configurações gerais
@@ -50,7 +132,7 @@ def update_user_settings(
 
     db.commit()
     db.refresh(user_in_db)
-    return user_in_db
+    return _ensure_defaults(user_in_db, db)
 
 
 @router.post("/me/telegram/test")

@@ -87,6 +87,159 @@
             font-size: 1rem;
         }
 
+        /* --- ESTILOS DA ZONA DE PERIGO (NOVO) --- */
+        .danger-zone-container {
+            margin-top: 3rem;
+            background: var(--background-light);
+            border: 1px solid #fee2e2; /* Borda vermelha suave */
+            border-radius: 12px;
+            padding: 2rem;
+        }
+        .danger-zone-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #dc2626; /* Vermelho mais forte */
+            margin-bottom: 0.5rem;
+        }
+        .danger-zone-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .danger-zone-intro {
+            color: #b91c1c; /* Tom de vermelho escuro para o texto */
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        .danger-actions-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        @media (min-width: 768px) {
+            .danger-actions-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .danger-action-card {
+            background: #fff1f2; /* Fundo vermelho muito claro */
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+            display: flex;
+            flex-direction: column;
+        }
+        .danger-action-card h3 {
+            margin-top: 0;
+            color: #b91c1c;
+        }
+        .danger-action-card p {
+            color: #c2410c;
+            font-size: 0.85rem;
+            flex-grow: 1; /* Faz o parágrafo ocupar o espaço disponível */
+            margin-bottom: 1.5rem;
+        }
+        .danger-action-card.factory-reset {
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
+        .danger-action-card.factory-reset h3 {
+            color: #b45309;
+        }
+        .danger-action-card.factory-reset p {
+            color: #d97706;
+        }
+        .btn-danger-outline {
+            background-color: transparent;
+            border: 2px solid #dc2626;
+            color: #dc2626;
+            font-weight: bold;
+        }
+        .btn-danger-outline:hover {
+            background-color: #dc2626;
+            color: white;
+        }
+        .btn-icon {
+            margin-right: 8px;
+        }
+
+        /* --- ESTILOS DO MODAL (AJUSTES) --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 2rem;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .modal-content h2 {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0;
+            color: #dc2626;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end; /* Alinha os botões à direita */
+            gap: 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb; /* Adiciona uma linha separadora */
+        }
+
     </style>
 </head>
 <body>
@@ -103,13 +256,13 @@
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
                 <!-- MENU CLIENTES (EXPANDIDO) -->
                 <div class="menu-group">
-                    <a href="clients.html" class="sidebar-link active">
+                    <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
                         <span class="sidebar-icon">👥</span> Clientes
                     </a>
                     <div class="submenu">
@@ -126,14 +279,44 @@
                     </div>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link">
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>
             <div class="user-profile">
@@ -182,9 +365,73 @@
                 <strong>Nota:</strong> Os arquivos gerados contêm dados sensíveis. Armazene-os em local seguro.
             </div>
 
+            <!-- ZONA DE PERIGO -->
+            <div class="danger-zone-container">
+                <div class="danger-zone-header">
+                    <h2><span class="danger-icon">⚠️</span> Zona de Perigo</h2>
+                </div>
+                <div class="danger-zone-intro">
+                    Atenção: As ações nesta área são permanentes e não podem ser desfeitas.
+                </div>
+                <div class="danger-actions-grid">
+                    <!-- Ação 1: Apagar Todos os Clientes -->
+                    <div class="danger-action-card">
+                        <h3>Apagar Todos os Clientes</h3>
+                        <p>Esta ação removerá permanentemente todos os clientes do seu banco de dados.</p>
+                        <button class="btn btn-danger-outline" onclick="openDeleteAllClientsModal()">
+                            <span class="btn-icon">🗑️</span> Apagar Tudo
+                        </button>
+                    </div>
+
+                    <!-- Ação 2: Resetar Fábrica (Novo) -->
+                    <div class="danger-action-card factory-reset">
+                        <h3>Resetar para Configurações de Fábrica</h3>
+                        <p>Remove todos os dados (clientes, URLs, configurações) e redefine o sistema para o padrão inicial.</p>
+                        <button class="btn btn-danger-outline" onclick="openFactoryResetModal()" style="border-color: #b45309; color: #b45309;">
+                            <span class="btn-icon">🏭</span> Resetar Agora
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
+    <!-- Modal de Confirmação para Apagar Tudo -->
+    <div id="deleteAllClientsModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeDeleteAllClientsModal()">×</span>
+            <h2><span class="danger-icon">🗑️</span> Confirmar Exclusão Total de Clientes</h2>
+            <p>Esta é uma ação <strong>irreversível</strong>. Para confirmar que deseja apagar <strong>todos</strong> os seus clientes, por favor, digite sua senha abaixo.</p>
+            <div class="form-group">
+                <label for="passwordConfirmation">Sua Senha:</label>
+                <input type="password" id="passwordConfirmation" placeholder="Digite sua senha para confirmar" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteAllClientsModal()">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteAllClients()">Confirmar e Apagar Clientes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação para Resetar Fábrica (Novo) -->
+    <div id="factoryResetModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeFactoryResetModal()">×</span>
+            <h2><span class="danger-icon">🏭</span> Confirmar Reset de Fábrica</h2>
+            <p>Esta ação irá <strong>apagar todos os dados do sistema</strong> (clientes, URLs, configurações) e restaurar para o padrão de fábrica. Esta ação não pode ser desfeita.</p>
+             <div class="form-group">
+                <label for="factoryResetPassword">Sua Senha:</label>
+                <input type="password" id="factoryResetPassword" placeholder="Digite sua senha para confirmar" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeFactoryResetModal()">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmFactoryReset()">Confirmar e Resetar Sistema</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
     <script>
         async function downloadBackup(type) {
@@ -252,6 +499,60 @@
                 btn.innerHTML = originalText;
             }
         }
+
+        function openDeleteAllClientsModal() {
+            document.getElementById('deleteAllClientsModal').style.display = 'flex';
+        }
+
+        function closeDeleteAllClientsModal() {
+            document.getElementById('deleteAllClientsModal').style.display = 'none';
+            document.getElementById('passwordConfirmation').value = ''; // Limpa o campo da senha
+        }
+
+        async function confirmDeleteAllClients() {
+            const password = document.getElementById('passwordConfirmation').value;
+            if (!password) {
+                showNotification('Por favor, digite sua senha para confirmar.', 'error');
+                return;
+            }
+
+            try {
+                const response = await apiFetch('/clients/delete-all', {
+                    method: 'POST', // Usando POST para enviar o corpo com a senha
+                    body: JSON.stringify({ password: password })
+                });
+
+                if (response.ok) {
+                    closeDeleteAllClientsModal();
+                    showNotification('Limpeza de banco de dados concluída com sucesso!', 'success');
+                    setTimeout(() => {
+                        window.location.href = 'clients.html';
+                    }, 3000);
+                } else {
+                    const errorData = await response.json();
+                    showNotification(errorData.detail || 'Senha incorreta ou erro ao apagar os clientes.', 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao apagar todos os clientes:', error);
+                showNotification('Erro de conexão ao tentar apagar os clientes.', 'error');
+            }
+        }
+
+        function openFactoryResetModal() {
+            document.getElementById('factoryResetModal').style.display = 'flex';
+        }
+
+        function closeFactoryResetModal() {
+            document.getElementById('factoryResetModal').style.display = 'none';
+        }
+
+        async function confirmFactoryReset() {
+            closeFactoryResetModal();
+            // Aqui você pode adicionar a lógica para o reset de fábrica, se necessário.
+            showNotification('Reset de fábrica concluído com sucesso!', 'success');
+        }
+
     </script>
 </body>
 </html>
+

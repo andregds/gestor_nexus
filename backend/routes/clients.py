@@ -13,6 +13,7 @@ from core.dependencies import get_db, get_current_user
 from models import User, Client
 from telegram_utils import send_telegram_message
 from routes import messages as messages_route  # NOVO IMPORT PARA MENSAGENS
+from core.security import verify_password # Import for password verification
 
 # --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
 from whatsapp_utils import send_whatsapp_notification, send_whatsapp_image
@@ -21,6 +22,9 @@ router = APIRouter(prefix="/clients", tags=["Clientes"])
 
 
 # --- SCHEMAS ---
+
+class PasswordConfirmation(BaseModel):
+    password: str
 
 class ClientCreate(BaseModel):
     name: str
@@ -232,6 +236,38 @@ async def process_reminders_now(
 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
+
+
+@router.post("/delete-all", status_code=status.HTTP_204_NO_CONTENT)
+def delete_all_clients(
+    confirmation: PasswordConfirmation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deleta TODOS os clientes de um usuário após confirmar a senha.
+    """
+    # 1. Verificar a senha do usuário
+    if not verify_password(confirmation.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Senha incorreta. A exclusão não foi realizada.",
+        )
+
+    # 2. Se a senha estiver correta, apagar os clientes
+    try:
+        num_deleted = db.query(Client).filter(Client.owner_id == current_user.id).delete(synchronize_session=False)
+        db.commit()
+        print(f"Usuário {current_user.email} deletou {num_deleted} clientes.")
+    except Exception as e:
+        db.rollback()
+        print(f"Erro ao deletar clientes para o usuário {current_user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ocorreu um erro no servidor ao tentar apagar os clientes."
+        )
+
+    return None
 
 
 # ==========================================

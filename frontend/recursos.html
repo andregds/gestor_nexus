@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Integração WhatsApp | Nexus Monitor</title>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <title>Recursos - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
 </head>
 <body>
-    <!-- Mobile Header -->
     <div class="navbar-mobile" style="display: none;">
         <div class="brand-logo">NEXUS<span>MONITOR</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
-
-    <div class="dashboard-container">
-        <!-- SIDEBAR -->
-        <aside class="sidebar" id="sidebar">
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
             <div class="sidebar-header">
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
@@ -39,10 +38,10 @@
                 </div>
 
                 <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
-                    <div class="sidebar-submenu" id="productsSubmenu">
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
                         <a href="produtos.html" class="sidebar-link sidebar-sublink">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
@@ -52,13 +51,13 @@
                         <a href="planos.html" class="sidebar-link sidebar-sublink">
                             <span class="sidebar-icon">📄</span> Planos
                         </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink active">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
                     </div>
                 </div>
 
-                <a href="whatsapp.html" class="sidebar-link active" data-permission-key="integrations">
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
@@ -80,66 +79,39 @@
                 <div class="user-role">Administrador</div>
                 <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
             </div>
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-            <!-- A seção do WhatsApp é carregada dinamicamente pelo JS,
-                 mas precisamos da estrutura base aqui para ele injetar -->
-            <section id="section-whatsapp" class="content-section" style="display: block;">
-                <div class="page-header">
-                    <div class="page-title">
-                        <h2>Integração WhatsApp</h2>
-                        <p>Gateway de notificações via Evolution API.</p>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
                     </div>
                 </div>
+            </nav>
 
-                <div class="card">
-                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Status da Conexão</h3>
-
-                    <!-- Área de Status e Ações -->
-                    <div id="connectionStateArea">
-                        <div id="whatsappStatusContainer" class="whatsapp-status-box">
-                            <div class="spinner"></div>
-                            <div>Verificando status do gateway...</div>
-                        </div>
-
-                        <!-- Formulário de Conexão -->
-                        <div id="connectForm" style="display:none; margin-top: 2rem; text-align: center;">
-                            <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
-                            <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
-                        </div>
-
-                        <!-- Ações quando conectado -->
-                        <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
-                            <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
-                            <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
+            <main class="container-fluid">
+                <div id="section-features" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Recursos dos Planos</h2>
+                            <p>Gerencie os recursos disponíveis em cada plano.</p>
                         </div>
                     </div>
-
-                    <!-- Área do QR Code -->
-                    <div id="qrCodeContainer" class="qr-container" style="display: none;">
-                        <h4 style="color: var(--primary); margin-bottom: 1rem;">Escaneie para Conectar</h4>
-                        <div id="qrCodeImageWrapper" style="min-height: 260px; display: flex; align-items: center; justify-content: center;">
-                            <div class="spinner"></div>
-                        </div>
-                        <p style="margin-top: 1rem; color: var(--text-muted);">Abra o WhatsApp > Aparelhos Conectados > Conectar Aparelho</p>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
                     </div>
                 </div>
-            </section>
-        </main>
+            </main>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="assets/js/sidebar.js"></script>
-    <script src="assets/js/dashboard.js"></script>
-    <script>
-        // Script inline simples para garantir que o status carregue ao abrir esta página específica
-        document.addEventListener('DOMContentLoaded', () => {
-            // Verifica se a função existe no dashboard.js antes de chamar
-            if (typeof loadWhatsAppStatus === 'function') {
-                loadWhatsAppStatus();
-            }
-        });
-    </script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
 </body>
 </html>

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
 # Adiciona o diretório `backend` ao sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -21,15 +22,11 @@ from database import Base, engine, SessionLocal
 # --- ATUALIZAÇÃO: Importar TODOS os modelos necessários ---
 from models import User, Client, MonitoredURL
 from routes import auth, users, urls, whatsapp, clients, backup, admin,resellers, messages
-from routes import messages as messages_route
+from database import engine, Base
+import models
 
-# --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
-from core.utils import generate_reminder_message
-from core.config import EVOLUTION_API_URL
-from whatsapp_utils import evolution_headers
-from models import User, Client, MonitoredURL # Garanta que MonitoredURL está aqui
-# Cria as tabelas no banco de dados (se não existirem)
-Base.metadata.create_all(bind=engine)
+# Cria as tabelas no banco de dados, se não existirem
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Monitor DNS API",
@@ -49,6 +46,21 @@ app.add_middleware(
 
 # Monta o diretório de imagens anexas como estático
 app.mount("/imagens_anexas", StaticFiles(directory="imagens_anexas"), name="imagens_anexas")
+
+# Adiciona as novas rotas de produtos
+from routes import products, categories, plans, features
+app.include_router(products.router, prefix="/products", tags=["Products"])
+app.include_router(categories.router, prefix="/categories", tags=["Categories"])
+app.include_router(plans.router, prefix="/plans", tags=["Plans"])
+app.include_router(features.router, prefix="/features", tags=["Features"])
+
+# --- ATUALIZAÇÃO: Importando o gerador de mensagens e configs ---
+from core.utils import generate_reminder_message
+from core.config import EVOLUTION_API_URL
+from whatsapp_utils import evolution_headers
+from models import User, Client, MonitoredURL # Garanta que MonitoredURL está aqui
+# Cria as tabelas no banco de dados (se não existirem)
+Base.metadata.create_all(bind=engine)
 
 # Inclui os routers
 app.include_router(auth.router)

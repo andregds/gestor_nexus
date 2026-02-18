@@ -52,24 +52,52 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-weight: 500;
+    padding: 0.7rem 1.25rem;
+    border-radius: 10px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    border: 1px solid transparent;
     gap: 8px;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    letter-spacing: 0.1px;
 }
 
-.btn-primary { background-color: var(--accent); color: white; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); }
-.btn-primary:hover { background-color: var(--accent-hover); transform: translateY(-1px); }
+.btn-primary {
+    background-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(59, 130, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-color: rgba(59, 130, 246, 0.35);
+}
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(59, 130, 246, 0.28);
+}
 
-.btn-secondary { background-color: white; border: 1px solid var(--border-color); color: var(--text-main); }
-.btn-secondary:hover { background-color: #f8fafc; border-color: var(--accent); color: var(--accent); }
+.btn-secondary {
+    background-color: #ffffff;
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+.btn-secondary:hover {
+    background-color: #f8fafc;
+    border-color: rgba(59, 130, 246, 0.35);
+    color: var(--primary);
+}
 
-.btn-danger { background-color: var(--danger-bg); color: var(--danger); }
-.btn-danger:hover { background-color: var(--danger); color: white; }
+.btn-danger {
+    background-color: #fff5f5;
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.25);
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.12);
+}
+.btn-danger:hover {
+    background-color: var(--danger);
+    color: #ffffff;
+    box-shadow: 0 6px 14px rgba(239, 68, 68, 0.25);
+}
 
 .btn-icon {
     background: transparent;
@@ -154,19 +182,103 @@ input:focus, select:focus {
     display: flex;
     align-items: center;
     padding: 0.85rem 1rem;
-    color: #94a3b8;
+    color: #e2e8f0;
     text-decoration: none;
     border-radius: 6px;
     margin-bottom: 4px;
     transition: 0.2s;
     font-weight: 500;
+    background: rgba(255,255,255,0.06);
 }
-.sidebar-link:hover, .sidebar-link.active {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+
+/* Refino visual: botoes principais do menu (Clientes, Produtos, etc.) */
+.sidebar-menu > .sidebar-link,
+.sidebar-group-title {
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
-.sidebar-link.active { border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
+
+.sidebar-menu > .sidebar-link:hover,
+.sidebar-group-title:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06));
+    border-color: rgba(255,255,255,0.16);
+    color: #ffffff;
+}
+
+.sidebar-menu > .sidebar-link.active {
+    background: linear-gradient(180deg, rgba(59,130,246,0.22), rgba(59,130,246,0.08));
+    border-color: rgba(59,130,246,0.35);
+    color: #ffffff;
+}
+
+.sidebar-group-title {
+    padding: 0.85rem 1rem;
+}
+
 .sidebar-icon { margin-right: 12px; width: 20px; text-align: center; }
+
+.sidebar-group { margin-top: 6px; }
+.sidebar-group-title {
+    background: rgba(255,255,255,0.06);
+    color: #e2e8f0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    border: none;
+    outline: none;
+    font: inherit;
+}
+
+.sidebar-group-title:focus-visible {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.sidebar-group-title::after {
+    content: "▾";
+    margin-left: auto;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.sidebar-group-title[aria-expanded="true"]::after {
+    transform: rotate(-180deg);
+}
+
+.sidebar-submenu {
+    margin-top: 4px;
+    padding-left: 14px;
+    border-left: 1px solid rgba(255,255,255,0.12);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.sidebar-submenu.is-open {
+    max-height: 300px;
+}
+
+.sidebar-sublink {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.7rem 0.9rem;
+    color: #cbd5f5;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: 0.2s;
+    font-weight: 500;
+    background: transparent;
+    font-size: 0.88rem;
+}
+
+.sidebar-sublink:hover,
+.sidebar-sublink.active {
+    background-color: rgba(255,255,255,0.08);
+    color: #ffffff;
+}
 
 .user-profile {
     padding: 1rem;
@@ -424,3 +536,41 @@ input:focus, select:focus {
     background-color: #dcfce7;
     color: #166534;
 }
+
+.submenu {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-left: 3rem;
+    margin-bottom: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.1);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-radius: 0 0 8px 8px;
+}
+
+.submenu-link,
+.sidebar-sublink {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.7rem 0.9rem;
+    color: #cbd5f5;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: 0.2s;
+    font-weight: 500;
+    background: transparent;
+    font-size: 0.88rem;
+}
+
+.submenu-link:hover,
+.submenu-link.active,
+.sidebar-sublink:hover,
+.sidebar-sublink.active {
+    background-color: rgba(255,255,255,0.08);
+    color: #ffffff;
+}
+
+/* Oculta botões/links de Admin em qualquer menu que ainda o referencie */
+/* REMOVIDO: ocultava Super Admin para todos; visibilidade agora controlada via JS/permissions */
