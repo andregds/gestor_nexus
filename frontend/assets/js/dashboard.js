@@ -200,29 +200,28 @@ function applyUIPermissions() {
     if (!currentUser) return;
 
     const { role, permissions } = currentUser;
+    // Garantimos defaults liberando tudo quando as permissões não vierem do backend
+    const safePermissions = {
+        can_view_clients: permissions?.can_view_clients !== false,
+        can_view_integrations: permissions?.can_view_integrations !== false,
+        can_view_settings: permissions?.can_view_settings !== false,
+    };
 
-    // Função auxiliar para mostrar/esconder elementos
     const setElementVisibility = (selector, isVisible) => {
         const element = document.querySelector(selector);
         if (element) {
-            // Usa 'block' ou 'flex' dependendo do elemento para garantir a visibilidade correta
-            element.style.display = isVisible ? 'block' : 'none';
+            element.style.display = isVisible ? '' : 'none';
         }
     };
 
-    // 1. Controle de Menus da Sidebar baseado nas PERMISSÕES do usuário
-    // (Requer que os links no HTML tenham o atributo 'data-permission-key')
-    setElementVisibility('[data-permission-key="dashboard"]', true); // Dashboard sempre visível
-    setElementVisibility('[data-permission-key="clients"]', permissions.can_view_clients);
-    setElementVisibility('[data-permission-key="integrations"]', permissions.can_view_integrations);
-    setElementVisibility('[data-permission-key="settings"]', permissions.can_view_settings);
+    // Menus controlados por permissão (Dashboard sempre liberado)
+    setElementVisibility('[data-permission-key="dashboard"]', true);
+    setElementVisibility('[data-permission-key="clients"]', safePermissions.can_view_clients);
+    setElementVisibility('[data-permission-key="integrations"]', safePermissions.can_view_integrations);
+    setElementVisibility('[data-permission-key="settings"]', safePermissions.can_view_settings);
 
-    // 2. Controle de menus específicos por CARGO (ROLE)
-    // (Requer que os links no HTML tenham o atributo 'data-role-required')
-    // Regra: O link de revendedor aparece para 'reseller' E para 'super_admin'
+    // Menus por role
     setElementVisibility('[data-role-required="reseller"]', role === 'reseller' || role === 'super_admin');
-
-    // Regra: O link de admin aparece APENAS para 'super_admin'
     setElementVisibility('[data-role-required="super_admin"]', role === 'super_admin');
 }
 
