@@ -152,7 +152,7 @@ input:focus, select:focus {
 .dashboard-container {
     display: flex;
     height: 100vh;
-    overflow: hidden; /* ADICIONADO AQUI: Só o dashboard não deve rolar a página inteira */
+    overflow: hidden;
 }
 
 /* Sidebar */
@@ -165,6 +165,12 @@ input:focus, select:focus {
     border-right: 1px solid rgba(255,255,255,0.1);
     transition: transform 0.3s ease;
     z-index: 50;
+    position: sticky; /* mantém fixa no topo em desktops */
+    top: 0;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto; /* impede ocultar itens em telas menores */
+    -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-header {
@@ -407,7 +413,13 @@ input:focus, select:focus {
 /* Mobile Toggle */
 .mobile-toggle { display: none; background: none; border: none; font-size: 1.5rem; color: white; cursor: pointer; }
 @media (max-width: 768px) {
-    .sidebar { position: fixed; height: 100%; transform: translateX(-100%); }
+    .sidebar {
+        position: fixed;
+        height: 100vh;
+        max-height: 100vh;
+        transform: translateX(-100%);
+        overflow-y: auto; /* mantém rolagem no mobile */
+    }
     .sidebar.active { transform: translateX(0); }
     .mobile-toggle { display: block; }
     .navbar-mobile { background: var(--primary); padding: 1rem; display: flex; justify-content: space-between; align-items: center; }

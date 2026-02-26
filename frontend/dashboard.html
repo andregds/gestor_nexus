@@ -24,10 +24,26 @@
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
-                <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients" data-feature-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
+                <!-- Link Clientes agora como grupo sanfonado no mesmo estilo de Produtos -->
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
 
                 <!-- Adicionado o novo menu de Produtos -->
                 <div class="sidebar-group" data-feature-key="products">

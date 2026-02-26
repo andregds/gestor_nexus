@@ -22,26 +22,31 @@
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
-                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                    <div class="sidebar-submenu" id="productsSubmenu">
                         <a href="produtos.html" class="sidebar-link sidebar-sublink">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>

@@ -96,22 +96,25 @@ async def process_reminders_now(
         today = datetime.now().date()
     # -----------------------------------------
 
-    # Identifica se é mensagem personalizada
-    is_custom_message = str(filter_type).startswith('msg_')
+    selected_filter = str(filter_type or "default")
+    is_custom_message = selected_filter.startswith('msg_')
+    allowed_filters = {"default", "expired", "0", "1", "2", "3", "4"}
+    if not is_custom_message and selected_filter not in allowed_filters:
+        raise HTTPException(status_code=400, detail="Filtro de envio inválido.")
     custom_message = None
     if is_custom_message:
         try:
-            msg_id = int(str(filter_type).replace('msg_', ''))
-            # Busca a mensagem personalizada do usuário
-            from backend.routes.messages import messages
-            custom_message = next((m for m in messages if m['id'] == msg_id), None)
+            msg_id = int(selected_filter.replace('msg_', ''))
+            custom_message = next((m for m in messages_route.messages if m.get('id') == msg_id), None)
         except Exception:
             custom_message = None
+        if not custom_message:
+            raise HTTPException(status_code=400, detail="Mensagem personalizada não encontrada para envio em massa.")
 
     sent_count = 0
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
     print(f"📅 Data considerada HOJE (BR): {today}")
-    print(f"🔍 Filtro Selecionado: {filter_type}")
+    print(f"🔍 Filtro Selecionado: {selected_filter}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
     # Verifica conexão
@@ -129,24 +132,36 @@ async def process_reminders_now(
         # Calcula dias para vencer
         days_diff = (client.expiration_date - today).days
         should_send = False
+        msg_type = None
         if is_custom_message:
-            # Só envia para clientes ativos (dias_diff >= 0)
+            # Mensagem personalizada: apenas clientes não vencidos
             if days_diff >= 0:
                 should_send = True
         else:
-            # ...lógica padrão existente...
-            try:
-                threshold = int(client.reminder_days_before)
-            except (ValueError, TypeError):
-                threshold = 3
-            if 0 <= days_diff <= threshold:
-                should_send = True
-            elif days_diff < 0 and client.notify_after_expiration:
-                should_send = True
-        if should_send:
-            print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
+            if selected_filter == "default":
+                try:
+                    threshold = int(client.reminder_days_before)
+                except (ValueError, TypeError):
+                    threshold = 3
+                if 0 <= days_diff <= threshold:
+                    should_send = True
+                elif days_diff < 0 and client.notify_after_expiration:
+                    should_send = True
+            elif selected_filter == "expired":
+                should_send = days_diff < 0 and client.notify_after_expiration
+            elif selected_filter in {"0", "1", "2", "3", "4"}:
+                try:
+                    target_day = int(selected_filter)
+                except ValueError:
+                    target_day = None
+                if target_day is not None and days_diff == target_day:
+                    should_send = True
+            # Demais filtros desconhecidos não enviam
+        if not should_send:
+            continue
 
-            # Lógica estrita para evitar confusão entre Hoje e Vencido
+        # Lógica estrita para o tipo de mensagem (somente para filtros aplicáveis)
+        if not is_custom_message:
             if days_diff == 0:
                 msg_type = "vence_1"
             elif days_diff == 1:
@@ -159,80 +174,81 @@ async def process_reminders_now(
                 msg_type = "vencido"
             else:
                 msg_type = None
-            # Busca mensagem pré-pronta
-            msg = None
-            image_path = None
-            if is_custom_message and custom_message:
-                msg = custom_message['content']
-                image_path = custom_message.get('image')
-            else:
-                for m in messages_route.messages:
-                    if m["type"] == msg_type:
-                        msg = render_message_template(m["content"], client, days_diff)
-                        if m.get("image"):
-                            # Caminho absoluto ao projeto
-                            rel_path = m["image"].lstrip("/")
-                            abs_path = os.path.join(os.getcwd(), rel_path)
-                            if os.path.isfile(abs_path):
-                                image_path = abs_path
-                            else:
-                                image_path = None
-                        break
-            if not msg:
-                # fallback antigo
-                if days_diff == 0:
-                    msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-                elif days_diff == 1:
-                    msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-                elif days_diff > 1:
-                    msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-                elif days_diff < 0:
-                    days_overdue = abs(days_diff)
-                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
-            # --- ENVIO ---
-            channel = client.notification_channel or "whatsapp"
-            success = False
-            # Envio WhatsApp
-            if channel == "whatsapp" and has_whatsapp:
-                try:
-                    if image_path:
-                        success = await send_whatsapp_image(
-                            number=client.whatsapp,
-                            image_path=image_path,
-                            caption=msg,
-                            instance_name=current_user.whatsapp_instance
-                        )
-                    else:
-                        success = await send_whatsapp_notification(
-                            number=client.whatsapp,
-                            message=msg,
-                            instance_name=current_user.whatsapp_instance
-                        )
-                    if success:
-                        print(f"   -> WhatsApp enviado com sucesso!")
-                    else:
-                        print(f"   -> Falha no envio do WhatsApp (API retornou False)")
-                except Exception as e:
-                    print(f"   -> Erro técnico no WhatsApp: {e}")
-                    success = False
+        print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
-            # Envio Telegram
-            elif channel == "telegram" and has_telegram:
-                try:
-                    await send_telegram_message(
-                        token=current_user.telegram_token,
-                        chat_id=current_user.telegram_chat_id,
-                        message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+        # Busca mensagem pré-pronta
+        msg = None
+        image_path = None
+        if is_custom_message:
+            msg = custom_message['content']
+            image_path = custom_message.get('image')
+        else:
+            for m in messages_route.messages:
+                if m["type"] == msg_type:
+                    msg = render_message_template(m["content"], client, days_diff)
+                    if m.get("image"):
+                        # Caminho absoluto ao projeto
+                        rel_path = m["image"].lstrip("/")
+                        abs_path = os.path.join(os.getcwd(), rel_path)
+                        if os.path.isfile(abs_path):
+                            image_path = abs_path
+                        else:
+                            image_path = None
+                    break
+        if not msg:
+            if days_diff == 0:
+                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+            elif days_diff == 1:
+                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+            elif days_diff > 1:
+                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+            elif days_diff < 0:
+                days_overdue = abs(days_diff)
+                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+        # --- ENVIO ---
+        channel = client.notification_channel or "whatsapp"
+        success = False
+        # Envio WhatsApp
+        if channel == "whatsapp" and has_whatsapp:
+            try:
+                if image_path:
+                    success = await send_whatsapp_image(
+                        number=client.whatsapp,
+                        image_path=image_path,
+                        caption=msg,
+                        instance_name=current_user.whatsapp_instance
                     )
-                    success = True
-                    print(f"   -> Telegram enviado com sucesso!")
-                except Exception as e:
-                    print(f"   -> Erro técnico no Telegram: {e}")
-                    success = False
+                else:
+                    success = await send_whatsapp_notification(
+                        number=client.whatsapp,
+                        message=msg,
+                        instance_name=current_user.whatsapp_instance
+                    )
+                if success:
+                    print(f"   -> WhatsApp enviado com sucesso!")
+                else:
+                    print(f"   -> Falha no envio do WhatsApp (API retornou False)")
+            except Exception as e:
+                print(f"   -> Erro técnico no WhatsApp: {e}")
+                success = False
 
-            if success:
-                sent_count += 1
-                await asyncio.sleep(1)  # Delay para evitar bloqueio
+        # Envio Telegram
+        elif channel == "telegram" and has_telegram:
+            try:
+                await send_telegram_message(
+                    token=current_user.telegram_token,
+                    chat_id=current_user.telegram_chat_id,
+                    message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+                )
+                success = True
+                print(f"   -> Telegram enviado com sucesso!")
+            except Exception as e:
+                print(f"   -> Erro técnico no Telegram: {e}")
+                success = False
+
+        if success:
+            sent_count += 1
+            await asyncio.sleep(1)  # Delay para evitar bloqueio
 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}

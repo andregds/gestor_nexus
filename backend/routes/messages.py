@@ -14,11 +14,11 @@ messages = []
 
 # Mensagens padrão para vencimentos
 DEFAULT_MESSAGES = [
-    {"id": 1001, "type": "vencido", "content": "Prezado cliente, sua fatura está vencida. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1002, "type": "vence_1", "content": "Prezado cliente, sua fatura vence em 1 dia. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1003, "type": "vence_2", "content": "Prezado cliente, sua fatura vence em 2 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1004, "type": "vence_3", "content": "Prezado cliente, sua fatura vence em 3 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1005, "type": "vence_4", "content": "Prezado cliente, sua fatura vence em 4 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1001, "type": "vencido", "content": "Prezado cliente, sua fatura está vencida. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1002, "type": "vence_1", "content": "Prezado cliente, sua fatura vence em 1 dia. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1003, "type": "vence_2", "content": "Prezado cliente, sua fatura vence em 2 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1004, "type": "vence_3", "content": "Prezado cliente, sua fatura vence em 3 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1005, "type": "vence_4", "content": "Prezado cliente, sua fatura vence em 4 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
 ]
 
 def ensure_default_messages():
@@ -41,6 +41,7 @@ async def create_message(
     type: str = Form(...),
     content: str = Form(...),
     image: Optional[UploadFile] = None,
+    selected_for_send: bool = Form(False),
     current_user: dict = Depends(get_current_user)
 ):
     print(f"Recebido POST /api/messages com type={type}, content={content}, image={image}")
@@ -63,6 +64,7 @@ async def create_message(
         for msg in messages:
             if msg["type"] == type and msg.get("user_id") == user_id:
                 msg["content"] = content
+                msg["selected_for_send"] = selected_for_send
                 if image_path:
                     msg["image"] = f"/{user_upload_dir.replace(os.sep, '/')}/{os.path.basename(image_path)}"
                 return msg
@@ -78,6 +80,7 @@ async def create_message(
             "image": image_url,
             "user_id": user_id,
             "is_default": False,
+            "selected_for_send": selected_for_send,
         }
         messages.append(new_message)
         print(f"Mensagem criada com sucesso: {new_message}")
@@ -93,7 +96,7 @@ async def list_messages(current_user: dict = Depends(get_current_user)):
     return [msg for msg in messages if msg.get("is_default") or msg.get("user_id") == user_id]
 
 @router.put("/api/messages/{message_id}")
-async def update_message(message_id: int, type: str = Form(...), content: str = Form(...), image: Optional[UploadFile] = None, current_user: dict = Depends(get_current_user)):
+async def update_message(message_id: int, type: str = Form(...), content: str = Form(...), image: Optional[UploadFile] = None, selected_for_send: Optional[bool] = Form(None), current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
     user_upload_dir = os.path.join(BASE_UPLOAD_DIR, str(user_id))
     os.makedirs(user_upload_dir, exist_ok=True)
@@ -104,6 +107,8 @@ async def update_message(message_id: int, type: str = Form(...), content: str = 
         if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
             msg["type"] = type
             msg["content"] = content
+            if selected_for_send is not None:
+                msg["selected_for_send"] = selected_for_send
             if image:
                 if image.content_type not in ["image/jpeg", "image/png"]:
                     raise HTTPException(status_code=400, detail="Formato de imagem não suportado.")
@@ -122,4 +127,13 @@ async def delete_message(message_id: int, current_user: dict = Depends(get_curre
         if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
             del messages[i]
             return {"detail": "Mensagem deletada com sucesso."}
+    raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+
+@router.patch("/api/messages/{message_id}/select")
+async def toggle_message_selection(message_id: int, selected_for_send: bool = Form(...), current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+    for msg in messages:
+        if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
+            msg["selected_for_send"] = selected_for_send
+            return msg
     raise HTTPException(status_code=404, detail="Mensagem não encontrada.")

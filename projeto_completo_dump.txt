@@ -36,6 +36,180 @@ FILE: Estrutura_atual.txt
     ├── register.html
     └── dashboard.html
 ============================================================
+FILE: migrate_add_feature_flags.py
+============================================================
+#!/usr/bin/env python3
+"""
+Script de migração: adiciona colunas feature_flags e reseller_feature_flags
+na tabela users do banco de dados MySQL.
+
+Uso:
+    cd backend
+    python ../migrate_add_feature_flags.py
+"""
+import sys
+import os
+import json
+
+# Garante que o diretório do backend está no path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+
+from database import engine
+from sqlalchemy import text
+
+DEFAULT_FLAGS = json.dumps({
+    "dashboard": True,
+    "clients": True,
+    "products": True,
+    "whatsapp": True,
+    "telegram": True,
+    "settings": True,
+    "resell": True,
+    "admin": False,
+})
+
+DEFAULT_FLAGS_ADMIN = json.dumps({
+    "dashboard": True,
+    "clients": True,
+    "products": True,
+    "whatsapp": True,
+    "telegram": True,
+    "settings": True,
+    "resell": True,
+    "admin": True,
+})
+
+def column_exists(conn, table, column):
+    result = conn.execute(text(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c"
+    ), {"t": table, "c": column})
+    return result.scalar() > 0
+
+def run_migration():
+    with engine.connect() as conn:
+        # 1. Adicionar feature_flags
+        if not column_exists(conn, "users", "feature_flags"):
+            print("➕ Adicionando coluna feature_flags...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN feature_flags JSON DEFAULT NULL"))
+            conn.commit()
+            print("✅ Coluna feature_flags adicionada.")
+        else:
+            print("ℹ️  Coluna feature_flags já existe.")
+
+        # 2. Adicionar reseller_feature_flags
+        if not column_exists(conn, "users", "reseller_feature_flags"):
+            print("➕ Adicionando coluna reseller_feature_flags...")
+            conn.execute(text("ALTER TABLE users ADD COLUMN reseller_feature_flags JSON DEFAULT NULL"))
+            conn.commit()
+            print("✅ Coluna reseller_feature_flags adicionada.")
+        else:
+            print("ℹ️  Coluna reseller_feature_flags já existe.")
+
+        # 3. Preencher NULLs em feature_flags (usuários comuns)
+        print("🔄 Preenchendo feature_flags NULL para usuários comuns...")
+        conn.execute(text(
+            f"UPDATE users SET feature_flags = :flags WHERE feature_flags IS NULL AND role != 'super_admin'"
+        ), {"flags": DEFAULT_FLAGS})
+        conn.commit()
+
+        # 4. Preencher NULLs em feature_flags (super_admin)
+        print("🔄 Preenchendo feature_flags para super_admin (com admin=True)...")
+        conn.execute(text(
+            f"UPDATE users SET feature_flags = :flags WHERE feature_flags IS NULL AND role = 'super_admin'"
+        ), {"flags": DEFAULT_FLAGS_ADMIN})
+        conn.commit()
+
+        # 5. Garantir admin=True para super_admin existentes
+        print("🔄 Garantindo admin=True para super_admins...")
+        conn.execute(text(
+            "UPDATE users SET feature_flags = JSON_SET(COALESCE(feature_flags, '{}'), '$.admin', true) "
+            "WHERE role = 'super_admin'"
+        ))
+        conn.commit()
+
+        # 6. Preencher NULLs em reseller_feature_flags
+        print("🔄 Preenchendo reseller_feature_flags NULL...")
+        conn.execute(text(
+            f"UPDATE users SET reseller_feature_flags = :flags WHERE reseller_feature_flags IS NULL"
+        ), {"flags": DEFAULT_FLAGS})
+        conn.commit()
+
+        print("\n✅ Migração concluída com sucesso!")
+
+        # Verificação
+        result = conn.execute(text("SELECT id, email, role, feature_flags FROM users"))
+        rows = result.fetchall()
+        print(f"\n📊 Usuários no banco ({len(rows)} total):")
+        for row in rows:
+            print(f"  ID={row[0]}, email={row[1]}, role={row[2]}, feature_flags={row[3]}")
+
+if __name__ == "__main__":
+    run_migration()
+
+
+============================================================
+FILE: migrate_add_feature_flags.sql
+============================================================
+-- ============================================================
+-- MIGRAÇÃO: Adiciona colunas feature_flags e reseller_feature_flags
+-- na tabela users (MySQL)
+-- Execute este script no seu banco de dados MySQL.
+-- ============================================================
+
+-- 1. Adiciona coluna feature_flags (JSON) se não existir
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS feature_flags JSON DEFAULT NULL COMMENT 'Flags de funcionalidade por usuário';
+
+-- 2. Adiciona coluna reseller_feature_flags (JSON) se não existir
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS reseller_feature_flags JSON DEFAULT NULL COMMENT 'Flags de funcionalidade padrão para filhos do revendedor';
+
+-- 3. Preenche os registros que estão com NULL com o valor padrão
+UPDATE users
+SET feature_flags = JSON_OBJECT(
+    'dashboard', TRUE,
+    'clients', TRUE,
+    'products', TRUE,
+    'whatsapp', TRUE,
+    'telegram', TRUE,
+    'settings', TRUE,
+    'resell', TRUE,
+    'admin', FALSE
+)
+WHERE feature_flags IS NULL;
+
+-- 4. Garante que super_admin sempre tenha admin = TRUE
+UPDATE users
+SET feature_flags = JSON_SET(
+    COALESCE(feature_flags, '{}'),
+    '$.admin', CAST(TRUE AS JSON)
+)
+WHERE role = 'super_admin';
+
+-- 5. Preenche reseller_feature_flags onde estiver NULL
+UPDATE users
+SET reseller_feature_flags = JSON_OBJECT(
+    'dashboard', TRUE,
+    'clients', TRUE,
+    'products', TRUE,
+    'whatsapp', TRUE,
+    'telegram', TRUE,
+    'settings', TRUE,
+    'resell', TRUE,
+    'admin', FALSE
+)
+WHERE reseller_feature_flags IS NULL;
+
+-- ============================================================
+-- VERIFICAÇÃO: execute para confirmar que as colunas existem
+-- e os dados foram preenchidos corretamente.
+-- ============================================================
+-- SELECT id, email, role, feature_flags, reseller_feature_flags FROM users;
+
+
+
+============================================================
 FILE: projeto_completo_dump.txt
 ============================================================
 
@@ -1195,6 +1369,19 @@ class User(Base):
         "telegram": True,
         "settings": True,
         "resell": True,
+        # admin continua desligado por padrão para não expor o console a quem não for super_admin
+        "admin": False,
+    })
+
+    # Padrão opcional aplicado aos filhos de um revendedor (herdado quando não houver override no filho)
+    reseller_feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
         "admin": False,
     })
 
@@ -1954,7 +2141,7 @@ from typing import List
 
 from core.dependencies import get_db, get_current_user
 from models import User
-from schemas.user import UserResponse, FeatureFlagsUpdate
+from schemas.user import UserResponse, FeatureFlagsUpdate, DEFAULT_FEATURE_FLAGS, ResellerFeatureFlagsUpdate, DEFAULT_RESELLER_FEATURE_FLAGS
 
 router = APIRouter(prefix="/admin", tags=["Administração"])
 
@@ -2011,14 +2198,52 @@ def update_feature_flags(user_id: int, payload: FeatureFlagsUpdate, db: Session 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
 
-    # Merge simples: sobrescreve flags informadas, mantém demais
     current_flags = user.feature_flags or {}
-    current_flags.update(payload.feature_flags)
+
+    # Aceita apenas chaves conhecidas e valores booleanos
+    for key, value in payload.feature_flags.items():
+        if key not in DEFAULT_FEATURE_FLAGS:
+            continue
+        if isinstance(value, bool):
+            current_flags[key] = value
+
+    # Completa com defaults para evitar None e não aplicar restrição quando ausente
+    for key, default_value in DEFAULT_FEATURE_FLAGS.items():
+        current_flags.setdefault(key, default_value)
+
+    # Super admin nunca perde acesso ao console
+    if user.role == "super_admin":
+        current_flags["admin"] = True
+
     user.feature_flags = current_flags
 
     db.commit()
     db.refresh(user)
     return {"message": "Feature flags atualizados", "feature_flags": user.feature_flags}
+
+@router.put("/reseller-feature-flags/{user_id}", dependencies=[Depends(get_super_admin)])
+def update_reseller_feature_flags(user_id: int, payload: ResellerFeatureFlagsUpdate, db: Session = Depends(get_db)):
+    """Define o padrão de flags herdado pelos filhos de um revendedor (apenas super_admin pode alterar)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
+
+    current_flags = user.reseller_feature_flags or {}
+
+    for key, value in payload.reseller_feature_flags.items():
+        if key not in DEFAULT_RESELLER_FEATURE_FLAGS:
+            continue
+        if isinstance(value, bool):
+            current_flags[key] = value
+
+    for key, default_value in DEFAULT_RESELLER_FEATURE_FLAGS.items():
+        current_flags.setdefault(key, default_value)
+
+    user.reseller_feature_flags = current_flags
+
+    db.commit()
+    db.refresh(user)
+    return {"message": "Padrão de revendedor atualizado", "reseller_feature_flags": user.reseller_feature_flags}
 
 ============================================================
 FILE: backend\routes\auth.py
@@ -2545,22 +2770,25 @@ async def process_reminders_now(
         today = datetime.now().date()
     # -----------------------------------------
 
-    # Identifica se é mensagem personalizada
-    is_custom_message = str(filter_type).startswith('msg_')
+    selected_filter = str(filter_type or "default")
+    is_custom_message = selected_filter.startswith('msg_')
+    allowed_filters = {"default", "expired", "0", "1", "2", "3", "4"}
+    if not is_custom_message and selected_filter not in allowed_filters:
+        raise HTTPException(status_code=400, detail="Filtro de envio inválido.")
     custom_message = None
     if is_custom_message:
         try:
-            msg_id = int(str(filter_type).replace('msg_', ''))
-            # Busca a mensagem personalizada do usuário
-            from backend.routes.messages import messages
-            custom_message = next((m for m in messages if m['id'] == msg_id), None)
+            msg_id = int(selected_filter.replace('msg_', ''))
+            custom_message = next((m for m in messages_route.messages if m.get('id') == msg_id), None)
         except Exception:
             custom_message = None
+        if not custom_message:
+            raise HTTPException(status_code=400, detail="Mensagem personalizada não encontrada para envio em massa.")
 
     sent_count = 0
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
     print(f"📅 Data considerada HOJE (BR): {today}")
-    print(f"🔍 Filtro Selecionado: {filter_type}")
+    print(f"🔍 Filtro Selecionado: {selected_filter}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
     # Verifica conexão
@@ -2578,24 +2806,36 @@ async def process_reminders_now(
         # Calcula dias para vencer
         days_diff = (client.expiration_date - today).days
         should_send = False
+        msg_type = None
         if is_custom_message:
-            # Só envia para clientes ativos (dias_diff >= 0)
+            # Mensagem personalizada: apenas clientes não vencidos
             if days_diff >= 0:
                 should_send = True
         else:
-            # ...lógica padrão existente...
-            try:
-                threshold = int(client.reminder_days_before)
-            except (ValueError, TypeError):
-                threshold = 3
-            if 0 <= days_diff <= threshold:
-                should_send = True
-            elif days_diff < 0 and client.notify_after_expiration:
-                should_send = True
-        if should_send:
-            print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
+            if selected_filter == "default":
+                try:
+                    threshold = int(client.reminder_days_before)
+                except (ValueError, TypeError):
+                    threshold = 3
+                if 0 <= days_diff <= threshold:
+                    should_send = True
+                elif days_diff < 0 and client.notify_after_expiration:
+                    should_send = True
+            elif selected_filter == "expired":
+                should_send = days_diff < 0 and client.notify_after_expiration
+            elif selected_filter in {"0", "1", "2", "3", "4"}:
+                try:
+                    target_day = int(selected_filter)
+                except ValueError:
+                    target_day = None
+                if target_day is not None and days_diff == target_day:
+                    should_send = True
+            # Demais filtros desconhecidos não enviam
+        if not should_send:
+            continue
 
-            # Lógica estrita para evitar confusão entre Hoje e Vencido
+        # Lógica estrita para o tipo de mensagem (somente para filtros aplicáveis)
+        if not is_custom_message:
             if days_diff == 0:
                 msg_type = "vence_1"
             elif days_diff == 1:
@@ -2608,80 +2848,81 @@ async def process_reminders_now(
                 msg_type = "vencido"
             else:
                 msg_type = None
-            # Busca mensagem pré-pronta
-            msg = None
-            image_path = None
-            if is_custom_message and custom_message:
-                msg = custom_message['content']
-                image_path = custom_message.get('image')
-            else:
-                for m in messages_route.messages:
-                    if m["type"] == msg_type:
-                        msg = render_message_template(m["content"], client, days_diff)
-                        if m.get("image"):
-                            # Caminho absoluto ao projeto
-                            rel_path = m["image"].lstrip("/")
-                            abs_path = os.path.join(os.getcwd(), rel_path)
-                            if os.path.isfile(abs_path):
-                                image_path = abs_path
-                            else:
-                                image_path = None
-                        break
-            if not msg:
-                # fallback antigo
-                if days_diff == 0:
-                    msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-                elif days_diff == 1:
-                    msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-                elif days_diff > 1:
-                    msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-                elif days_diff < 0:
-                    days_overdue = abs(days_diff)
-                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
-            # --- ENVIO ---
-            channel = client.notification_channel or "whatsapp"
-            success = False
-            # Envio WhatsApp
-            if channel == "whatsapp" and has_whatsapp:
-                try:
-                    if image_path:
-                        success = await send_whatsapp_image(
-                            number=client.whatsapp,
-                            image_path=image_path,
-                            caption=msg,
-                            instance_name=current_user.whatsapp_instance
-                        )
-                    else:
-                        success = await send_whatsapp_notification(
-                            number=client.whatsapp,
-                            message=msg,
-                            instance_name=current_user.whatsapp_instance
-                        )
-                    if success:
-                        print(f"   -> WhatsApp enviado com sucesso!")
-                    else:
-                        print(f"   -> Falha no envio do WhatsApp (API retornou False)")
-                except Exception as e:
-                    print(f"   -> Erro técnico no WhatsApp: {e}")
-                    success = False
+        print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
-            # Envio Telegram
-            elif channel == "telegram" and has_telegram:
-                try:
-                    await send_telegram_message(
-                        token=current_user.telegram_token,
-                        chat_id=current_user.telegram_chat_id,
-                        message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+        # Busca mensagem pré-pronta
+        msg = None
+        image_path = None
+        if is_custom_message:
+            msg = custom_message['content']
+            image_path = custom_message.get('image')
+        else:
+            for m in messages_route.messages:
+                if m["type"] == msg_type:
+                    msg = render_message_template(m["content"], client, days_diff)
+                    if m.get("image"):
+                        # Caminho absoluto ao projeto
+                        rel_path = m["image"].lstrip("/")
+                        abs_path = os.path.join(os.getcwd(), rel_path)
+                        if os.path.isfile(abs_path):
+                            image_path = abs_path
+                        else:
+                            image_path = None
+                    break
+        if not msg:
+            if days_diff == 0:
+                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+            elif days_diff == 1:
+                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+            elif days_diff > 1:
+                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+            elif days_diff < 0:
+                days_overdue = abs(days_diff)
+                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+        # --- ENVIO ---
+        channel = client.notification_channel or "whatsapp"
+        success = False
+        # Envio WhatsApp
+        if channel == "whatsapp" and has_whatsapp:
+            try:
+                if image_path:
+                    success = await send_whatsapp_image(
+                        number=client.whatsapp,
+                        image_path=image_path,
+                        caption=msg,
+                        instance_name=current_user.whatsapp_instance
                     )
-                    success = True
-                    print(f"   -> Telegram enviado com sucesso!")
-                except Exception as e:
-                    print(f"   -> Erro técnico no Telegram: {e}")
-                    success = False
+                else:
+                    success = await send_whatsapp_notification(
+                        number=client.whatsapp,
+                        message=msg,
+                        instance_name=current_user.whatsapp_instance
+                    )
+                if success:
+                    print(f"   -> WhatsApp enviado com sucesso!")
+                else:
+                    print(f"   -> Falha no envio do WhatsApp (API retornou False)")
+            except Exception as e:
+                print(f"   -> Erro técnico no WhatsApp: {e}")
+                success = False
 
-            if success:
-                sent_count += 1
-                await asyncio.sleep(1)  # Delay para evitar bloqueio
+        # Envio Telegram
+        elif channel == "telegram" and has_telegram:
+            try:
+                await send_telegram_message(
+                    token=current_user.telegram_token,
+                    chat_id=current_user.telegram_chat_id,
+                    message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+                )
+                success = True
+                print(f"   -> Telegram enviado com sucesso!")
+            except Exception as e:
+                print(f"   -> Erro técnico no Telegram: {e}")
+                success = False
+
+        if success:
+            sent_count += 1
+            await asyncio.sleep(1)  # Delay para evitar bloqueio
 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
@@ -2975,11 +3216,11 @@ messages = []
 
 # Mensagens padrão para vencimentos
 DEFAULT_MESSAGES = [
-    {"id": 1001, "type": "vencido", "content": "Prezado cliente, sua fatura está vencida. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1002, "type": "vence_1", "content": "Prezado cliente, sua fatura vence em 1 dia. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1003, "type": "vence_2", "content": "Prezado cliente, sua fatura vence em 2 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1004, "type": "vence_3", "content": "Prezado cliente, sua fatura vence em 3 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
-    {"id": 1005, "type": "vence_4", "content": "Prezado cliente, sua fatura vence em 4 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None},
+    {"id": 1001, "type": "vencido", "content": "Prezado cliente, sua fatura está vencida. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1002, "type": "vence_1", "content": "Prezado cliente, sua fatura vence em 1 dia. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1003, "type": "vence_2", "content": "Prezado cliente, sua fatura vence em 2 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1004, "type": "vence_3", "content": "Prezado cliente, sua fatura vence em 3 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
+    {"id": 1005, "type": "vence_4", "content": "Prezado cliente, sua fatura vence em 4 dias. Regularize o pagamento para evitar interrupções.", "image": None, "is_default": True, "user_id": None, "selected_for_send": True},
 ]
 
 def ensure_default_messages():
@@ -3002,6 +3243,7 @@ async def create_message(
     type: str = Form(...),
     content: str = Form(...),
     image: Optional[UploadFile] = None,
+    selected_for_send: bool = Form(False),
     current_user: dict = Depends(get_current_user)
 ):
     print(f"Recebido POST /api/messages com type={type}, content={content}, image={image}")
@@ -3024,6 +3266,7 @@ async def create_message(
         for msg in messages:
             if msg["type"] == type and msg.get("user_id") == user_id:
                 msg["content"] = content
+                msg["selected_for_send"] = selected_for_send
                 if image_path:
                     msg["image"] = f"/{user_upload_dir.replace(os.sep, '/')}/{os.path.basename(image_path)}"
                 return msg
@@ -3039,6 +3282,7 @@ async def create_message(
             "image": image_url,
             "user_id": user_id,
             "is_default": False,
+            "selected_for_send": selected_for_send,
         }
         messages.append(new_message)
         print(f"Mensagem criada com sucesso: {new_message}")
@@ -3054,7 +3298,7 @@ async def list_messages(current_user: dict = Depends(get_current_user)):
     return [msg for msg in messages if msg.get("is_default") or msg.get("user_id") == user_id]
 
 @router.put("/api/messages/{message_id}")
-async def update_message(message_id: int, type: str = Form(...), content: str = Form(...), image: Optional[UploadFile] = None, current_user: dict = Depends(get_current_user)):
+async def update_message(message_id: int, type: str = Form(...), content: str = Form(...), image: Optional[UploadFile] = None, selected_for_send: Optional[bool] = Form(None), current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
     user_upload_dir = os.path.join(BASE_UPLOAD_DIR, str(user_id))
     os.makedirs(user_upload_dir, exist_ok=True)
@@ -3065,6 +3309,8 @@ async def update_message(message_id: int, type: str = Form(...), content: str = 
         if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
             msg["type"] = type
             msg["content"] = content
+            if selected_for_send is not None:
+                msg["selected_for_send"] = selected_for_send
             if image:
                 if image.content_type not in ["image/jpeg", "image/png"]:
                     raise HTTPException(status_code=400, detail="Formato de imagem não suportado.")
@@ -3083,6 +3329,15 @@ async def delete_message(message_id: int, current_user: dict = Depends(get_curre
         if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
             del messages[i]
             return {"detail": "Mensagem deletada com sucesso."}
+    raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+
+@router.patch("/api/messages/{message_id}/select")
+async def toggle_message_selection(message_id: int, selected_for_send: bool = Form(...), current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else getattr(current_user, "id", "anon")
+    for msg in messages:
+        if msg["id"] == message_id and (msg.get("user_id") == user_id or msg.get("is_default")):
+            msg["selected_for_send"] = selected_for_send
+            return msg
     raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
 
 ============================================================
@@ -3389,6 +3644,30 @@ def toggle_reseller_status(
     db.commit()
     db.refresh(target_user)
     return target_user
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_reseller(
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_reseller_or_super_admin)
+):
+    """Remove um usuário (reseller ou filho) respeitando hierarquia."""
+    query = db.query(User).filter(User.id == user_id)
+    if current_user.role != 'super_admin':
+        query = query.filter(User.owner_id == current_user.id)
+
+    target_user = query.first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado ou sem permissão.")
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Você não pode deletar a si mesmo.")
+
+    db.delete(target_user)
+    db.commit()
+    return
+
 ============================================================
 FILE: backend\routes\urls.py
 ============================================================
@@ -3477,39 +3756,74 @@ DEFAULT_FEATURE_FLAGS = {
     "telegram": True,
     "settings": True,
     "resell": True,
+    # somente super admin libera o console
     "admin": False,
 }
+DEFAULT_RESELLER_FEATURE_FLAGS = DEFAULT_FEATURE_FLAGS.copy()
 
 
-def _ensure_defaults(user: User, db: Optional[Session] = None):
-    """Garante que permissions e feature_flags sejam dicts (evita ResponseValidationError)."""
-    changed = False
-    permissions = user.permissions if isinstance(user.permissions, dict) else DEFAULT_PERMISSIONS.copy()
-    feature_flags = user.feature_flags if isinstance(user.feature_flags, dict) else DEFAULT_FEATURE_FLAGS.copy()
+def _safe_dict(value, default):
+    return value if isinstance(value, dict) else default.copy()
 
-    # Força flag de admin para super_admin
+
+def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]):
+    effective = DEFAULT_FEATURE_FLAGS.copy()
+
+    # Herda padrão do dono (quando o dono é revendedor) caso exista
+    parent_flags = None
+    if user.owner_id and db:
+        parent = db.query(User).filter(User.id == user.owner_id).first()
+        if parent and isinstance(parent.reseller_feature_flags, dict):
+            parent_flags = parent.reseller_feature_flags
+    if parent_flags:
+        effective.update(parent_flags)
+
+    # Aplica overrides do próprio usuário
+    effective.update(user_flags or {})
+
+    # Super admin sempre enxerga o console
     if user.role == "super_admin":
-        feature_flags = feature_flags or {}
-        if not feature_flags.get("admin", False):
-            feature_flags["admin"] = True
-            changed = True
+        effective["admin"] = True
 
-    # Detecta mudanças de normalização
-    if permissions is not user.permissions:
-        changed = True
-    if feature_flags is not user.feature_flags:
-        changed = True
+    return effective
 
-    if changed and db:
-        current = db.merge(user)
-        current.permissions = permissions
-        current.feature_flags = feature_flags
-        db.commit()
-        db.refresh(current)
-        return current
 
+def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = True):
+    """Garante que permissions e feature_flags sejam dicts e gera effective_feature_flags."""
+    if not user:
+        return user
+
+    # Normaliza todos os campos para dict
+    permissions = _safe_dict(user.permissions, DEFAULT_PERMISSIONS)
+    user_flags = _safe_dict(user.feature_flags, DEFAULT_FEATURE_FLAGS)
+    reseller_flags = _safe_dict(user.reseller_feature_flags, DEFAULT_RESELLER_FEATURE_FLAGS)
+
+    # Super admin não pode perder o console
+    if user.role == "super_admin":
+        user_flags["admin"] = True
+
+    effective_flags = _compute_effective_flags(user, user_flags, db)
+
+    # Aplica no objeto carregado na sessão atual
     user.permissions = permissions
-    user.feature_flags = feature_flags
+    user.feature_flags = user_flags
+    user.reseller_feature_flags = reseller_flags
+    # effective_feature_flags não é coluna do banco — atribui como atributo dinâmico
+    object.__setattr__(user, 'effective_feature_flags', effective_flags)
+
+    # Persiste apenas se solicitado e tivermos sessão válida
+    # NÃO chama db.add() para evitar conflito "already attached to session"
+    if persist and db:
+        sess = object_session(user)
+        if sess is db:
+            try:
+                db.commit()
+                db.refresh(user)
+                # Reaplica effective após refresh (refresh sobrescreve atributos dinâmicos)
+                object.__setattr__(user, 'effective_feature_flags', effective_flags)
+            except Exception:
+                db.rollback()
+
     return user
 
 
@@ -3519,7 +3833,12 @@ router = APIRouter(prefix="/users", tags=["Usuários"])
 @router.get("/me", response_model=UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Retorna informações do usuário logado garantindo dicts nos campos opcionais."""
-    return _ensure_defaults(current_user, db)
+    # Recarrega o usuário na sessão atual para evitar conflitos entre sessões
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    # Passa db apenas para lookup do pai (effective flags), mas não persiste no GET
+    return _ensure_defaults(user_db, db=db, persist=False)
 
 
 # Rota para salvar configurações gerais
@@ -3553,7 +3872,7 @@ def update_user_settings(
 
     db.commit()
     db.refresh(user_in_db)
-    return _ensure_defaults(user_in_db, db)
+    return _ensure_defaults(user_in_db, db, persist=False)
 
 
 @router.post("/me/telegram/test")
@@ -4036,8 +4355,10 @@ DEFAULT_FEATURE_FLAGS = {
     "telegram": True,
     "settings": True,
     "resell": True,
+    # console de super admin permanece desativado para contas comuns
     "admin": False,
 }
+DEFAULT_RESELLER_FEATURE_FLAGS = DEFAULT_FEATURE_FLAGS.copy()
 
 
 class UserCreate(BaseModel):
@@ -4048,6 +4369,10 @@ class UserCreate(BaseModel):
 
 class FeatureFlagsUpdate(BaseModel):
     feature_flags: Dict[str, bool]
+
+
+class ResellerFeatureFlagsUpdate(BaseModel):
+    reseller_feature_flags: Dict[str, bool]
 
 
 class UserSettingsUpdate(BaseModel):
@@ -4083,6 +4408,8 @@ class UserResponse(BaseModel):
     role: str
     permissions: Dict[str, Any] = Field(default_factory=dict)
     feature_flags: Dict[str, bool] = Field(default_factory=dict)
+    reseller_feature_flags: Dict[str, bool] = Field(default_factory=dict)
+    effective_feature_flags: Dict[str, bool] = Field(default_factory=dict)
     client_limit: int
     is_active: bool
     block_reason: Optional[str] = None  # <-- CAMPO ADICIONADO AQUI
@@ -4094,6 +4421,14 @@ class UserResponse(BaseModel):
 
     @field_validator("feature_flags", mode="before")
     def _ensure_feature_flags(cls, v):
+        return v if isinstance(v, dict) else DEFAULT_FEATURE_FLAGS.copy()
+
+    @field_validator("reseller_feature_flags", mode="before")
+    def _ensure_reseller_feature_flags(cls, v):
+        return v if isinstance(v, dict) else DEFAULT_RESELLER_FEATURE_FLAGS.copy()
+
+    @field_validator("effective_feature_flags", mode="before")
+    def _ensure_effective(cls, v):
         return v if isinstance(v, dict) else DEFAULT_FEATURE_FLAGS.copy()
 
     class Config:
@@ -4220,7 +4555,7 @@ FILE: frontend\admin.html
                 <div class="page-header">
                     <div class="page-title">
                         <h2>Console do Super Admin</h2>
-                        <p>Habilite ou desabilite funcionalidades por usuário/revendedor.</p>
+                        <p>Habilite ou desabilite funcionalidades por usuário ou defina padrões para filhos de um revendedor.</p>
                     </div>
                 </div>
                 <div class="card">
@@ -4235,13 +4570,26 @@ FILE: frontend\admin.html
                     <div id="adminStatus" style="margin-bottom:1rem; color:var(--text-muted);"></div>
                     <div class="feature-grid" id="featureGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem;"></div>
                 </div>
+
+                <div class="card" id="resellerCard" style="margin-top:1rem; display:none;">
+                    <div class="page-title" style="margin-bottom:0.75rem;">
+                        <h3 style="margin:0;">Padrão para filhos do revendedor</h3>
+                        <p style="margin:0; color:var(--text-muted);">O que os clientes/filhos herdam ao logar. (Não aplica imediatamente, vale no próximo login.)</p>
+                    </div>
+                    <div class="feature-grid" id="resellerGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0.75rem;"></div>
+                    <div style="margin-top:0.75rem; display:flex; justify-content:flex-end;">
+                        <button class="btn btn-secondary" id="btnApplyReseller">💾 Salvar padrão do revendedor</button>
+                    </div>
+                </div>
             </section>
         </main>
     </div>
 
     <script src="assets/js/sidebar.js"></script>
     <script>
-        const featureList = [
+        // Usa a mesma base do sidebar quando definida (evita 404 em servidores estáticos)
+        const API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
+         const featureList = [
             { key: 'dashboard', label: 'Visão Geral' },
             { key: 'clients', label: 'Clientes' },
             { key: 'products', label: 'Produtos' },
@@ -4254,6 +4602,8 @@ FILE: frontend\admin.html
 
         const userSelect = document.getElementById('userSelect');
         const featureGrid = document.getElementById('featureGrid');
+        const resellerGrid = document.getElementById('resellerGrid');
+        const resellerCard = document.getElementById('resellerCard');
         const statusBox = document.getElementById('adminStatus');
 
         function toast(msg, type='info') {
@@ -4271,18 +4621,34 @@ FILE: frontend\admin.html
             }).join('');
         }
 
+        function renderResellerToggles(flags) {
+            resellerGrid.innerHTML = featureList.map(f => {
+                const checked = flags[f.key] !== false ? 'checked' : '';
+                return `<label class="toggle-item" style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #e2e8f0; border-radius:8px; background:#fff;">
+                    <input type="checkbox" data-reseller-feature="${f.key}" ${checked} style="width:auto;">
+                    <span>${f.label}</span>
+                </label>`;
+            }).join('');
+        }
+
         async function loadUsers() {
             const token = localStorage.getItem('token');
             if (!token) { toast('Faça login novamente.', 'error'); return; }
             toast('Carregando usuários...');
             try {
-                const resp = await fetch('/admin/users', { headers: { Authorization: `Bearer ${token}` } });
+                const resp = await fetch(`${API_BASE}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
                 if (resp.status === 403) { toast('Acesso negado. Apenas Super Admin.', 'error'); return; }
                 const users = await resp.json();
-                userSelect.innerHTML = users.map(u => `<option value="${u.id}" data-role="${u.role}" data-flags='${JSON.stringify(u.feature_flags || {})}'>${u.name} (${u.role})</option>`).join('');
+                userSelect.innerHTML = users.map(u => `<option value="${u.id}" data-role="${u.role}" data-flags='${JSON.stringify(u.feature_flags || {})}' data-reseller-flags='${JSON.stringify(u.reseller_feature_flags || {})}'>${u.name} (${u.role})</option>`).join('');
                 if (users.length) {
                     const first = users[0];
                     renderFeatureToggles(first.feature_flags || {});
+                    if (first.role === 'reseller') {
+                        renderResellerToggles(first.reseller_feature_flags || {});
+                        resellerCard.style.display = '';
+                    } else {
+                        resellerCard.style.display = 'none';
+                    }
                 }
                 toast('Usuários carregados.', 'info');
             } catch (e) {
@@ -4290,12 +4656,22 @@ FILE: frontend\admin.html
             }
         }
 
-        userSelect?.addEventListener('change', () => {
+        function handleUserChange() {
             const opt = userSelect.selectedOptions[0];
             if (!opt) return;
             const flags = JSON.parse(opt.getAttribute('data-flags') || '{}');
+            const resellerFlags = JSON.parse(opt.getAttribute('data-reseller-flags') || '{}');
+            const role = opt.getAttribute('data-role');
             renderFeatureToggles(flags);
-        });
+            if (role === 'reseller') {
+                renderResellerToggles(resellerFlags);
+                resellerCard.style.display = '';
+            } else {
+                resellerCard.style.display = 'none';
+            }
+        }
+
+        userSelect?.addEventListener('change', handleUserChange);
 
         document.getElementById('btnRefresh')?.addEventListener('click', loadUsers);
 
@@ -4310,7 +4686,7 @@ FILE: frontend\admin.html
             const token = localStorage.getItem('token');
             toast('Salvando...');
             try {
-                const resp = await fetch(`/admin/feature-flags/${userId}`, {
+                const resp = await fetch(`${API_BASE}/admin/feature-flags/${userId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({ feature_flags: flags }),
@@ -4328,12 +4704,40 @@ FILE: frontend\admin.html
             }
         });
 
+        document.getElementById('btnApplyReseller')?.addEventListener('click', async () => {
+            const opt = userSelect.selectedOptions[0];
+            if (!opt) return;
+            if (opt.getAttribute('data-role') !== 'reseller') {
+                toast('Somente para revendedores.', 'error');
+                return;
+            }
+            const userId = opt.value;
+            const flags = {};
+            resellerGrid.querySelectorAll('input[data-reseller-feature]').forEach(input => {
+                flags[input.getAttribute('data-reseller-feature')] = input.checked;
+            });
+            const token = localStorage.getItem('token');
+            toast('Salvando padrão do revendedor...');
+            try {
+                const resp = await fetch(`${API_BASE}/admin/reseller-feature-flags/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ reseller_feature_flags: flags }),
+                });
+                if (!resp.ok) { toast('Falha ao salvar.', 'error'); return; }
+                toast('Padrão do revendedor atualizado.', 'success');
+                opt.setAttribute('data-reseller-flags', JSON.stringify(flags));
+            } catch (e) {
+                toast('Erro ao salvar.', 'error');
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', () => {
             loadUsers();
         });
-    </script>
-</body>
-</html>
+     </script>
+ </body>
+ </html>
 
 ============================================================
 FILE: frontend\backup_clients.html
@@ -4600,21 +5004,23 @@ FILE: frontend\backup_clients.html
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
-                <!-- MENU CLIENTES (EXPANDIDO) -->
-                <div class="menu-group">
-                    <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
+                <!-- MENU CLIENTES -->
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
                         <span class="sidebar-icon">👥</span> Clientes
-                    </a>
-                    <div class="submenu">
-                        <a href="import_clients.html" class="submenu-link">
-                            <span>📂</span> Importar / Padronizar
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
                         </a>
-                        <!-- Link Ativo -->
-                        <a href="backup_clients.html" class="submenu-link active">
-                            <span>💾</span> Backup / Exportar
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
                         </a>
-                        <a href="messages.html" class="submenu-link">
-                            <span>✉️</span> Mensagens Pré-Prontas
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink active" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
                         </a>
                     </div>
                 </div>
@@ -4627,21 +5033,21 @@ FILE: frontend\backup_clients.html
                 </a>
 
                 <!-- Adicionado o novo menu de Produtos -->
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu" id="productsSubmenu">
-                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
-                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🏷️</span> Categorias
                         </a>
-                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">📄</span> Planos
                         </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
                     </div>
@@ -4924,23 +5330,28 @@ FILE: frontend\categorias.html
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu is-open" id="productsSubmenu">
@@ -5021,6 +5432,124 @@ FILE: frontend\categorias.html
 ============================================================
 FILE: frontend\categories.html
 ============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categorias - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-categories" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Categorias</h2>
+                            <p>Gerencie as categorias dos seus produtos e serviços.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
 
 ============================================================
 FILE: frontend\cleanup.js
@@ -5194,39 +5723,43 @@ FILE: frontend\clients.html
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
-                <!-- LINK CLIENTES (MANTIDO INTACTO) -->
-                <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <!-- SUBMENU ADICIONADO ABAIXO -->
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <!-- MENU CLIENTES -->
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink active" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Adicionado o novo menu de Produtos -->
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu" id="productsSubmenu">
-                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
-                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🏷️</span> Categorias
                         </a>
-                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">📄</span> Planos
                         </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
                     </div>
@@ -5930,14 +6463,30 @@ FILE: frontend\dashboard.html
             </div>
             <nav class="sidebar-menu">
                 <!-- Link Dashboard (SPA - usa data-section) -->
-                <a href="#" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard" data-feature-key="dashboard">
+                <a href="dashboard.html" class="sidebar-link active" data-section="dashboard" data-permission-key="dashboard" data-feature-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
-                <!-- Link Clientes (Página Separada - usa href direto) -->
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients" data-feature-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
+                <!-- Link Clientes agora como grupo sanfonado no mesmo estilo de Produtos -->
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
 
                 <!-- Adicionado o novo menu de Produtos -->
                 <div class="sidebar-group" data-feature-key="products">
@@ -6326,21 +6875,21 @@ FILE: frontend\import_clients.html
                 </div>
 
                 <!-- Adicionado o novo menu de Produtos -->
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu" id="productsSubmenu">
-                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
-                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🏷️</span> Categorias
                         </a>
-                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">📄</span> Planos
                         </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
                     </div>
@@ -6805,6 +7354,7 @@ FILE: frontend\messages.html
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mensagens Pré-Prontas | Nexus Monitor</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <script src="assets/js/main.js" defer></script>
     <script src="assets/js/sidebar.js" defer></script>
     <style>
         .form-group {
@@ -6891,9 +7441,41 @@ FILE: frontend\messages.html
         .message-item button:hover {
             background: #2563eb;
         }
+
+        /* Submenu alinhado com as páginas de Clientes */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem;
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover { color: white; }
+        .submenu-link.active { color: var(--primary); font-weight: bold; }
     </style>
 </head>
 <body>
+    <!-- Mobile Header -->
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
     <div class="dashboard-container">
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
@@ -6901,21 +7483,71 @@ FILE: frontend\messages.html
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link">
-                    <span class="sidebar-icon">👥</span> Clientes
+
+                <div class="menu-group">
+                    <a href="clients.html" class="sidebar-link active" data-permission-key="clients">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </a>
+                    <div class="submenu">
+                        <a href="import_clients.html" class="submenu-link">
+                            <span>📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="submenu-link">
+                            <span>💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="submenu-link active">
+                            <span>✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Menu de Produtos -->
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="messages.html" class="sidebar-link active">
-                    <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                <a href="#" class="sidebar-link" data-section="telegram" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin" style="display:none;">
+                <a href="#" class="sidebar-link" data-section="settings" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin">
                     <span class="sidebar-icon">👑</span> Super Admin
                 </a>
             </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
         </aside>
-
         <!-- MAIN CONTENT -->
         <main class="main-content">
             <h1>Mensagens Pré-Prontas</h1>
@@ -6956,6 +7588,13 @@ FILE: frontend\messages.html
                     <small>Tamanho máximo: 5MB</small>
                 </div>
 
+                <div class="form-group">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="message-selected" style="width:auto;"> Marcar para envio
+                    </label>
+                    <small>Somente mensagens marcadas serão consideradas no disparo automático.</small>
+                </div>
+
                 <button type="submit">Salvar Mensagem</button>
             </form>
 
@@ -6980,8 +7619,8 @@ FILE: frontend\messages.html
 
     <script>
         const messageList = document.querySelector('.message-list');
-        const API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : window.location.origin;
-        const API_MESSAGES = `${API_BASE}/messages`;
+        const getApiBase = () => (window.API_URL ? window.API_URL : 'http://127.0.0.1:8000');
+        const API_MESSAGES = () => `${getApiBase()}/api/messages`;
 
         // Exemplo de mensagens salvas (simulação de dados do backend)
         const savedMessages = [
@@ -6990,12 +7629,14 @@ FILE: frontend\messages.html
                 type: 'vencimento',
                 content: 'Prezado cliente, sua fatura vence amanhã. Regularize o pagamento para evitar interrupções.',
                 is_default: true,
+                selected_for_send: true,
             },
             {
                 id: 2,
                 type: 'cobranca',
                 content: 'Detectamos um pagamento pendente. Por favor, entre em contato para regularizar.',
                 is_default: true,
+                selected_for_send: true,
             },
         ];
 
@@ -7060,6 +7701,9 @@ FILE: frontend\messages.html
                 messageItem.innerHTML = `
                     <h4>${imgHtml}${title}${message.is_default ? ' <span style="color:#2563eb;font-size:0.9em">(Padrão)</span>' : ''}</h4>
                     <p>${message.content}</p>
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:0.95rem;color:#0f172a;">
+                        <input type="checkbox" ${message.selected_for_send ? 'checked' : ''} onchange="toggleSelection(${message.id}, this.checked)" style="width:auto;"> Selecionada para envio
+                    </label>
                     <button onclick="editMessage(${message.id})">Editar</button>
                     <button onclick="deleteMessage(${message.id})">Deletar</button>
                 `;
@@ -7112,7 +7756,7 @@ FILE: frontend\messages.html
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+                const response = await fetch(`${getApiBase()}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
                 if (!response.ok) {
                     window.location.href = 'login.html';
                     return;
@@ -7131,7 +7775,7 @@ FILE: frontend\messages.html
         // Função para buscar mensagens do backend
         async function fetchMessages() {
             try {
-                const response = await fetch(API_MESSAGES, {
+                const response = await fetch(API_MESSAGES(), {
                     headers: getAuthHeaders()
                 });
                 if (response.ok) {
@@ -7152,6 +7796,10 @@ FILE: frontend\messages.html
             if (message) {
                 document.getElementById('message-type').value = message.type;
                 document.getElementById('message-content').value = message.content;
+                const selectedBox = document.getElementById('message-selected');
+                if (selectedBox) {
+                    selectedBox.checked = !!message.selected_for_send;
+                }
                 // Rolar até a área da mensagem
                 const contentBox = document.getElementById('message-content');
                 if (contentBox) {
@@ -7164,14 +7812,16 @@ FILE: frontend\messages.html
                     const messageType = document.getElementById('message-type').value;
                     const messageContent = document.getElementById('message-content').value;
                     const messageImage = document.getElementById('message-image').files[0];
+                    const selectedBox = document.getElementById('message-selected');
                     const formData = new FormData();
                     formData.append('type', messageType);
                     formData.append('content', messageContent);
+                    formData.append('selected_for_send', selectedBox && selectedBox.checked ? 'true' : 'false');
                     if (messageImage) {
                         formData.append('image', messageImage);
                     }
                     try {
-                        const response = await fetch(`${API_MESSAGES}/${id}`, {
+                        const response = await fetch(`${API_MESSAGES()}/${id}`, {
                             method: 'PUT',
                             body: formData,
                             headers: getAuthHeaders()
@@ -7197,7 +7847,7 @@ FILE: frontend\messages.html
         async function deleteMessage(id) {
             if (confirm('Tem certeza que deseja deletar esta mensagem?')) {
                 try {
-                    const response = await fetch(`${API_MESSAGES}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    const response = await fetch(`${API_MESSAGES()}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
                     if (response.ok) {
                         await fetchMessages();
                         alert('Mensagem deletada com sucesso!');
@@ -7252,21 +7902,22 @@ FILE: frontend\messages.html
             const messageType = document.getElementById('message-type').value;
             const messageContent = document.getElementById('message-content').value;
             const messageImage = document.getElementById('message-image').files[0];
+            const selectedBox = document.getElementById('message-selected');
 
             if (messageContent.trim() === '') {
                 alert('O conteúdo da mensagem não pode estar vazio.');
                 return;
             }
-
             const formData = new FormData();
             formData.append('type', messageType);
             formData.append('content', messageContent);
+            formData.append('selected_for_send', selectedBox && selectedBox.checked ? 'true' : 'false');
             if (messageImage) {
                 formData.append('image', messageImage);
             }
 
             try {
-                const response = await fetch(API_MESSAGES, {
+                const response = await fetch(API_MESSAGES(), {
                     method: 'POST',
                     body: formData,
                     headers: getAuthHeaders()
@@ -7286,6 +7937,25 @@ FILE: frontend\messages.html
                 alert('Erro ao salvar a mensagem. Verifique sua conexão e tente novamente.');
             }
         });
+
+        async function toggleSelection(id, checked) {
+            try {
+                const fd = new FormData();
+                fd.append('selected_for_send', checked ? 'true' : 'false');
+                const response = await fetch(`${API_MESSAGES()}/${id}/select`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders(),
+                    body: fd
+                });
+                if (!response.ok) {
+                    alert('Não foi possível atualizar a seleção para envio.');
+                } else {
+                    await fetchMessages();
+                }
+            } catch (err) {
+                alert('Erro ao atualizar a seleção para envio.');
+            }
+        }
 
         // Inicializa a renderização das mensagens ao carregar
         fetchMessages();
@@ -7322,26 +7992,31 @@ FILE: frontend\planos.html
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
-                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                    <div class="sidebar-submenu" id="productsSubmenu">
                         <a href="produtos.html" class="sidebar-link sidebar-sublink">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
@@ -7419,52 +8094,12 @@ FILE: frontend\planos.html
 ============================================================
 FILE: frontend\plans.html
 ============================================================
-
-============================================================
-FILE: frontend\products.html
-============================================================
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produtos | Nexus Monitor</title>
-    <link rel="stylesheet" href="assets/css/style.css">
-</head>
-<body>
-    <div class="dashboard-container">
-        <!-- SIDEBAR -->
-        <aside class="sidebar" id="sidebar">
-            <!-- Sidebar content will be loaded by JavaScript -->
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-            <div class="page-header">
-                <div class="page-title">
-                    <h2>Produtos e Serviços</h2>
-                    <p>Gerencie seus produtos, categorias e planos.</p>
-                </div>
-            </div>
-            <div class="card">
-                <p>Funcionalidade em desenvolvimento.</p>
-            </div>
-        </main>
-    </div>
-    <script src="assets/js/dashboard.js"></script>
-</body>
-</html>
-
-
-============================================================
-FILE: frontend\produtos.html
-============================================================
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produtos - NexusMonitor</title>
+    <title>Planos - NexusMonitor</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css?v=1.2">
@@ -7503,6 +8138,253 @@ FILE: frontend\produtos.html
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-plans" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Planos</h2>
+                            <p>Defina e mantenha os planos que você oferece.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Em construção</h3>
+                        <p>Esta página está sendo preparada para você.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
+
+============================================================
+FILE: frontend\products.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Produtos | Nexus Monitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
+                    <span class="sidebar-icon">👥</span> Clientes
+                </a>
+                <div class="submenu">
+                    <a href="import_clients.html" class="submenu-link">
+                        <span>📂</span> Importar / Padronizar
+                    </a>
+                    <a href="backup_clients.html" class="submenu-link">
+                        <span>💾</span> Backup / Exportar
+                    </a>
+                    <a href="messages.html" class="submenu-link">
+                        <span>✉️</span> Mensagens Pré-Prontas
+                    </a>
+                </div>
+
+                <div class="sidebar-group">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink active">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                    <span class="sidebar-icon">👑</span> Super Admin
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
+            </div>
+        </nav>
+        <div id="content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <div id="userInfo" class="user-info-container">
+                        <span id="userName"></span>
+                        <span class="user-role"></span>
+                    </div>
+                </div>
+            </nav>
+
+            <main class="container-fluid">
+                <div id="section-products" class="content-section">
+                    <div class="page-header">
+                        <div class="page-title">
+                            <h2>Produtos e Serviços</h2>
+                            <p>Gerencie seus produtos, categorias e planos.</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <p>Funcionalidade em desenvolvimento.</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/dashboard.js?v=1.2"></script>
+</body>
+</html>
+
+============================================================
+FILE: frontend\produtos.html
+============================================================
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Produtos - NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+    <div class="wrapper">
+        <nav id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
+
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
                         <a href="produtos.html" class="sidebar-link sidebar-sublink active">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
@@ -7835,26 +8717,31 @@ FILE: frontend\recursos.html
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
-                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                    <div class="sidebar-submenu" id="productsSubmenu">
                         <a href="produtos.html" class="sidebar-link sidebar-sublink">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
@@ -8089,6 +8976,9 @@ FILE: frontend\resell.html
         .btn-reset { background-color: #64748b; }
         .btn-reset:hover { background-color: #475569; }
 
+        .btn-delete { background-color: #ef4444; }
+        .btn-delete:hover { background-color: #dc2626; }
+
         .btn-toggle-active.active { background-color: #ef4444; }
         .btn-toggle-active.active:hover { background-color: #dc2626; }
 
@@ -8166,22 +9056,27 @@ FILE: frontend\resell.html
                 <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
+                <div class="sidebar-group" data-feature-key="products">
                     <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
@@ -8397,6 +9292,7 @@ FILE: frontend\resell.html
                                     <button class="btn btn-edit" onclick='openEditModal(${userStr})'>✏️ Editar</button>
                                     <button class="btn btn-reset" onclick="resetPassword(${user.id})">🔑 Resetar Senha</button>
                                     <button class="btn btn-toggle-active ${toggleButtonClass}" onclick="toggleActive(${user.id}, ${user.is_active})">${toggleButtonText}</button>
+                                    <button class="btn btn-delete" onclick="deleteReseller(${user.id})">🗑️ Deletar</button>
                                 </td>
                             </tr>`;
                     });
@@ -8574,6 +9470,18 @@ FILE: frontend\resell.html
                 alert(`Erro ao ${action} usuário: ` + error.message);
             }
         }
+
+        async function deleteReseller(userId) {
+            if (!confirm(`Tem certeza que deseja DELETAR o usuário ID ${userId}? Esta ação é irreversível.`)) return;
+
+            try {
+                await fetchAPI(`/resellers/${userId}`, { method: 'DELETE' });
+                alert('Usuário removido com sucesso!');
+                location.reload();
+            } catch (error) {
+                alert('Erro ao deletar usuário: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
@@ -8605,22 +9513,27 @@ FILE: frontend\whatsapp.html
                 <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link" data-permission-key="clients">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <div class="submenu">
-                    <a href="import_clients.html" class="submenu-link">
-                        <span>📂</span> Importar / Padronizar
-                    </a>
-                    <a href="backup_clients.html" class="submenu-link">
-                        <span>💾</span> Backup / Exportar
-                    </a>
-                    <a href="messages.html" class="submenu-link">
-                        <span>✉️</span> Mensagens Pré-Prontas
-                    </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
                 </div>
 
-                <div class="sidebar-group">
+                <div class="sidebar-group" data-feature-key="products">
                     <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
@@ -8882,7 +9795,7 @@ input:focus, select:focus {
 .dashboard-container {
     display: flex;
     height: 100vh;
-    overflow: hidden; /* ADICIONADO AQUI: Só o dashboard não deve rolar a página inteira */
+    overflow: hidden;
 }
 
 /* Sidebar */
@@ -8895,6 +9808,12 @@ input:focus, select:focus {
     border-right: 1px solid rgba(255,255,255,0.1);
     transition: transform 0.3s ease;
     z-index: 50;
+    position: sticky; /* mantém fixa no topo em desktops */
+    top: 0;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto; /* impede ocultar itens em telas menores */
+    -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-header {
@@ -9137,7 +10056,13 @@ input:focus, select:focus {
 /* Mobile Toggle */
 .mobile-toggle { display: none; background: none; border: none; font-size: 1.5rem; color: white; cursor: pointer; }
 @media (max-width: 768px) {
-    .sidebar { position: fixed; height: 100%; transform: translateX(-100%); }
+    .sidebar {
+        position: fixed;
+        height: 100vh;
+        max-height: 100vh;
+        transform: translateX(-100%);
+        overflow-y: auto; /* mantém rolagem no mobile */
+    }
     .sidebar.active { transform: translateX(0); }
     .mobile-toggle { display: block; }
     .navbar-mobile { background: var(--primary); padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
@@ -9637,29 +10562,28 @@ function applyUIPermissions() {
     if (!currentUser) return;
 
     const { role, permissions } = currentUser;
+    // Garantimos defaults liberando tudo quando as permissões não vierem do backend
+    const safePermissions = {
+        can_view_clients: permissions?.can_view_clients !== false,
+        can_view_integrations: permissions?.can_view_integrations !== false,
+        can_view_settings: permissions?.can_view_settings !== false,
+    };
 
-    // Função auxiliar para mostrar/esconder elementos
     const setElementVisibility = (selector, isVisible) => {
         const element = document.querySelector(selector);
         if (element) {
-            // Usa 'block' ou 'flex' dependendo do elemento para garantir a visibilidade correta
-            element.style.display = isVisible ? 'block' : 'none';
+            element.style.display = isVisible ? '' : 'none';
         }
     };
 
-    // 1. Controle de Menus da Sidebar baseado nas PERMISSÕES do usuário
-    // (Requer que os links no HTML tenham o atributo 'data-permission-key')
-    setElementVisibility('[data-permission-key="dashboard"]', permissions.can_view_dashboard);
-    setElementVisibility('[data-permission-key="clients"]', permissions.can_view_clients);
-    setElementVisibility('[data-permission-key="integrations"]', permissions.can_view_integrations);
-    setElementVisibility('[data-permission-key="settings"]', permissions.can_view_settings);
+    // Menus controlados por permissão (Dashboard sempre liberado)
+    setElementVisibility('[data-permission-key="dashboard"]', true);
+    setElementVisibility('[data-permission-key="clients"]', safePermissions.can_view_clients);
+    setElementVisibility('[data-permission-key="integrations"]', safePermissions.can_view_integrations);
+    setElementVisibility('[data-permission-key="settings"]', safePermissions.can_view_settings);
 
-    // 2. Controle de menus específicos por CARGO (ROLE)
-    // (Requer que os links no HTML tenham o atributo 'data-role-required')
-    // Regra: O link de revendedor aparece para 'reseller' E para 'super_admin'
+    // Menus por role
     setElementVisibility('[data-role-required="reseller"]', role === 'reseller' || role === 'super_admin');
-
-    // Regra: O link de admin aparece APENAS para 'super_admin'
     setElementVisibility('[data-role-required="super_admin"]', role === 'super_admin');
 }
 
@@ -10454,59 +11378,35 @@ document.addEventListener('DOMContentLoaded', () => {
 FILE: frontend\assets\js\sidebar.js
 ============================================================
 // frontend/assets/js/sidebar.js
+// v2.0 - Reescrito para corrigir isolamento entre menus Clientes e Produtos
 
 const DEFAULT_FEATURE_FLAGS = {
-    super_admin: {
-        dashboard: true,
-        clients: true,
-        products: true,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: true,
-        admin: true,
-    },
-    reseller: {
-        dashboard: true,
-        clients: true,
-        products: true,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: true,
-        admin: false,
-    },
-    user: {
-        dashboard: true,
-        clients: true,
-        products: false,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: false,
-        admin: false,
-    },
+    super_admin: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: true },
+    reseller:    { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
+    user:        { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
 };
 
 const USER_FEATURE_KEY = 'user_feature_flags';
-const USER_ROLE_KEY = 'user_role';
-
-// Prefer global API_URL when disponível para evitar 404 em ambientes com proxy
+const USER_ROLE_KEY    = 'user_role';
 const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
 
+// ---------------------------------------------------------------------------
+// 1. CONTEXTO DO USUÁRIO
+// ---------------------------------------------------------------------------
 async function fetchCurrentUserContext() {
     const token = localStorage.getItem('token');
     if (!token) return null;
     const url = SIDEBAR_API_BASE ? `${SIDEBAR_API_BASE}/users/me` : '/users/me';
     try {
-        const resp = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
+        const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if (!resp.ok) return null;
         const user = await resp.json();
-        if (user.role) localStorage.setItem(USER_ROLE_KEY, user.role);
-        if (user.id) localStorage.setItem('user_id', user.id);
-        if (user.feature_flags) localStorage.setItem(USER_FEATURE_KEY, JSON.stringify(user.feature_flags));
+        if (user.role)  localStorage.setItem(USER_ROLE_KEY, user.role);
+        if (user.id)    localStorage.setItem('user_id', user.id);
+        const flags = user.effective_feature_flags || user.feature_flags;
+        if (flags) localStorage.setItem(USER_FEATURE_KEY, JSON.stringify(flags));
+        if (user.reseller_feature_flags)
+            localStorage.setItem('reseller_feature_flags', JSON.stringify(user.reseller_feature_flags));
         return user;
     } catch (e) {
         console.warn('Falha ao carregar contexto do usuário', e);
@@ -10514,15 +11414,18 @@ async function fetchCurrentUserContext() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 2. FEATURE FLAGS
+// ---------------------------------------------------------------------------
 function loadFeatureFlags() {
     try {
         const storedPerRole = JSON.parse(localStorage.getItem('featureFlags') || '{}');
-        const userFlags = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
-        const role = localStorage.getItem(USER_ROLE_KEY) || 'user';
-        const roleDefaults = {
+        const userFlags     = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
+        const role          = localStorage.getItem(USER_ROLE_KEY) || 'user';
+        const roleDefaults  = {
             super_admin: { ...DEFAULT_FEATURE_FLAGS.super_admin, ...(storedPerRole.super_admin || {}) },
-            reseller: { ...DEFAULT_FEATURE_FLAGS.reseller, ...(storedPerRole.reseller || {}) },
-            user: { ...DEFAULT_FEATURE_FLAGS.user, ...(storedPerRole.user || {}) },
+            reseller:    { ...DEFAULT_FEATURE_FLAGS.reseller,    ...(storedPerRole.reseller    || {}) },
+            user:        { ...DEFAULT_FEATURE_FLAGS.user,        ...(storedPerRole.user        || {}) },
         };
         return userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
     } catch (e) {
@@ -10533,81 +11436,165 @@ function loadFeatureFlags() {
 function applyFeatureFlags() {
     const flags = loadFeatureFlags();
 
-    // Aplica visibilidade item a item
     document.querySelectorAll('[data-feature-key]').forEach((el) => {
         const key = el.getAttribute('data-feature-key');
-        const allowed = flags[key] !== false; // padrão é true
+        // Dashboard e Produtos sempre visíveis por padrão
+        const allowed = (key === 'dashboard' || key === 'products') ? true : flags[key] !== false;
         el.style.display = allowed ? '' : 'none';
     });
 
-    // Ajusta grupos com submenus
+    // Oculta grupos cujos sub-itens estejam todos ocultos
     document.querySelectorAll('.sidebar-group').forEach((group) => {
         const submenu = group.querySelector('.sidebar-submenu');
-        const toggle = group.querySelector('.sidebar-toggle');
         if (!submenu) return;
-        const hasVisible = Array.from(submenu.querySelectorAll('[data-feature-key]')).some((link) => link.style.display !== 'none');
+        const hasVisible = Array.from(submenu.querySelectorAll('a')).some(
+            (link) => link.style.display !== 'none'
+        );
         group.style.display = hasVisible ? '' : 'none';
-        if (toggle) {
-            const isOpen = submenu.classList.contains('is-open');
-            // Mantém aberto apenas se ainda houver itens visíveis
-            submenu.classList.toggle('is-open', hasVisible && isOpen);
-            toggle.setAttribute('aria-expanded', submenu.classList.contains('is-open'));
-        }
     });
 
-    // Se a página atual estiver bloqueada, redireciona para a próxima disponível
+    // Redireciona se a página atual estiver oculta para o usuário
+    redirectIfPageHidden(flags);
+}
+
+function redirectIfPageHidden(flags) {
     const currentPage = window.location.pathname.split('/').pop() || 'dashboard.html';
-    const visibleLinks = Array.from(document.querySelectorAll('.sidebar-menu a.sidebar-link')).filter((link) => link.style.display !== 'none' && link.getAttribute('href') && link.getAttribute('href') !== '#');
-    const isCurrentVisible = visibleLinks.some((link) => (link.getAttribute('href') || '').split('/').pop() === currentPage);
-    if (!isCurrentVisible && visibleLinks.length) {
-        window.location.href = visibleLinks[0].getAttribute('href');
+    const allLinks = Array.from(document.querySelectorAll(
+        '.sidebar-menu a.sidebar-link, .sidebar-menu a.sidebar-sublink, .sidebar-menu a.submenu-link'
+    ));
+    const isCurrentVisible = allLinks.some((link) => {
+        if (link.style.display === 'none') return false;
+        const href = (link.getAttribute('href') || '').split('?')[0].split('#')[0];
+        return href.split('/').pop() === currentPage;
+    });
+    if (!isCurrentVisible) {
+        const firstVisible = allLinks.find((link) => {
+            if (link.style.display === 'none') return false;
+            const href = link.getAttribute('href') || '';
+            return href && href !== '#';
+        });
+        if (firstVisible) window.location.href = firstVisible.getAttribute('href');
     }
+}
+
+// ---------------------------------------------------------------------------
+// 3. ACCORDION DO MENU
+// ---------------------------------------------------------------------------
+
+/**
+ * Fecha todos os submenus EXCETO o informado.
+ * Passando null fecha todos.
+ */
+function closeOtherSubmenus(exceptSubmenu) {
+    document.querySelectorAll('.sidebar-submenu').forEach((menu) => {
+        if (menu === exceptSubmenu) return;
+        menu.classList.remove('is-open');
+        // Atualiza o toggle pai
+        const group  = menu.closest('.sidebar-group');
+        const toggle = group ? group.querySelector('.sidebar-toggle') : menu.previousElementSibling;
+        if (toggle && toggle.classList.contains('sidebar-toggle')) {
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
 }
 
 function setupSidebarAccordion() {
     const toggles = document.querySelectorAll('.sidebar-toggle');
     if (!toggles.length) return;
 
-    const currentPage = window.location.pathname.split('/').pop();
-
-    toggles.forEach(toggle => {
+    toggles.forEach((toggle) => {
         const targetId = toggle.getAttribute('aria-controls');
-        const submenu = targetId ? document.getElementById(targetId) : null;
+        const submenu  = targetId ? document.getElementById(targetId) : null;
         if (!submenu) return;
 
-        const hasActiveLink = Array.from(submenu.querySelectorAll('a')).some(link => {
-            const href = link.getAttribute('href') || '';
-            return href === currentPage;
-        });
+        // Garante início fechado (markActiveLink abrirá o correto)
+        submenu.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
 
-        submenu.classList.toggle('is-open', hasActiveLink);
-        toggle.setAttribute('aria-expanded', hasActiveLink ? 'true' : 'false');
-
-        toggle.addEventListener('click', () => {
-            const isOpen = submenu.classList.toggle('is-open');
-            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const isOpen = submenu.classList.contains('is-open');
+            // Fecha todos os outros
+            closeOtherSubmenus(null);
+            if (!isOpen) {
+                submenu.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            }
         });
+    });
+
+    // Links simples (não-toggle) fecham todos os submenus ao serem clicados
+    document.querySelectorAll('.sidebar-menu > .sidebar-link:not(.sidebar-toggle)').forEach((link) => {
+        link.addEventListener('click', () => closeOtherSubmenus(null));
+    });
+
+    // Links dentro de submenus: apenas stopPropagation para não acionar toggles pais
+    document.querySelectorAll('.sidebar-submenu a').forEach((link) => {
+        link.addEventListener('click', (ev) => ev.stopPropagation());
     });
 }
 
+// ---------------------------------------------------------------------------
+// 4. MARCAÇÃO DO LINK ATIVO
+// ---------------------------------------------------------------------------
+function normalizePageName(href) {
+    if (!href) return '';
+    try { return href.split('#')[0].split('?')[0].split('/').pop(); } catch { return href; }
+}
+
+function markActiveLink() {
+    const currentPage = normalizePageName(window.location.pathname);
+
+    // Remove todas as marcações ativas
+    document.querySelectorAll('.sidebar-menu a').forEach((link) => link.classList.remove('active'));
+
+    // Encontra o link correspondente à página atual
+    let activeLink = null;
+    document.querySelectorAll('.sidebar-menu a').forEach((link) => {
+        const page = normalizePageName(link.getAttribute('href'));
+        if (page && page === currentPage) activeLink = link;
+    });
+
+    if (activeLink) {
+        activeLink.classList.add('active');
+
+        // Se o link está dentro de um submenu, abre APENAS esse submenu
+        const submenu = activeLink.closest('.sidebar-submenu');
+        if (submenu) {
+            const group  = submenu.closest('.sidebar-group');
+            const toggle = group ? group.querySelector('.sidebar-toggle') : null;
+            submenu.classList.add('is-open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 5. SUPER ADMIN LINK (garante existência se ausente no HTML)
+// ---------------------------------------------------------------------------
 function ensureSuperAdminLink() {
     const menu = document.querySelector('.sidebar-menu');
     if (!menu) return;
     if (menu.querySelector('[data-feature-key="admin"]')) return;
     const link = document.createElement('a');
-    link.href = 'admin.html';
-    link.className = 'sidebar-link';
+    link.href              = 'admin.html';
+    link.className         = 'sidebar-link';
     link.dataset.featureKey = 'admin';
     link.dataset.roleRequired = 'super_admin';
-    link.innerHTML = '<span class="sidebar-icon">👑</span> Super Admin';
+    link.innerHTML         = '<span class="sidebar-icon">👑</span> Super Admin';
     menu.appendChild(link);
 }
 
+// ---------------------------------------------------------------------------
+// 6. INICIALIZAÇÃO
+// ---------------------------------------------------------------------------
 async function initSidebar() {
-    await fetchCurrentUserContext(); // garante flags do usuário em cache local
-    setupSidebarAccordion();
+    await fetchCurrentUserContext();
+    // NÃO manipula o DOM dos produtos (já está no HTML de cada página)
+    setupSidebarAccordion();   // 1º configura os toggles (fecha tudo)
     ensureSuperAdminLink();
     applyFeatureFlags();
+    markActiveLink();          // 2º abre apenas o submenu da página atual
 }
 
 document.addEventListener('DOMContentLoaded', initSidebar);

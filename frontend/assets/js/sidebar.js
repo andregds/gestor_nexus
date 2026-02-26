@@ -1,59 +1,33 @@
 // frontend/assets/js/sidebar.js
+// v2.0 - Reescrito para corrigir isolamento entre menus Clientes e Produtos
 
 const DEFAULT_FEATURE_FLAGS = {
-    super_admin: {
-        dashboard: true,
-        clients: true,
-        products: true,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: true,
-        admin: true,
-    },
-    reseller: {
-        dashboard: true,
-        clients: true,
-        products: true,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: true,
-        admin: false,
-    },
-    user: {
-        dashboard: true,
-        clients: true,
-        products: true,
-        whatsapp: true,
-        telegram: true,
-        settings: true,
-        resell: true,
-        admin: false,
-    },
+    super_admin: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: true },
+    reseller:    { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
+    user:        { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
 };
 
 const USER_FEATURE_KEY = 'user_feature_flags';
-const USER_ROLE_KEY = 'user_role';
-
-// Prefer global API_URL when disponível para evitar 404 em ambientes com proxy
+const USER_ROLE_KEY    = 'user_role';
 const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
 
+// ---------------------------------------------------------------------------
+// 1. CONTEXTO DO USUÁRIO
+// ---------------------------------------------------------------------------
 async function fetchCurrentUserContext() {
     const token = localStorage.getItem('token');
     if (!token) return null;
     const url = SIDEBAR_API_BASE ? `${SIDEBAR_API_BASE}/users/me` : '/users/me';
     try {
-        const resp = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
+        const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if (!resp.ok) return null;
         const user = await resp.json();
-        if (user.role) localStorage.setItem(USER_ROLE_KEY, user.role);
-        if (user.id) localStorage.setItem('user_id', user.id);
+        if (user.role)  localStorage.setItem(USER_ROLE_KEY, user.role);
+        if (user.id)    localStorage.setItem('user_id', user.id);
         const flags = user.effective_feature_flags || user.feature_flags;
         if (flags) localStorage.setItem(USER_FEATURE_KEY, JSON.stringify(flags));
-        if (user.reseller_feature_flags) localStorage.setItem('reseller_feature_flags', JSON.stringify(user.reseller_feature_flags));
+        if (user.reseller_feature_flags)
+            localStorage.setItem('reseller_feature_flags', JSON.stringify(user.reseller_feature_flags));
         return user;
     } catch (e) {
         console.warn('Falha ao carregar contexto do usuário', e);
@@ -61,15 +35,18 @@ async function fetchCurrentUserContext() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 2. FEATURE FLAGS
+// ---------------------------------------------------------------------------
 function loadFeatureFlags() {
     try {
         const storedPerRole = JSON.parse(localStorage.getItem('featureFlags') || '{}');
-        const userFlags = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
-        const role = localStorage.getItem(USER_ROLE_KEY) || 'user';
-        const roleDefaults = {
+        const userFlags     = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
+        const role          = localStorage.getItem(USER_ROLE_KEY) || 'user';
+        const roleDefaults  = {
             super_admin: { ...DEFAULT_FEATURE_FLAGS.super_admin, ...(storedPerRole.super_admin || {}) },
-            reseller: { ...DEFAULT_FEATURE_FLAGS.reseller, ...(storedPerRole.reseller || {}) },
-            user: { ...DEFAULT_FEATURE_FLAGS.user, ...(storedPerRole.user || {}) },
+            reseller:    { ...DEFAULT_FEATURE_FLAGS.reseller,    ...(storedPerRole.reseller    || {}) },
+            user:        { ...DEFAULT_FEATURE_FLAGS.user,        ...(storedPerRole.user        || {}) },
         };
         return userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
     } catch (e) {
@@ -80,186 +57,165 @@ function loadFeatureFlags() {
 function applyFeatureFlags() {
     const flags = loadFeatureFlags();
 
-    // Aplica visibilidade item a item
     document.querySelectorAll('[data-feature-key]').forEach((el) => {
         const key = el.getAttribute('data-feature-key');
-        // Dashboard e Produtos sempre visíveis para evitar desaparecimento do menu
-        const alwaysVisible = key === 'dashboard' || key === 'products';
-        const allowed = alwaysVisible ? true : flags[key] !== false; // padrão é true
+        // Respeita o flag definido pelo super_admin; default true se não definido
+        const allowed = flags[key] !== false;
         el.style.display = allowed ? '' : 'none';
     });
 
-    // Ajusta grupos com submenus
+    // Oculta grupos cujos sub-itens estejam todos ocultos
     document.querySelectorAll('.sidebar-group').forEach((group) => {
         const submenu = group.querySelector('.sidebar-submenu');
-        const toggle = group.querySelector('.sidebar-toggle');
         if (!submenu) return;
-        const hasVisible = Array.from(submenu.querySelectorAll('[data-feature-key]')).some((link) => link.style.display !== 'none');
+        const hasVisible = Array.from(submenu.querySelectorAll('a')).some(
+            (link) => link.style.display !== 'none'
+        );
         group.style.display = hasVisible ? '' : 'none';
-        if (toggle) {
-            const isOpen = submenu.classList.contains('is-open');
-            // Mantém aberto apenas se ainda houver itens visíveis
-            submenu.classList.toggle('is-open', hasVisible && isOpen);
-            toggle.setAttribute('aria-expanded', submenu.classList.contains('is-open'));
-        }
     });
 
-    // Se a página atual estiver bloqueada, redireciona para a próxima disponível
+    // Redireciona se a página atual estiver oculta para o usuário
+    redirectIfPageHidden(flags);
+}
+
+function redirectIfPageHidden(flags) {
     const currentPage = window.location.pathname.split('/').pop() || 'dashboard.html';
-    const menuAnchors = document.querySelectorAll('.sidebar-menu a.sidebar-link, .sidebar-menu a.submenu-link, .sidebar-menu a.sidebar-sublink');
-    const visibleLinks = Array.from(menuAnchors).filter((link) => {
+    const allLinks = Array.from(document.querySelectorAll(
+        '.sidebar-menu a.sidebar-link, .sidebar-menu a.sidebar-sublink, .sidebar-menu a.submenu-link'
+    ));
+    const isCurrentVisible = allLinks.some((link) => {
         if (link.style.display === 'none') return false;
-        const href = link.getAttribute('href') || '';
-        const key = link.getAttribute('data-feature-key');
-        // Tratar links SPA (href="#") como válidos usando o feature-key
-        const resolvedHref = href && href !== '#' ? href : (key ? `${key}.html` : '');
-        return resolvedHref !== '';
+        const href = (link.getAttribute('href') || '').split('?')[0].split('#')[0];
+        return href.split('/').pop() === currentPage;
     });
-    const isCurrentVisible = visibleLinks.some((link) => {
-        const href = link.getAttribute('href') || '';
-        const key = link.getAttribute('data-feature-key');
-        const resolvedHref = href && href !== '#' ? href : (key ? `${key}.html` : '');
-        return resolvedHref.split('/').pop() === currentPage;
-    });
-    if (!isCurrentVisible && visibleLinks.length) {
-        const href = visibleLinks[0].getAttribute('href') || '';
-        const key = visibleLinks[0].getAttribute('data-feature-key');
-        const resolvedHref = href && href !== '#' ? href : (key ? `${key}.html` : '#');
-        window.location.href = resolvedHref;
+    if (!isCurrentVisible) {
+        const firstVisible = allLinks.find((link) => {
+            if (link.style.display === 'none') return false;
+            const href = link.getAttribute('href') || '';
+            return href && href !== '#';
+        });
+        if (firstVisible) window.location.href = firstVisible.getAttribute('href');
     }
 }
 
-function normalizePageName(href) {
-    if (!href) return '';
-    try {
-        const clean = href.split('#')[0].split('?')[0];
-        return clean.split('/').pop();
-    } catch (e) {
-        return href;
-    }
-}
+// ---------------------------------------------------------------------------
+// 3. ACCORDION DO MENU
+// ---------------------------------------------------------------------------
 
-function ensureProductsGroup() {
-    const menu = document.querySelector('.sidebar-menu');
-    if (!menu) return;
-
-    const productItems = [
-        { href: 'produtos.html', icon: '🛒', label: 'Produtos/Servicos' },
-        { href: 'categorias.html', icon: '🏷️', label: 'Categorias' },
-        { href: 'planos.html', icon: '📄', label: 'Planos' },
-        { href: 'recursos.html', icon: '🧩', label: 'Recursos' },
-    ];
-
-    let group = menu.querySelector('.sidebar-group[data-feature-key="products"]') || menu.querySelector('.sidebar-group');
-    if (!group) {
-        group = document.createElement('div');
-        group.className = 'sidebar-group';
-        group.dataset.featureKey = 'products';
-        menu.insertBefore(group, menu.querySelector('[data-feature-key="whatsapp"]') || null);
-    } else {
-        group.dataset.featureKey = 'products';
-    }
-
-    let toggle = group.querySelector('.sidebar-toggle');
-    if (!toggle) {
-        toggle = document.createElement('button');
-        group.prepend(toggle);
-    }
-    toggle.classList.add('sidebar-link', 'sidebar-group-title', 'sidebar-toggle');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-controls', 'productsSubmenu');
-    if (!toggle.innerHTML.trim()) toggle.innerHTML = '<span class="sidebar-icon">📦</span> Produtos';
-
-    let submenu = group.querySelector('.sidebar-submenu');
-    if (!submenu) {
-        submenu = document.createElement('div');
-        submenu.className = 'sidebar-submenu';
-        group.appendChild(submenu);
-    }
-    submenu.id = 'productsSubmenu';
-
-    productItems.forEach(({ href, icon, label }) => {
-        const pageName = normalizePageName(href);
-        let link = Array.from(submenu.querySelectorAll('a')).find((a) => normalizePageName(a.getAttribute('href')) === pageName);
-        if (!link) {
-            link = document.createElement('a');
-            submenu.appendChild(link);
+/**
+ * Fecha todos os submenus EXCETO o informado.
+ * Passando null fecha todos.
+ */
+function closeOtherSubmenus(exceptSubmenu) {
+    document.querySelectorAll('.sidebar-submenu').forEach((menu) => {
+        if (menu === exceptSubmenu) return;
+        menu.classList.remove('is-open');
+        // Atualiza o toggle pai
+        const group  = menu.closest('.sidebar-group');
+        const toggle = group ? group.querySelector('.sidebar-toggle') : menu.previousElementSibling;
+        if (toggle && toggle.classList.contains('sidebar-toggle')) {
+            toggle.setAttribute('aria-expanded', 'false');
         }
-        link.href = href;
-        link.className = 'sidebar-link sidebar-sublink';
-        link.dataset.featureKey = 'products';
-        link.innerHTML = `<span class="sidebar-icon">${icon}</span> ${label}`;
     });
-}
-
-function markActiveLink() {
-    const currentPage = normalizePageName(window.location.pathname);
-    const menuAnchors = document.querySelectorAll('.sidebar-menu a');
-    let activeLink = null;
-    menuAnchors.forEach((link) => {
-        const hrefPage = normalizePageName(link.getAttribute('href'));
-        if (hrefPage && hrefPage === currentPage) {
-            activeLink = link;
-        }
-        link.classList.remove('active');
-    });
-    if (activeLink) {
-        activeLink.classList.add('active');
-        const submenu = activeLink.closest('.sidebar-submenu');
-        const toggle = submenu?.previousElementSibling;
-        if (submenu && toggle && toggle.classList.contains('sidebar-toggle')) {
-            submenu.classList.add('is-open');
-            toggle.setAttribute('aria-expanded', 'true');
-        }
-    }
 }
 
 function setupSidebarAccordion() {
     const toggles = document.querySelectorAll('.sidebar-toggle');
     if (!toggles.length) return;
 
-    const currentPage = normalizePageName(window.location.pathname);
-
-    toggles.forEach(toggle => {
+    toggles.forEach((toggle) => {
         const targetId = toggle.getAttribute('aria-controls');
-        const submenu = targetId ? document.getElementById(targetId) : null;
+        const submenu  = targetId ? document.getElementById(targetId) : null;
         if (!submenu) return;
 
-        const hasActiveLink = Array.from(submenu.querySelectorAll('a')).some(link => {
-            const href = normalizePageName(link.getAttribute('href'));
-            return href === currentPage;
-        });
+        // Garante início fechado (markActiveLink abrirá o correto)
+        submenu.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
 
-        submenu.classList.toggle('is-open', hasActiveLink);
-        toggle.setAttribute('aria-expanded', hasActiveLink ? 'true' : 'false');
-
-        toggle.addEventListener('click', () => {
-            const isOpen = submenu.classList.toggle('is-open');
-            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const isOpen = submenu.classList.contains('is-open');
+            // Fecha todos os outros
+            closeOtherSubmenus(null);
+            if (!isOpen) {
+                submenu.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            }
         });
+    });
+
+    // Links simples (não-toggle) fecham todos os submenus ao serem clicados
+    document.querySelectorAll('.sidebar-menu > .sidebar-link:not(.sidebar-toggle)').forEach((link) => {
+        link.addEventListener('click', () => closeOtherSubmenus(null));
+    });
+
+    // Links dentro de submenus: apenas stopPropagation para não acionar toggles pais
+    document.querySelectorAll('.sidebar-submenu a').forEach((link) => {
+        link.addEventListener('click', (ev) => ev.stopPropagation());
     });
 }
 
+// ---------------------------------------------------------------------------
+// 4. MARCAÇÃO DO LINK ATIVO
+// ---------------------------------------------------------------------------
+function normalizePageName(href) {
+    if (!href) return '';
+    try { return href.split('#')[0].split('?')[0].split('/').pop(); } catch { return href; }
+}
+
+function markActiveLink() {
+    const currentPage = normalizePageName(window.location.pathname);
+
+    // Remove todas as marcações ativas
+    document.querySelectorAll('.sidebar-menu a').forEach((link) => link.classList.remove('active'));
+
+    // Encontra o link correspondente à página atual
+    let activeLink = null;
+    document.querySelectorAll('.sidebar-menu a').forEach((link) => {
+        const page = normalizePageName(link.getAttribute('href'));
+        if (page && page === currentPage) activeLink = link;
+    });
+
+    if (activeLink) {
+        activeLink.classList.add('active');
+
+        // Se o link está dentro de um submenu, abre APENAS esse submenu
+        const submenu = activeLink.closest('.sidebar-submenu');
+        if (submenu) {
+            const group  = submenu.closest('.sidebar-group');
+            const toggle = group ? group.querySelector('.sidebar-toggle') : null;
+            submenu.classList.add('is-open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 5. SUPER ADMIN LINK (garante existência se ausente no HTML)
+// ---------------------------------------------------------------------------
 function ensureSuperAdminLink() {
     const menu = document.querySelector('.sidebar-menu');
     if (!menu) return;
     if (menu.querySelector('[data-feature-key="admin"]')) return;
     const link = document.createElement('a');
-    link.href = 'admin.html';
-    link.className = 'sidebar-link';
+    link.href              = 'admin.html';
+    link.className         = 'sidebar-link';
     link.dataset.featureKey = 'admin';
     link.dataset.roleRequired = 'super_admin';
-    link.innerHTML = '<span class="sidebar-icon">👑</span> Super Admin';
+    link.innerHTML         = '<span class="sidebar-icon">👑</span> Super Admin';
     menu.appendChild(link);
 }
 
+// ---------------------------------------------------------------------------
+// 6. INICIALIZAÇÃO
+// ---------------------------------------------------------------------------
 async function initSidebar() {
     await fetchCurrentUserContext();
-    ensureProductsGroup();
-    setupSidebarAccordion();
+    // NÃO manipula o DOM dos produtos (já está no HTML de cada página)
+    setupSidebarAccordion();   // 1º configura os toggles (fecha tudo)
     ensureSuperAdminLink();
     applyFeatureFlags();
-    markActiveLink();
+    markActiveLink();          // 2º abre apenas o submenu da página atual
 }
 
 document.addEventListener('DOMContentLoaded', initSidebar);

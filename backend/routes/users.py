@@ -57,7 +57,7 @@ def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]
     return effective
 
 
-def _ensure_defaults(user: User, db: Optional[Session] = None):
+def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = True):
     """Garante que permissions e feature_flags sejam dicts e gera effective_feature_flags."""
     if not user:
         return user
@@ -77,13 +77,21 @@ def _ensure_defaults(user: User, db: Optional[Session] = None):
     user.permissions = permissions
     user.feature_flags = user_flags
     user.reseller_feature_flags = reseller_flags
-    user.effective_feature_flags = effective_flags  # type: ignore[attr-defined]
+    # effective_feature_flags não é coluna do banco — atribui como atributo dinâmico
+    object.__setattr__(user, 'effective_feature_flags', effective_flags)
 
-    # Persiste apenas se tivermos sessão válida e o objeto estiver nela
-    if db and object_session(user) is db:
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    # Persiste apenas se solicitado e tivermos sessão válida
+    # NÃO chama db.add() para evitar conflito "already attached to session"
+    if persist and db:
+        sess = object_session(user)
+        if sess is db:
+            try:
+                db.commit()
+                db.refresh(user)
+                # Reaplica effective após refresh (refresh sobrescreve atributos dinâmicos)
+                object.__setattr__(user, 'effective_feature_flags', effective_flags)
+            except Exception:
+                db.rollback()
 
     return user
 
@@ -98,7 +106,8 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
     user_db = db.query(User).filter(User.id == current_user.id).first()
     if not user_db:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    return _ensure_defaults(user_db, db)
+    # Passa db apenas para lookup do pai (effective flags), mas não persiste no GET
+    return _ensure_defaults(user_db, db=db, persist=False)
 
 
 # Rota para salvar configurações gerais
@@ -132,7 +141,7 @@ def update_user_settings(
 
     db.commit()
     db.refresh(user_in_db)
-    return _ensure_defaults(user_in_db, db)
+    return _ensure_defaults(user_in_db, db, persist=False)
 
 
 @router.post("/me/telegram/test")

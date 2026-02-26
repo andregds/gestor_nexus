@@ -156,21 +156,21 @@
                 </div>
 
                 <!-- Menu de Produtos -->
-                <div class="sidebar-group">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
                         <span class="sidebar-icon">📦</span> Produtos
                     </button>
                     <div class="sidebar-submenu" id="productsSubmenu">
-                        <a href="produtos.html" class="sidebar-link sidebar-sublink">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🛒</span> Produtos/Servicos
                         </a>
-                        <a href="categorias.html" class="sidebar-link sidebar-sublink">
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🏷️</span> Categorias
                         </a>
-                        <a href="planos.html" class="sidebar-link sidebar-sublink">
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">📄</span> Planos
                         </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink">
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
                     </div>
@@ -239,6 +239,13 @@
                     <small>Tamanho máximo: 5MB</small>
                 </div>
 
+                <div class="form-group">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="message-selected" style="width:auto;"> Marcar para envio
+                    </label>
+                    <small>Somente mensagens marcadas serão consideradas no disparo automático.</small>
+                </div>
+
                 <button type="submit">Salvar Mensagem</button>
             </form>
 
@@ -273,12 +280,14 @@
                 type: 'vencimento',
                 content: 'Prezado cliente, sua fatura vence amanhã. Regularize o pagamento para evitar interrupções.',
                 is_default: true,
+                selected_for_send: true,
             },
             {
                 id: 2,
                 type: 'cobranca',
                 content: 'Detectamos um pagamento pendente. Por favor, entre em contato para regularizar.',
                 is_default: true,
+                selected_for_send: true,
             },
         ];
 
@@ -343,6 +352,9 @@
                 messageItem.innerHTML = `
                     <h4>${imgHtml}${title}${message.is_default ? ' <span style="color:#2563eb;font-size:0.9em">(Padrão)</span>' : ''}</h4>
                     <p>${message.content}</p>
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:0.95rem;color:#0f172a;">
+                        <input type="checkbox" ${message.selected_for_send ? 'checked' : ''} onchange="toggleSelection(${message.id}, this.checked)" style="width:auto;"> Selecionada para envio
+                    </label>
                     <button onclick="editMessage(${message.id})">Editar</button>
                     <button onclick="deleteMessage(${message.id})">Deletar</button>
                 `;
@@ -435,6 +447,10 @@
             if (message) {
                 document.getElementById('message-type').value = message.type;
                 document.getElementById('message-content').value = message.content;
+                const selectedBox = document.getElementById('message-selected');
+                if (selectedBox) {
+                    selectedBox.checked = !!message.selected_for_send;
+                }
                 // Rolar até a área da mensagem
                 const contentBox = document.getElementById('message-content');
                 if (contentBox) {
@@ -447,9 +463,11 @@
                     const messageType = document.getElementById('message-type').value;
                     const messageContent = document.getElementById('message-content').value;
                     const messageImage = document.getElementById('message-image').files[0];
+                    const selectedBox = document.getElementById('message-selected');
                     const formData = new FormData();
                     formData.append('type', messageType);
                     formData.append('content', messageContent);
+                    formData.append('selected_for_send', selectedBox && selectedBox.checked ? 'true' : 'false');
                     if (messageImage) {
                         formData.append('image', messageImage);
                     }
@@ -535,15 +553,16 @@
             const messageType = document.getElementById('message-type').value;
             const messageContent = document.getElementById('message-content').value;
             const messageImage = document.getElementById('message-image').files[0];
+            const selectedBox = document.getElementById('message-selected');
 
             if (messageContent.trim() === '') {
                 alert('O conteúdo da mensagem não pode estar vazio.');
                 return;
             }
-
             const formData = new FormData();
             formData.append('type', messageType);
             formData.append('content', messageContent);
+            formData.append('selected_for_send', selectedBox && selectedBox.checked ? 'true' : 'false');
             if (messageImage) {
                 formData.append('image', messageImage);
             }
@@ -569,6 +588,25 @@
                 alert('Erro ao salvar a mensagem. Verifique sua conexão e tente novamente.');
             }
         });
+
+        async function toggleSelection(id, checked) {
+            try {
+                const fd = new FormData();
+                fd.append('selected_for_send', checked ? 'true' : 'false');
+                const response = await fetch(`${API_MESSAGES()}/${id}/select`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders(),
+                    body: fd
+                });
+                if (!response.ok) {
+                    alert('Não foi possível atualizar a seleção para envio.');
+                } else {
+                    await fetchMessages();
+                }
+            } catch (err) {
+                alert('Erro ao atualizar a seleção para envio.');
+            }
+        }
 
         // Inicializa a renderização das mensagens ao carregar
         fetchMessages();

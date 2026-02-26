@@ -26,7 +26,114 @@ from database import engine, Base
 import models
 
 # Cria as tabelas no banco de dados, se não existirem
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+except Exception as _e:
+    print(f"[AVISO] Aviso ao criar tabelas: {_e}")
+
+# Migração automática: garante que feature_flags / reseller_feature_flags existem e não são NULL
+def _run_startup_migration():
+    """
+    1. Cria as colunas feature_flags / reseller_feature_flags se não existirem.
+    2. Popula valores NULL com os defaults.
+    Usa engine.connect() direto para DDL (autocommit implícito no MySQL DDL).
+    """
+    import json
+    from sqlalchemy import text
+    _DEFAULT_FLAGS = {
+        "dashboard": True, "clients": True, "products": True,
+        "whatsapp": True, "telegram": True, "settings": True,
+        "resell": True, "admin": False,
+    }
+    _DEFAULT_PERMS = {
+        "can_view_dashboard": True, "can_view_clients": True,
+        "can_view_integrations": True, "can_view_settings": True,
+    }
+    try:
+        from database import engine as _eng
+        _db_url = str(_eng.url)
+        _is_mysql = "mysql" in _db_url
+
+        with _eng.connect() as _conn:
+            # --- Passo 1: Garante que as colunas existem ---
+            if _is_mysql:
+                _alter_stmts = [
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_flags JSON DEFAULT NULL",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS reseller_feature_flags JSON DEFAULT NULL",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSON DEFAULT NULL",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS block_reason VARCHAR(255) DEFAULT NULL",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS client_limit INT NOT NULL DEFAULT 0",
+                ]
+                for _stmt in _alter_stmts:
+                    try:
+                        _conn.execute(text(_stmt))
+                        _conn.commit()
+                    except Exception as _e:
+                        _conn.rollback()
+                        # Ignora silenciosamente erros de coluna duplicada
+                        if "1060" not in str(_e) and "Duplicate column" not in str(_e):
+                            print(f"[AVISO] DDL ignorado: {_e}")
+            else:
+                # SQLite: verifica e adiciona manualmente
+                _existing = {row[1] for row in _conn.execute(text("PRAGMA table_info(users)"))}
+                _sqlite_cols = {
+                    "feature_flags": "ALTER TABLE users ADD COLUMN feature_flags TEXT DEFAULT NULL",
+                    "reseller_feature_flags": "ALTER TABLE users ADD COLUMN reseller_feature_flags TEXT DEFAULT NULL",
+                    "permissions": "ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL",
+                    "block_reason": "ALTER TABLE users ADD COLUMN block_reason VARCHAR(255) DEFAULT NULL",
+                    "client_limit": "ALTER TABLE users ADD COLUMN client_limit INTEGER DEFAULT 0",
+                }
+                for _col, _sql in _sqlite_cols.items():
+                    if _col not in _existing:
+                        try:
+                            _conn.execute(text(_sql))
+                            _conn.commit()
+                        except Exception:
+                            _conn.rollback()
+
+            # --- Passo 2: Popula NULLs ---
+            try:
+                rows = _conn.execute(text(
+                    "SELECT id, role, feature_flags, reseller_feature_flags, permissions FROM users"
+                )).fetchall()
+            except Exception as _se:
+                print(f"[AVISO] Nao foi possivel ler usuarios para migracao: {_se}")
+                return
+
+            _updated = 0
+            for row in rows:
+                uid, role = row[0], row[1]
+                _raw_ff, _raw_rff, _raw_p = row[2], row[3], row[4]
+
+                def _pj(v, d):
+                    if isinstance(v, dict): return v
+                    try: return json.loads(v) if isinstance(v, str) and v.strip() not in ('', 'null') else None
+                    except: return None
+
+                ff  = _pj(_raw_ff,  _DEFAULT_FLAGS) or _DEFAULT_FLAGS.copy()
+                rff = _pj(_raw_rff, _DEFAULT_FLAGS) or _DEFAULT_FLAGS.copy()
+                p   = _pj(_raw_p,   _DEFAULT_PERMS) or _DEFAULT_PERMS.copy()
+
+                if role == "super_admin":
+                    ff["admin"] = True
+
+                try:
+                    _conn.execute(
+                        text("UPDATE users SET feature_flags=:ff, reseller_feature_flags=:rff, permissions=:p WHERE id=:id"),
+                        {"ff": json.dumps(ff), "rff": json.dumps(rff), "p": json.dumps(p), "id": uid}
+                    )
+                    _updated += 1
+                except Exception as _ue:
+                    print(f"[AVISO] Erro ao atualizar usuario {uid}: {_ue}")
+
+            if _updated:
+                _conn.commit()
+                print(f"[OK] Migracao startup: {_updated} usuario(s) com flags atualizados.")
+
+    except Exception as _me:
+        print(f"[AVISO] Migracao startup ignorada (DB indisponivel ou erro): {_me}")
+
+_run_startup_migration()
 
 app = FastAPI(
     title="Monitor DNS API",
@@ -93,27 +200,27 @@ def check_and_send_reminders():
         if not users_list:
             return
 
-        print(f"🔔 Encontrados {len(users_list)} usuário(s) para lembretes de cobrança às {now_time}")
+        print(f"Encontrados {len(users_list)} usuário(s) para lembretes de cobrança às {now_time}")
 
         for user in users_list:
-            print(f"   👤 Verificando cobranças para: {user.name} (ID: {user.id})")
+            print(f"   Verificando cobranças para: {user.name} (ID: {user.id})")
 
             if not user.notifications_enabled:
-                print(f"      ⚠️ Agendamento DESATIVADO pelo usuário. Pulando.")
+                print(f"      [AVISO] Agendamento DESATIVADO pelo usuario. Pulando.")
                 continue
 
             has_whatsapp = user.whatsapp_connected
             has_telegram = bool(user.telegram_token and user.telegram_chat_id)
 
             if not has_whatsapp and not has_telegram:
-                print(f"      ⚠️ Nenhum canal de notificação conectado. Pulando.")
+                print(f"      [AVISO] Nenhum canal de notificacao conectado. Pulando.")
                 continue
 
             user_clients = db.query(Client).filter(Client.owner_id == user.id).all()
             if not user_clients:
                 continue
 
-            print(f"      📂 Analisando {len(user_clients)} clientes...")
+            print(f"      Analisando {len(user_clients)} clientes...")
 
             for client in user_clients:
                 if not client.reminder_enabled:
@@ -140,7 +247,7 @@ def check_and_send_reminders():
                     if not msg:
                         continue
 
-                    print(f"         🚀 ENVIANDO MENSAGEM para {client.name} (Motivo: {days_diff} dias)")
+                    print(f"         ENVIANDO MENSAGEM para {client.name} (Motivo: {days_diff} dias)")
                     channel = client.notification_channel or "whatsapp"
 
                     # --- ENVIO VIA WHATSAPP (SÍNCRONO) ---
@@ -154,11 +261,11 @@ def check_and_send_reminders():
                             url = f"{EVOLUTION_API_URL}/message/sendText/{user.whatsapp_instance}"
                             response = httpx.post(url, headers=evolution_headers(), json=payload, timeout=10.0)
                             if response.status_code in [200, 201]:
-                                print(f"            ✅ WhatsApp enviado com sucesso!")
+                                print(f"            WhatsApp enviado com sucesso!")
                             else:
-                                print(f"            ❌ Erro ao enviar WhatsApp: {response.status_code} - {response.text}")
+                                print(f"            Erro ao enviar WhatsApp: {response.status_code} - {response.text}")
                         except Exception as e:
-                            print(f"            ❌ Erro técnico ao enviar WhatsApp: {e}")
+                            print(f"            Erro técnico ao enviar WhatsApp: {e}")
 
                     # --- ENVIO VIA TELEGRAM (SÍNCRONO) ---
                     elif channel == "telegram" and has_telegram:
@@ -171,16 +278,16 @@ def check_and_send_reminders():
                             }
                             response = httpx.post(telegram_url, json=payload, timeout=10.0)
                             if response.status_code == 200:
-                                print(f"            ✅ Telegram enviado com sucesso!")
+                                print(f"            Telegram enviado com sucesso!")
                             else:
-                                print(f"            ❌ Erro ao enviar Telegram: {response.status_code} - {response.text}")
+                                print(f"            Erro ao enviar Telegram: {response.status_code} - {response.text}")
                         except Exception as e:
-                            print(f"            ❌ Erro técnico ao enviar Telegram: {e}")
+                            print(f"            Erro técnico ao enviar Telegram: {e}")
 
                     time.sleep(2) # Pequeno delay para não sobrecarregar as APIs
 
     except Exception as e:
-        print(f"❌ Erro Crítico no Scheduler de Cobranças: {e}")
+        print(f"Erro Crítico no Scheduler de Cobranças: {e}")
     finally:
         db.close()
 
@@ -201,11 +308,16 @@ def get_predefined_message(days_diff, client_name):
         msg_type = None
     if not msg_type:
         return None
-    # Busca a mensagem do tipo correto
-    for msg in messages_route.messages:
-        if msg["type"] == msg_type:
-            # Personaliza o nome do cliente, se necessário
-            return msg["content"].replace("{cliente}", client_name)
+    # Busca a mensagem do tipo correto no banco de dados
+    try:
+        from models import Message
+        db = SessionLocal()
+        msg_obj = db.query(Message).filter(Message.message_type == msg_type).first()
+        db.close()
+        if msg_obj:
+            return msg_obj.content.replace("{cliente}", client_name)
+    except Exception:
+        pass
     return None
 
 # =================================================================
@@ -223,7 +335,7 @@ def check_monitored_urls():
         if not urls_to_check:
             return  # Sai se não houver URLs ativas para checar
 
-        print(f"🔍 Iniciando verificação de {len(urls_to_check)} URLs ativas...")
+        print(f"Iniciando verificação de {len(urls_to_check)} URLs ativas...")
 
         for url_obj in urls_to_check:
             status = "DOWN"
@@ -247,24 +359,24 @@ def check_monitored_urls():
 
                 if 200 <= http_code < 400:
                     status = "UP"
-                    print(f"  ✅ {url_obj.url} -> UP ({http_code})")
+                    print(f"  [UP] {url_obj.url} -> UP ({http_code})")
                 else:
                     status = "DOWN"
                     error_message = f"Status Code {http_code}"
-                    print(f"  ❌ {url_obj.url} -> DOWN ({http_code})")
+                    print(f"  [DOWN] {url_obj.url} -> DOWN ({http_code})")
 
             except httpx.RequestError as e:
                 error_message = str(e)
                 error_type_name = type(e).__name__
-                print(f"  ❌ {url_obj.url} -> DOWN (Erro de Conexão: {e})")
+                print(f"  [DOWN] {url_obj.url} -> DOWN (Erro de Conexao: {e})")
 
             except Exception as e:
                 error_message = str(e)
                 error_type_name = type(e).__name__
-                print(f"  ❌ {url_obj.url} -> DOWN (Erro Inesperado: {e})")
+                print(f"  [DOWN] {url_obj.url} -> DOWN (Erro Inesperado: {e})")
 
             finally:
-                # --- AÇÃO MAIS IMPORTANTE: Atualiza o objeto no banco ---
+                # --- ACAO MAIS IMPORTANTE: Atualiza o objeto no banco ---
                 url_obj.status = status
                 url_obj.http_code = http_code
                 url_obj.response_time = response_time
@@ -273,11 +385,11 @@ def check_monitored_urls():
                 url_obj.error = error_message
                 url_obj.error_type = error_type_name
 
-                # Salva as alterações no banco de dados. É ISSO que atualiza o site!
+                # Salva as alteracoes no banco de dados.
                 db.commit()
 
     except Exception as e:
-        print(f"🔥 Erro Crítico no Scheduler de URLs: {e}")
+        print(f"[ERRO CRITICO] Scheduler de URLs: {e}")
     finally:
         db.close()
 

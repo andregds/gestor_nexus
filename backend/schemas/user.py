@@ -1,5 +1,5 @@
 # backend/schemas/user.py
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, Dict, Any
 
 # Fallbacks used when legacy rows have NULL/invalid JSON
@@ -58,41 +58,69 @@ class UserResponse(BaseModel):
     name: str
     email: str
     whatsapp_connected: bool
-    notifications_enabled: bool
+    notifications_enabled: bool = True
     whatsapp_number: Optional[str] = None
     whatsapp_instance: Optional[str] = None
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-    notify_when_down: bool
-    notify_when_up: bool
-    notify_when_slow: bool
+    notify_when_down: bool = True
+    notify_when_up: bool = True
+    notify_when_slow: bool = False
 
-    # --- NOVOS CAMPOS NA RESPOSTA DA API ---
-    role: str
-    permissions: Dict[str, Any] = Field(default_factory=dict)
-    feature_flags: Dict[str, bool] = Field(default_factory=dict)
-    reseller_feature_flags: Dict[str, bool] = Field(default_factory=dict)
-    effective_feature_flags: Dict[str, bool] = Field(default_factory=dict)
-    client_limit: int
-    is_active: bool
-    block_reason: Optional[str] = None  # <-- CAMPO ADICIONADO AQUI
-    # ---------------------------------------
+    # --- CAMPOS OPCIONAIS COM FALLBACK ---
+    role: str = "user"
+    permissions: Optional[Dict[str, Any]] = Field(default_factory=lambda: DEFAULT_PERMISSIONS.copy())
+    feature_flags: Optional[Dict[str, Any]] = Field(default_factory=lambda: DEFAULT_FEATURE_FLAGS.copy())
+    reseller_feature_flags: Optional[Dict[str, Any]] = Field(default_factory=lambda: DEFAULT_RESELLER_FEATURE_FLAGS.copy())
+    effective_feature_flags: Optional[Dict[str, Any]] = Field(default_factory=lambda: DEFAULT_FEATURE_FLAGS.copy())
+    client_limit: int = 0
+    is_active: bool = True
+    block_reason: Optional[str] = None
+    # -------------------------------------
 
-    @field_validator("permissions", mode="before")
-    def _ensure_permissions(cls, v):
-        return v if isinstance(v, dict) else DEFAULT_PERMISSIONS.copy()
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_defaults(cls, data):
+        """Converte None → dict padrão antes de qualquer validação de campo."""
+        def _coerce(value, default):
+            if value is None or not isinstance(value, dict):
+                return default.copy()
+            return value
 
-    @field_validator("feature_flags", mode="before")
-    def _ensure_feature_flags(cls, v):
-        return v if isinstance(v, dict) else DEFAULT_FEATURE_FLAGS.copy()
-
-    @field_validator("reseller_feature_flags", mode="before")
-    def _ensure_reseller_feature_flags(cls, v):
-        return v if isinstance(v, dict) else DEFAULT_RESELLER_FEATURE_FLAGS.copy()
-
-    @field_validator("effective_feature_flags", mode="before")
-    def _ensure_effective(cls, v):
-        return v if isinstance(v, dict) else DEFAULT_FEATURE_FLAGS.copy()
+        if hasattr(data, "__dict__"):
+            # SQLAlchemy ORM object
+            obj = data
+            # Ensure effective_feature_flags attribute exists
+            if not hasattr(obj, "effective_feature_flags"):
+                object.__setattr__(obj, "effective_feature_flags", DEFAULT_FEATURE_FLAGS.copy())
+            return {
+                "id": getattr(obj, "id", None),
+                "name": getattr(obj, "name", ""),
+                "email": getattr(obj, "email", ""),
+                "whatsapp_connected": bool(getattr(obj, "whatsapp_instance", None)),
+                "notifications_enabled": getattr(obj, "notifications_enabled", True) if getattr(obj, "notifications_enabled", True) is not None else True,
+                "whatsapp_number": getattr(obj, "whatsapp_number", None),
+                "whatsapp_instance": getattr(obj, "whatsapp_instance", None),
+                "telegram_token": getattr(obj, "telegram_token", None),
+                "telegram_chat_id": getattr(obj, "telegram_chat_id", None),
+                "notify_when_down": getattr(obj, "notify_when_down", True) if getattr(obj, "notify_when_down", True) is not None else True,
+                "notify_when_up": getattr(obj, "notify_when_up", True) if getattr(obj, "notify_when_up", True) is not None else True,
+                "notify_when_slow": getattr(obj, "notify_when_slow", False) if getattr(obj, "notify_when_slow", False) is not None else False,
+                "role": getattr(obj, "role", "user") or "user",
+                "permissions": _coerce(getattr(obj, "permissions", None), DEFAULT_PERMISSIONS),
+                "feature_flags": _coerce(getattr(obj, "feature_flags", None), DEFAULT_FEATURE_FLAGS),
+                "reseller_feature_flags": _coerce(getattr(obj, "reseller_feature_flags", None), DEFAULT_RESELLER_FEATURE_FLAGS),
+                "effective_feature_flags": _coerce(getattr(obj, "effective_feature_flags", None), DEFAULT_FEATURE_FLAGS),
+                "client_limit": getattr(obj, "client_limit", 0) or 0,
+                "is_active": getattr(obj, "is_active", True) if getattr(obj, "is_active", True) is not None else True,
+                "block_reason": getattr(obj, "block_reason", None),
+            }
+        elif isinstance(data, dict):
+            data["permissions"] = _coerce(data.get("permissions"), DEFAULT_PERMISSIONS)
+            data["feature_flags"] = _coerce(data.get("feature_flags"), DEFAULT_FEATURE_FLAGS)
+            data["reseller_feature_flags"] = _coerce(data.get("reseller_feature_flags"), DEFAULT_RESELLER_FEATURE_FLAGS)
+            data["effective_feature_flags"] = _coerce(data.get("effective_feature_flags"), DEFAULT_FEATURE_FLAGS)
+        return data
 
     class Config:
         from_attributes = True

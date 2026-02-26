@@ -1,0 +1,8 @@
+[INFO] Banco: mysql+pymysql://gest_user_nexus_monitor:***@109.199.107.136:3306/gest_...
+[OK] ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_flags JSON DEFAULT 
+[OK] ALTER TABLE users ADD COLUMN IF NOT EXISTS reseller_feature_flags JSON
+[OK] ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSON DEFAULT NU
+[OK] ALTER TABLE users ADD COLUMN IF NOT EXISTS block_reason VARCHAR(255) D
+[OK] ALTER TABLE users ADD COLUMN IF NOT EXISTS client_limit INT NOT NULL D
+[OK] 6 usuario(s) atualizados.
+Migracao concluida!

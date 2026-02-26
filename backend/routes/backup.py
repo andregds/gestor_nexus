@@ -212,66 +212,111 @@ async def import_clients_file(
     # Debug: Imprime as colunas encontradas no terminal para ajudar a diagnosticar
     print(f"Colunas encontradas no arquivo: {list(df.columns)}")
 
+    # Remove colunas "Unnamed" (colunas vazias geradas pelo Excel/Pandas)
+    df = df.loc[:, ~df.columns.astype(str).str.contains('^Unnamed', case=False, na=False)]
+    print(f"Colunas após limpeza: {list(df.columns)}")
+
+    # Remove linhas completamente vazias
+    df = df.dropna(how='all')
+
     # 2. Identificar Colunas (Mapeamento Inteligente)
-    col_name = find_column(df, ['nome', 'cliente', 'name', 'nome completo', 'usuario', 'titular'])
-    col_login = find_column(df, ['login', 'usuario', 'user', 'username', 'email'])
-    col_phone = find_column(df, ['whatsapp', 'celular', 'telefone', 'tel', 'cel', 'zap', 'contato', 'mobile'])
-    col_date = find_column(df, ['vencimento', 'data', 'validade', 'vence', 'expiration', 'expire'])
-    col_notes = find_column(df, ['obs', 'observacao', 'observação', 'notas', 'observações', 'info'])
-    col_server = find_column(df, ['servidor', 'server', 'plano', 'pacote'])
+    col_name   = find_column(df, ['nome', 'cliente', 'name', 'nome completo', 'titular', 'nome do cliente'])
+    col_login  = find_column(df, ['login', 'usuario', 'user', 'username', 'email', 'usuario/login'])
+    col_phone  = find_column(df, ['whatsapp', 'celular', 'telefone', 'tel', 'cel', 'zap', 'contato', 'mobile', 'fone', 'numero', 'número'])
+    col_date   = find_column(df, ['vencimento', 'data', 'validade', 'vence', 'expiration', 'expire', 'data vencimento', 'data de vencimento', 'dt_vencimento', 'dt vencimento'])
+    col_notes  = find_column(df, ['obs', 'observacao', 'observação', 'notas', 'observações', 'info', 'nota'])
+    col_server = find_column(df, ['servidor', 'server', 'plano', 'pacote', 'servico', 'serviço'])
 
-    # --- LÓGICA DE FALLBACK (CORREÇÃO SOLICITADA) ---
+    print(f"Colunas mapeadas -> nome={col_name}, login={col_login}, phone={col_phone}, date={col_date}")
 
+    # --- LÓGICA DE FALLBACK CRUZADO ---
     # Se achou Login mas NÃO achou Nome, usa o Login como Nome
     if not col_name and col_login:
         col_name = col_login
+        print(f"Fallback: usando coluna '{col_login}' como Nome.")
 
     # Se achou Nome mas NÃO achou Login, usa o Nome como Login
     if not col_login and col_name:
         col_login = col_name
+        print(f"Fallback: usando coluna '{col_name}' como Login.")
+
+    # Se ainda não encontrou nome/login, tenta usar a primeira coluna string disponível
+    if not col_name:
+        for c in df.columns:
+            if df[c].dtype == object:
+                col_name = c
+                col_login = c
+                print(f"Fallback: usando primeira coluna string '{c}' como Nome/Login.")
+                break
+
+    # Se ainda não encontrou data, tenta coluna que tenha padrão de data
+    if not col_date:
+        for c in df.columns:
+            sample = df[c].dropna().head(5).astype(str)
+            if sample.str.contains(r'\d{2}[/\-\.]\d{2}[/\-\.]\d{2,4}', regex=True).any():
+                col_date = c
+                print(f"Fallback de data por padrão: usando coluna '{c}'.")
 
     # Validação mínima
     if not col_name:
-        return {"message": "Erro: Não foi possível identificar a coluna de NOME ou LOGIN no arquivo.",
-                "errors": [f"Colunas identificadas: {list(df.columns)}. Coluna 'Nome' ou 'Login' não encontrada."]}
+        cols_found = list(df.columns)
+        return {
+            "message": "Erro: Não foi possível identificar a coluna de NOME ou LOGIN no arquivo.",
+            "errors": [f"Colunas encontradas: {cols_found}. Use cabeçalhos como: Nome, Login, WhatsApp, Vencimento."]
+        }
 
     if not col_date:
-        return {"message": "Erro: Não foi possível identificar a coluna de VENCIMENTO.",
-                "errors": [f"Colunas identificadas: {list(df.columns)}. Coluna 'Vencimento' não encontrada."]}
+        cols_found = list(df.columns)
+        return {
+            "message": "Erro: Não foi possível identificar a coluna de VENCIMENTO.",
+            "errors": [f"Colunas encontradas: {cols_found}. Use um cabeçalho como: Vencimento, Data, Validade."]
+        }
 
     # 3. Iterar e Salvar
-    # Substitui NaN por None/String vazia para evitar erros
+    # Substitui NaN por string vazia para evitar erros de comparação
     df = df.fillna("")
 
     for index, row in df.iterrows():
         try:
-            # Pega o valor da coluna mapeada
-            name_val = str(row[col_name]).strip()
-
-            # Se a coluna usada para nome for a mesma do login (fallback), o nome será o login
-            name = name_val
-
-            # Define o Login
-            if col_login:
-                login = str(row[col_login]).strip()
-            else:
-                # Se não tem coluna de login, gera um baseado no nome
-                login = name.lower().replace(" ", "")
-
+            # --- Extrai valores brutos ---
+            name_val  = str(row[col_name]).strip()  if col_name  else ""
+            login_val = str(row[col_login]).strip() if col_login else ""
+            date_raw  = row[col_date] if col_date else ""
             phone_raw = row[col_phone] if col_phone else ""
-            date_raw = row[col_date]
-            notes = str(row[col_notes]) if col_notes else ""
-            server = str(row[col_server]) if col_server else ""
+            notes     = str(row[col_notes]).strip()  if col_notes  else ""
+            server    = str(row[col_server]).strip() if col_server else ""
 
-            if not name or not date_raw:
+            # Remove valores que Pandas converte para "nan" como string
+            _nan_vals = ("nan", "none", "nat", "<na>", "")
+            if name_val.lower()  in _nan_vals: name_val  = ""
+            if login_val.lower() in _nan_vals: login_val = ""
+            if notes.lower()     in _nan_vals: notes     = ""
+            if server.lower()    in _nan_vals: server    = ""
+
+            # Define nome e login com fallback cruzado
+            name  = name_val  or login_val
+            login = login_val or name_val
+
+            # Se ambos estão vazios, pula a linha
+            if not name:
+                errors.append(f"Linha {index + 2}: Nome/Login vazio — linha ignorada.")
+                continue
+
+            # Gera um login derivado do nome se ainda assim não tiver
+            if not login:
+                login = name.lower().replace(" ", "_")
+
+            # Verifica se a data está presente
+            if not date_raw or str(date_raw).strip() in ("", "nan", "None"):
+                errors.append(f"Linha {index + 2}: Data de vencimento vazia para '{name}' — linha ignorada.")
                 continue
 
             # Normalizações
-            whatsapp = normalize_phone(phone_raw)
+            whatsapp        = normalize_phone(phone_raw)
             expiration_date = normalize_date(date_raw)
 
             if not expiration_date:
-                errors.append(f"Linha {index + 2}: Data inválida ({date_raw}) para o cliente {name}")
+                errors.append(f"Linha {index + 2}: Data inválida '{date_raw}' para '{name}' — linha ignorada.")
                 continue
 
             # Verifica duplicidade (pelo Login)
@@ -282,10 +327,10 @@ async def import_clients_file(
 
             if existing:
                 # Atualiza dados existentes
-                existing.name = name
-                existing.whatsapp = whatsapp
+                existing.name            = name
+                existing.whatsapp        = whatsapp
                 existing.expiration_date = expiration_date
-                if notes: existing.notes = notes
+                if notes:  existing.notes       = notes
                 if server: existing.server_name = server
             else:
                 # Cria novo cliente
@@ -305,7 +350,8 @@ async def import_clients_file(
             imported_count += 1
 
         except Exception as e:
-            errors.append(f"Linha {index + 2}: Erro ao processar ({str(e)})")
+            errors.append(f"Linha {index + 2}: Erro inesperado ao processar ({str(e)})")
+            print(f"  Exceção na linha {index + 2}: {e}")
 
     db.commit()
 
