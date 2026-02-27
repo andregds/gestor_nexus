@@ -151,21 +151,24 @@ function setupSidebarAccordion() {
         toggle.addEventListener('click', (ev) => {
             ev.stopPropagation();
             const isOpen = submenu.classList.contains('is-open');
+
+            // Se for o submenu de Clientes e estiver fechando (clicando para abrir)
+            if (targetId === 'clientsSubmenu' && !isOpen) {
+                const currentPage = normalizePageName(window.location.pathname);
+                // Só navega se não estiver já em uma página de clientes
+                const clientPages = ['clients.html', 'import_clients.html', 'backup_clients.html', 'messages.html'];
+                if (!clientPages.includes(currentPage)) {
+                    // Navega para clients.html
+                    window.location.href = 'clients.html';
+                    return; // Para a execução aqui pois vai navegar
+                }
+            }
+
             // Fecha todos os outros
             closeOtherSubmenus(null);
             if (!isOpen) {
                 submenu.classList.add('is-open');
                 toggle.setAttribute('aria-expanded', 'true');
-
-                // Se for o submenu de Clientes, navega para clients.html
-                if (targetId === 'clientsSubmenu') {
-                    const currentPage = normalizePageName(window.location.href);
-                    // Só navega se não estiver já em uma página de clientes
-                    const clientPages = ['clients.html', 'import_clients.html', 'backup_clients.html', 'messages.html'];
-                    if (!clientPages.includes(currentPage)) {
-                        window.location.href = 'clients.html';
-                    }
-                }
             }
         });
     });
