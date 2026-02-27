@@ -17,7 +17,7 @@ DEFAULT_FEATURE_FLAGS = {
     "whatsapp": True,
     "telegram": True,
     "settings": True,
-    "resell": True,
+    "resell": False,
     # console de super admin permanece desativado para contas comuns
     "admin": False,
 }

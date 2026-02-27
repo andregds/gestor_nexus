@@ -1,56 +1,27 @@
 // frontend/assets/js/sidebar.js
-// v2.0 - Reescrito para corrigir isolamento entre menus Clientes e Produtos
+// v2.4 - Carregamento rápido: usa cache local primeiro, depois atualiza do servidor
 
 const DEFAULT_FEATURE_FLAGS = {
-    super_admin: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: true },
-    reseller:    { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
-    user:        { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
+    super_admin: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true,  admin: true  },
+    reseller:    { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: false, admin: false },
+    user:        { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: false, admin: false },
 };
 
 const USER_FEATURE_KEY = 'user_feature_flags';
 const USER_ROLE_KEY    = 'user_role';
-const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
+const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : 'http://127.0.0.1:8000';
 
 // ---------------------------------------------------------------------------
-// 1. CONTEXTO DO USUÁRIO
-// ---------------------------------------------------------------------------
-async function fetchCurrentUserContext() {
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-    const url = SIDEBAR_API_BASE ? `${SIDEBAR_API_BASE}/users/me` : '/users/me';
-    try {
-        const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        if (!resp.ok) return null;
-        const user = await resp.json();
-        if (user.role)  localStorage.setItem(USER_ROLE_KEY, user.role);
-        if (user.id)    localStorage.setItem('user_id', user.id);
-        const flags = user.effective_feature_flags || user.feature_flags;
-        if (flags) localStorage.setItem(USER_FEATURE_KEY, JSON.stringify(flags));
-        if (user.reseller_feature_flags)
-            localStorage.setItem('reseller_feature_flags', JSON.stringify(user.reseller_feature_flags));
-        return user;
-    } catch (e) {
-        console.warn('Falha ao carregar contexto do usuário', e);
-        return null;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 2. FEATURE FLAGS
+// 1. FEATURE FLAGS - Carregamento rápido do cache
 // ---------------------------------------------------------------------------
 function loadFeatureFlags() {
     try {
-        const storedPerRole = JSON.parse(localStorage.getItem('featureFlags') || '{}');
-        const userFlags     = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
-        const role          = localStorage.getItem(USER_ROLE_KEY) || 'user';
-        const roleDefaults  = {
-            super_admin: { ...DEFAULT_FEATURE_FLAGS.super_admin, ...(storedPerRole.super_admin || {}) },
-            reseller:    { ...DEFAULT_FEATURE_FLAGS.reseller,    ...(storedPerRole.reseller    || {}) },
-            user:        { ...DEFAULT_FEATURE_FLAGS.user,        ...(storedPerRole.user        || {}) },
-        };
-        return userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
+        const userFlags = JSON.parse(localStorage.getItem(USER_FEATURE_KEY) || 'null');
+        const role = localStorage.getItem(USER_ROLE_KEY) || 'user';
+        if (userFlags && typeof userFlags === 'object') return userFlags;
+        return { ...(DEFAULT_FEATURE_FLAGS[role] || DEFAULT_FEATURE_FLAGS.user) };
     } catch (e) {
-        return DEFAULT_FEATURE_FLAGS.user;
+        return { ...DEFAULT_FEATURE_FLAGS.user };
     }
 }
 
@@ -59,13 +30,18 @@ function applyFeatureFlags() {
 
     document.querySelectorAll('[data-feature-key]').forEach((el) => {
         const key = el.getAttribute('data-feature-key');
-        // Respeita o flag definido pelo super_admin; default true se não definido
-        const allowed = flags[key] !== false;
-        el.style.display = allowed ? '' : 'none';
+        const allowed = flags[key] === true;
+
+        if (allowed) {
+            el.style.display = '';
+            el.style.visibility = 'visible';
+        } else {
+            el.style.display = 'none';
+        }
     });
 
     // Oculta grupos cujos sub-itens estejam todos ocultos
-    document.querySelectorAll('.sidebar-group').forEach((group) => {
+    document.querySelectorAll('.sidebar-group[data-feature-key]').forEach((group) => {
         const submenu = group.querySelector('.sidebar-submenu');
         if (!submenu) return;
         const hasVisible = Array.from(submenu.querySelectorAll('a')).some(
@@ -74,8 +50,48 @@ function applyFeatureFlags() {
         group.style.display = hasVisible ? '' : 'none';
     });
 
-    // Redireciona se a página atual estiver oculta para o usuário
+    // Remove o CSS de preload
+    const preloadStyle = document.getElementById('sidebar-preload-hide');
+    if (preloadStyle) preloadStyle.remove();
+
+    // Redireciona se a página atual estiver oculta
     redirectIfPageHidden(flags);
+}
+
+// ---------------------------------------------------------------------------
+// 2. CONTEXTO DO USUÁRIO - Busca em background (não bloqueia renderização)
+// ---------------------------------------------------------------------------
+async function fetchCurrentUserContext() {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+
+    try {
+        const resp = await fetch(`${SIDEBAR_API_BASE}/users/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store'
+        });
+        if (!resp.ok) return null;
+
+        const user = await resp.json();
+        if (user.role) localStorage.setItem(USER_ROLE_KEY, user.role);
+        if (user.id) localStorage.setItem('user_id', user.id);
+
+        const flags = user.effective_feature_flags || user.feature_flags;
+        if (flags) {
+            const oldFlags = localStorage.getItem(USER_FEATURE_KEY);
+            const newFlags = JSON.stringify(flags);
+            localStorage.setItem(USER_FEATURE_KEY, newFlags);
+
+            // Se as flags mudaram, reaplicar
+            if (oldFlags !== newFlags) {
+                applyFeatureFlags();
+            }
+        }
+        return user;
+    } catch (e) {
+        console.warn('Falha ao carregar contexto do usuário', e);
+        return null;
+    }
 }
 
 function redirectIfPageHidden(flags) {
@@ -207,15 +223,17 @@ function ensureSuperAdminLink() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. INICIALIZAÇÃO
+// 6. INICIALIZAÇÃO OTIMIZADA
 // ---------------------------------------------------------------------------
-async function initSidebar() {
-    await fetchCurrentUserContext();
-    // NÃO manipula o DOM dos produtos (já está no HTML de cada página)
-    setupSidebarAccordion();   // 1º configura os toggles (fecha tudo)
+function initSidebar() {
+    // 1. Aplica flags IMEDIATAMENTE do cache local (muito rápido)
+    setupSidebarAccordion();
     ensureSuperAdminLink();
-    applyFeatureFlags();
-    markActiveLink();          // 2º abre apenas o submenu da página atual
+    applyFeatureFlags();  // Usa cache do localStorage
+    markActiveLink();
+
+    // 2. Busca flags atualizadas do servidor em BACKGROUND (não bloqueia)
+    fetchCurrentUserContext();  // Sem await - executa em paralelo
 }
 
 document.addEventListener('DOMContentLoaded', initSidebar);

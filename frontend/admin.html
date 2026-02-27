@@ -1,10 +1,11 @@
-<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin | Nexus Monitor</title>
+    <title>Super Admin | Gestor Nexus</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <style id="sidebar-preload-hide">[data-feature-key] { visibility: hidden !important; }</style>
     <style>
         /* ── Page-specific styles ── */
         .admin-header {
@@ -161,7 +162,28 @@
         .toast-msg.error   { background: var(--danger); }
         @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* Save button bar */
+        /* Scroll to top button */
+        #btnScrollTop {
+            position: fixed;
+            bottom: 5rem;
+            right: 1.5rem;
+            z-index: 9998;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s, background 0.2s;
+        }
+        #btnScrollTop:hover { background: var(--accent); }
+        #btnScrollTop.visible { display: flex; }
         .save-bar {
             display: flex;
             gap: 0.75rem;
@@ -209,7 +231,7 @@
 <body>
     <!-- Mobile Header -->
     <div class="navbar-mobile" style="display: none;">
-        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <div class="brand-logo">GESTOR<span>NEXUS</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
 
@@ -217,7 +239,7 @@
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <div class="brand-logo">GESTOR<span>NEXUS</span></div>
             </div>
             <nav class="sidebar-menu">
                 <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard">
@@ -225,7 +247,7 @@
                 </a>
 
                 <!-- Clientes com submenu -->
-                <div class="sidebar-group" id="clientsGroup">
+                <div class="sidebar-group" data-feature-key="clients">
                     <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button"
                         aria-expanded="false" aria-controls="clientsSubmenu">
                         <span class="sidebar-icon">👥</span> Clientes
@@ -389,6 +411,9 @@
     <!-- Toast container -->
     <div id="toastBar"></div>
 
+    <!-- Botão voltar ao topo -->
+    <button id="btnScrollTop" title="Voltar ao topo">⬆</button>
+
     <script src="assets/js/sidebar.js"></script>
     <script>
     (function () {
@@ -443,7 +468,8 @@
         // ── Render feature toggles ────────────────────────────────────────────
         function renderToggles(container, flags, idPrefix, disableAdmin) {
             container.innerHTML = FEATURES.map(f => {
-                const enabled  = flags[f.key] !== false;
+                // Somente true explícito habilita; false, undefined, null = desabilitado
+                const enabled  = flags[f.key] === true;
                 const locked   = disableAdmin && f.key === 'admin';
                 const inputId  = `${idPrefix}_${f.key}`;
                 return `
@@ -665,6 +691,25 @@
 
         // ── Init ──────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', checkAccess);
+
+        // ── Scroll to top button ──────────────────────────────────────────────
+        (function () {
+            const btn = document.getElementById('btnScrollTop');
+            if (!btn) return;
+            // Monitora scroll na janela e dentro do main-content
+            function onScroll() {
+                const scrollY = window.scrollY || document.documentElement.scrollTop;
+                const mainContent = document.querySelector('.main-content');
+                const mainScroll  = mainContent ? mainContent.scrollTop : 0;
+                btn.classList.toggle('visible', scrollY > 200 || mainScroll > 200);
+            }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            document.querySelector('.main-content')?.addEventListener('scroll', onScroll, { passive: true });
+            btn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                document.querySelector('.main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        })();
 
         // ── logout (compartilhado) ────────────────────────────────────────────
         window.logout = function () {

@@ -1,10 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Clientes | Nexus Monitor</title>
+    <title>Gestão de Clientes | Gestor Nexus</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <style id="sidebar-preload-hide">[data-feature-key] { visibility: hidden !important; }</style>
     <style>
         /* --- ESTILOS GERAIS --- */
         /* Container dos Cards de Resumo */
@@ -134,7 +135,7 @@
 <body>
     <!-- Mobile Header -->
     <div class="navbar-mobile" style="display: none;">
-        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <div class="brand-logo">GESTOR<span>NEXUS</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
 
@@ -142,10 +143,10 @@
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <div class="brand-logo">GESTOR<span>NEXUS</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard" data-feature-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
@@ -192,20 +193,20 @@
                 </div>
                 <!-- Fim do novo menu de Produtos -->
 
-                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations" data-feature-key="whatsapp">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="integrations" data-feature-key="telegram">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="settings" data-feature-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
                 </a>
 
-                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell">
                     <span class="sidebar-icon">💼</span> Revendedores
                 </a>
-                <a href="admin.html" class="sidebar-link" data-role-required="super_admin">
+                <a href="admin.html" class="sidebar-link" data-role-required="super_admin" data-feature-key="admin">
                     <span class="sidebar-icon">👑</span> Admin
                 </a>
             </nav>

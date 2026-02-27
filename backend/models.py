@@ -1,6 +1,7 @@
 # backend/models.py
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON, Float
 from sqlalchemy.orm import relationship, backref
+from sqlalchemy.ext.mutable import MutableDict
 from database import Base
 
 
@@ -23,27 +24,26 @@ class User(Base):
     })
 
     # Feature flags controlam visibilidade de menus/páginas por usuário
-    feature_flags = Column(JSON, default={
+    feature_flags = Column(MutableDict.as_mutable(JSON), default=lambda: {
         "dashboard": True,
         "clients": True,
         "products": True,
         "whatsapp": True,
         "telegram": True,
         "settings": True,
-        "resell": True,
-        # admin continua desligado por padrão para não expor o console a quem não for super_admin
+        "resell": False,
         "admin": False,
     })
 
     # Padrão opcional aplicado aos filhos de um revendedor (herdado quando não houver override no filho)
-    reseller_feature_flags = Column(JSON, default={
+    reseller_feature_flags = Column(MutableDict.as_mutable(JSON), default=lambda: {
         "dashboard": True,
         "clients": True,
         "products": True,
         "whatsapp": True,
         "telegram": True,
         "settings": True,
-        "resell": True,
+        "resell": False,
         "admin": False,
     })
 

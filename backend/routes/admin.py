@@ -28,7 +28,7 @@ def list_all_users(db: Session = Depends(get_db)):
     # Garante que feature_flags não seja None para serialização
     import json
     _DEFAULT = {"dashboard":True,"clients":True,"products":True,"whatsapp":True,
-                "telegram":True,"settings":True,"resell":True,"admin":False}
+                "telegram":True,"settings":True,"resell":False,"admin":False}
     for u in users:
         if not isinstance(u.feature_flags, dict):
             u.feature_flags = _DEFAULT.copy()
@@ -95,17 +95,17 @@ def update_feature_flags(user_id: int, payload: FeatureFlagsUpdate, db: Session 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    current_flags = user.feature_flags if isinstance(user.feature_flags, dict) else {}
+    # Começa com os defaults e sobrescreve com o que veio no payload
+    new_flags = DEFAULT_FEATURE_FLAGS.copy()
     for key, value in payload.feature_flags.items():
-        if key not in DEFAULT_FEATURE_FLAGS:
-            continue
-        if isinstance(value, bool):
-            current_flags[key] = value
-    for key, default_value in DEFAULT_FEATURE_FLAGS.items():
-        current_flags.setdefault(key, default_value)
+        if key in DEFAULT_FEATURE_FLAGS and isinstance(value, bool):
+            new_flags[key] = value
+    # Super admin nunca perde o console
     if user.role == "super_admin":
-        current_flags["admin"] = True
-    user.feature_flags = current_flags
+        new_flags["admin"] = True
+    from sqlalchemy.orm.attributes import flag_modified
+    user.feature_flags = new_flags
+    flag_modified(user, "feature_flags")
     db.commit()
     db.refresh(user)
     return {"message": "Feature flags atualizados", "feature_flags": user.feature_flags}
@@ -117,15 +117,14 @@ def update_reseller_feature_flags(user_id: int, payload: ResellerFeatureFlagsUpd
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    current_flags = user.reseller_feature_flags if isinstance(user.reseller_feature_flags, dict) else {}
+    # Começa com os defaults e sobrescreve com o que veio no payload
+    new_flags = DEFAULT_RESELLER_FEATURE_FLAGS.copy()
     for key, value in payload.reseller_feature_flags.items():
-        if key not in DEFAULT_RESELLER_FEATURE_FLAGS:
-            continue
-        if isinstance(value, bool):
-            current_flags[key] = value
-    for key, default_value in DEFAULT_RESELLER_FEATURE_FLAGS.items():
-        current_flags.setdefault(key, default_value)
-    user.reseller_feature_flags = current_flags
+        if key in DEFAULT_RESELLER_FEATURE_FLAGS and isinstance(value, bool):
+            new_flags[key] = value
+    from sqlalchemy.orm.attributes import flag_modified
+    user.reseller_feature_flags = new_flags
+    flag_modified(user, "reseller_feature_flags")
     db.commit()
     db.refresh(user)
     return {"message": "Padrão de revendedor atualizado", "reseller_feature_flags": user.reseller_feature_flags}

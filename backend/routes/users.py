@@ -24,7 +24,7 @@ DEFAULT_FEATURE_FLAGS = {
     "whatsapp": True,
     "telegram": True,
     "settings": True,
-    "resell": True,
+    "resell": False,
     # somente super admin libera o console
     "admin": False,
 }
@@ -36,6 +36,7 @@ def _safe_dict(value, default):
 
 
 def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]):
+    # Começa com todos os defaults (todos False exceto os básicos)
     effective = DEFAULT_FEATURE_FLAGS.copy()
 
     # Herda padrão do dono (quando o dono é revendedor) caso exista
@@ -45,10 +46,16 @@ def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]
         if parent and isinstance(parent.reseller_feature_flags, dict):
             parent_flags = parent.reseller_feature_flags
     if parent_flags:
-        effective.update(parent_flags)
+        # Aplica somente as chaves definidas no parent, não sobrescreve com valores ausentes
+        for key, value in parent_flags.items():
+            if isinstance(value, bool):
+                effective[key] = value
 
-    # Aplica overrides do próprio usuário
-    effective.update(user_flags or {})
+    # Aplica overrides do próprio usuário (somente valores explícitos)
+    if user_flags:
+        for key, value in user_flags.items():
+            if isinstance(value, bool):
+                effective[key] = value
 
     # Super admin sempre enxerga o console
     if user.role == "super_admin":
