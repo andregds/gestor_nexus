@@ -152,10 +152,9 @@ function setupSidebarAccordion() {
             ev.stopPropagation();
             const isOpen = submenu.classList.contains('is-open');
 
-            // Se for o submenu de Clientes e estiver fechando (clicando para abrir)
-            if (targetId === 'clientsSubmenu' && !isOpen) {
+            // Se for o submenu de Clientes, SEMPRE navega para clients.html (se não estiver lá)
+            if (targetId === 'clientsSubmenu') {
                 const currentPage = normalizePageName(window.location.pathname);
-                // Só navega se não estiver já em uma página de clientes
                 const clientPages = ['clients.html', 'import_clients.html', 'backup_clients.html', 'messages.html'];
                 if (!clientPages.includes(currentPage)) {
                     // Navega para clients.html
@@ -197,6 +196,7 @@ function markActiveLink() {
 
     // Remove todas as marcações ativas
     document.querySelectorAll('.sidebar-menu a').forEach((link) => link.classList.remove('active'));
+    document.querySelectorAll('.sidebar-menu .sidebar-toggle').forEach((btn) => btn.classList.remove('active'));
 
     // Encontra o link correspondente à página atual
     let activeLink = null;
@@ -204,6 +204,24 @@ function markActiveLink() {
         const page = normalizePageName(link.getAttribute('href'));
         if (page && page === currentPage) activeLink = link;
     });
+
+    // Caso especial: clients.html - marca o botão Clientes como ativo e abre o submenu
+    const clientPages = ['clients.html', 'import_clients.html', 'backup_clients.html', 'messages.html'];
+    if (clientPages.includes(currentPage)) {
+        const clientsSubmenu = document.getElementById('clientsSubmenu');
+        if (clientsSubmenu) {
+            const group = clientsSubmenu.closest('.sidebar-group');
+            const toggle = group ? group.querySelector('.sidebar-toggle') : null;
+            clientsSubmenu.classList.add('is-open');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'true');
+                // Marca o botão Clientes como ativo se estamos em clients.html
+                if (currentPage === 'clients.html') {
+                    toggle.classList.add('active');
+                }
+            }
+        }
+    }
 
     if (activeLink) {
         activeLink.classList.add('active');
