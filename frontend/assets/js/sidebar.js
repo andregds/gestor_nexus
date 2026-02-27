@@ -156,6 +156,16 @@ function setupSidebarAccordion() {
             if (!isOpen) {
                 submenu.classList.add('is-open');
                 toggle.setAttribute('aria-expanded', 'true');
+
+                // Se for o submenu de Clientes, navega para clients.html
+                if (targetId === 'clientsSubmenu') {
+                    const currentPage = normalizePageName(window.location.href);
+                    // Só navega se não estiver já em uma página de clientes
+                    const clientPages = ['clients.html', 'import_clients.html', 'backup_clients.html', 'messages.html'];
+                    if (!clientPages.includes(currentPage)) {
+                        window.location.href = 'clients.html';
+                    }
+                }
             }
         });
     });
