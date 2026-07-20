@@ -76,6 +76,44 @@
         .schedule-info { display: flex; flex-direction: column; line-height: 1.1; }
         .schedule-label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold; }
         .schedule-time { font-size: 1.1rem; font-weight: bold; color: var(--primary); }
+        .expiration-filter-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: white;
+            padding: 10px 14px;
+            border-radius: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+            min-width: 290px;
+        }
+        .expiration-filter-label {
+            font-size: 0.72rem;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .expiration-filter-fields {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .expiration-filter-fields input {
+            flex: 1;
+            min-width: 120px;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .expiration-filter-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
 
         /* Switch Toggle */
         .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
@@ -94,6 +132,21 @@
         .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
         .client-note-inline { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
         .action-buttons { display: flex; gap: 5px; }
+        .sort-th {
+            white-space: nowrap;
+        }
+        .sort-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            margin-left: 6px;
+            font-size: 0.9rem;
+            padding: 0;
+        }
+        .sort-btn:hover {
+            color: var(--primary);
+        }
 
         /* Modais */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
@@ -101,6 +154,34 @@
         .close-modal { position: absolute; top: 1rem; right: 1rem; cursor: pointer; font-size: 1.5rem; }
         .dynamic-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .dynamic-field-row input { flex: 1; }
+
+        /* --- NOVO CSS PARA O SUBMENU --- */
+        .submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-left: 3rem; /* Indentação para parecer filho */
+            margin-bottom: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.1); /* Fundo levemente mais escuro */
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .submenu-link {
+            color: #94a3b8; /* Cor mais apagada */
+            text-decoration: none;
+            font-size: 0.85rem;
+            padding: 5px 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .submenu-link:hover {
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -117,20 +198,65 @@
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
-                <a href="clients.html" class="sidebar-link active">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <a href="whatsapp.html" class="sidebar-link">
+
+                <!-- MENU CLIENTES -->
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink active" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Adicionado o novo menu de Produtos -->
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+                <!-- Fim do novo menu de Produtos -->
+
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html" class="sidebar-link">
+                <a href="dashboard.html#settings" class="sidebar-link" data-permission-key="settings">
                     <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
+                    <span class="sidebar-icon">💼</span> Revendedores
                 </a>
             </nav>
             <div class="user-profile">
@@ -184,13 +310,24 @@
                     <input type="text" id="searchInput" placeholder="Buscar por Login ou WhatsApp..." oninput="applyFilters()">
                 </div>
 
+                <div class="expiration-filter-widget">
+                    <div class="expiration-filter-label">Vencimento entre datas</div>
+                    <div class="expiration-filter-fields">
+                        <input type="date" id="expirationStart" title="Data inicial" onchange="applyExpirationRangeFilter()">
+                        <input type="date" id="expirationEnd" title="Data final" onchange="applyExpirationRangeFilter()">
+                    </div>
+                    <div class="expiration-filter-actions">
+                        <button class="btn btn-secondary btn-sm" type="button" onclick="clearExpirationRangeFilter()">Limpar</button>
+                    </div>
+                </div>
+
                 <!-- WIDGET DE AGENDAMENTO (NOVO) -->
                 <div class="schedule-widget">
                     <div class="schedule-info">
                         <span class="schedule-label">Envio Automático</span>
                         <span class="schedule-time" id="displayScheduleTime">--:--</span>
                     </div>
-                    
+
                     <label class="switch" title="Ativar/Desativar Envio Automático">
                         <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
                         <span class="slider round"></span>
@@ -345,6 +482,7 @@
         </div>
     </div>
 
+    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
 
     <script>
@@ -354,6 +492,12 @@
 
         let allClients = [];
         let currentFilter = 'all';
+        let expirationRangeStart = '';
+        let expirationRangeEnd = '';
+        let sortState = {
+            key: null,
+            direction: 'asc'
+        };
 
         document.addEventListener('DOMContentLoaded', () => {
             loadClients();
@@ -411,7 +555,7 @@
 
         function applyFilters() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = allClients.filter(client => {
+            let filtered = allClients.filter(client => {
                 let statusMatch = false;
                 if (currentFilter === 'all') statusMatch = true;
                 else if (currentFilter === 'expired') statusMatch = client.diffDays < 0;
@@ -424,9 +568,93 @@
                     client.login.toLowerCase().includes(searchTerm) ||
                     client.whatsapp.includes(searchTerm) ||
                     client.name.toLowerCase().includes(searchTerm);
-                return statusMatch && searchMatch;
+
+                const expirationMatch = matchesExpirationRange(client.expiration_date);
+
+                return statusMatch && searchMatch && expirationMatch;
             });
+
+            filtered = sortClients(filtered);
             renderTable(filtered);
+        }
+
+        function matchesExpirationRange(expirationDate) {
+            if (!expirationRangeStart && !expirationRangeEnd) {
+                return true;
+            }
+
+            const value = expirationDate ? expirationDate.slice(0, 10) : '';
+            if (!value) {
+                return false;
+            }
+
+            if (expirationRangeStart && value < expirationRangeStart) {
+                return false;
+            }
+
+            if (expirationRangeEnd && value > expirationRangeEnd) {
+                return false;
+            }
+
+            return true;
+        }
+
+        function applyExpirationRangeFilter() {
+            const start = document.getElementById('expirationStart').value;
+            const end = document.getElementById('expirationEnd').value;
+
+            if (start && end && start > end) {
+                alert('A data inicial não pode ser maior que a data final.');
+                return;
+            }
+
+            expirationRangeStart = start;
+            expirationRangeEnd = end;
+            applyFilters();
+        }
+
+        function clearExpirationRangeFilter() {
+            expirationRangeStart = '';
+            expirationRangeEnd = '';
+            document.getElementById('expirationStart').value = '';
+            document.getElementById('expirationEnd').value = '';
+            applyFilters();
+        }
+
+        function toggleSort(key) {
+            if (sortState.key === key) {
+                sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState.key = key;
+                sortState.direction = 'asc';
+            }
+            applyFilters();
+        }
+
+        function sortClients(clients) {
+            if (!sortState.key) {
+                return clients;
+            }
+
+            const direction = sortState.direction === 'desc' ? -1 : 1;
+            return clients.slice().sort((a, b) => {
+                let aValue;
+                let bValue;
+
+                if (sortState.key === 'expiration') {
+                    aValue = new Date(a.expiration_date).getTime();
+                    bValue = new Date(b.expiration_date).getTime();
+                } else if (sortState.key === 'status') {
+                    aValue = a.diffDays;
+                    bValue = b.diffDays;
+                } else {
+                    return 0;
+                }
+
+                if (aValue < bValue) return -1 * direction;
+                if (aValue > bValue) return 1 * direction;
+                return 0;
+            });
         }
 
         function renderTable(clients) {
@@ -443,8 +671,18 @@
                             <th>Nome / Obs</th>
                             <th>Login</th>
                             <th>WhatsApp</th>
-                            <th>Vencimento</th>
-                            <th>Status</th>
+                            <th class="sort-th">
+                                Vencimento
+                                <button type="button" class="sort-btn" title="Ordenar por vencimento" onclick="toggleSort('expiration')">
+                                    ${sortState.key === 'expiration' ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕'}
+                                </button>
+                            </th>
+                            <th class="sort-th">
+                                Status
+                                <button type="button" class="sort-btn" title="Ordenar por status" onclick="toggleSort('status')">
+                                    ${sortState.key === 'status' ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕'}
+                                </button>
+                            </th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -703,6 +941,7 @@
 
         // 1. Abre o modal para escolher o filtro
         function runBatchProcess() {
+            updateBatchFilterWithMessages();
             document.getElementById('batchModal').style.display = 'flex';
         }
 
@@ -733,6 +972,53 @@
                 console.error(error);
                 alert("Erro de conexão ao tentar executar a rotina.");
             }
+        }
+
+        // Adiciona opções de mensagens personalizadas ao select de Critério de Envio
+        async function updateBatchFilterWithMessages() {
+            const batchFilter = document.getElementById('batchFilter');
+            if (!batchFilter) return;
+            // Salva as opções padrão
+            const defaultOptions = [
+                { value: 'default', text: '⚡ Padrão (Respeitar configuração de cada cliente)' },
+                { value: '3', text: '📅 Vencimento em 3 Dias' },
+                { value: '2', text: '📅 Vencimento em 2 Dias' },
+                { value: '1', text: '⏰ Vencimento em 1 Dia (Amanhã)' },
+                { value: '0', text: '🚨 Vencimento Hoje' },
+                { value: 'expired', text: '❌ Vencidos (Ontem ou antes)' }
+            ];
+            // Limpa o select
+            batchFilter.innerHTML = '';
+            // Adiciona as opções padrão
+            defaultOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                batchFilter.appendChild(option);
+            });
+            // Busca mensagens do backend
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('http://127.0.0.1:8000/api/messages', {
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+                });
+                if (response.ok) {
+                    const messages = await response.json();
+                    // Adiciona apenas mensagens não padrão (is_default === false)
+                    messages.filter(msg => !msg.is_default).forEach(msg => {
+                        const option = document.createElement('option');
+                        option.value = 'msg_' + msg.id;
+                        option.textContent = `💬 ${msg.type ? capitalizeFirstLetter(msg.type) : 'Mensagem'}: ${msg.content.substring(0, 30)}...`;
+                        batchFilter.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                // Silencioso
+            }
+        }
+        // Função utilitária para capitalizar
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
         }
     </script>
 </body>
