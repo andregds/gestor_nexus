@@ -9,7 +9,9 @@ const DEFAULT_FEATURE_FLAGS = {
 
 const USER_FEATURE_KEY = 'user_feature_flags';
 const USER_ROLE_KEY    = 'user_role';
-const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL) ? API_URL : '';
+const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL)
+    ? API_URL
+    : ((['localhost', '127.0.0.1'].includes(window.location.hostname)) ? 'http://localhost:8000' : window.location.origin);
 
 // ---------------------------------------------------------------------------
 // 1. CONTEXTO DO USUÁRIO

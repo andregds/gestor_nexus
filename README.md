@@ -9,7 +9,7 @@
 
 ## 📝 Sobre o Projeto
 
-O **Nexus Monitor** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais (como IPTV, Streaming ou SaaS).
+O **Nexus Monitor** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais e assinaturas.
 
 O sistema verifica periodicamente o status dos serviços e, em caso de queda ou lentidão, notifica o administrador via WhatsApp (integração com Evolution API) e Telegram. Além disso, permite o cadastro de clientes com datas de vencimento, enviando lembretes automáticos de cobrança.
 

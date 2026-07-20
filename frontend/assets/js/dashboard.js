@@ -48,6 +48,15 @@ function loadPage() {
 
 function getRequestedSection() {
     const currentPage = window.location.pathname.split('/').pop() || '';
+    if (currentPage === 'produtos.html') {
+        return 'products';
+    }
+    if (currentPage === 'categorias.html' || currentPage === 'categories.html') {
+        return 'categories';
+    }
+    if (currentPage === 'planos.html' || currentPage === 'plans.html') {
+        return 'plans';
+    }
     if (currentPage === 'whatsapp.html') {
         return 'whatsapp';
     }
