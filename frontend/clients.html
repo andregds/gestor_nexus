@@ -33,6 +33,21 @@
         .card-expired .summary-count { color: var(--danger); }
         .card-warning .summary-count { color: var(--warning); }
         .card-info .summary-count { color: var(--primary); }
+        .card-paid .summary-count { color: var(--success); }
+        .card-paid.alerting {
+            animation: pulse-alert 1s infinite;
+            background: linear-gradient(135deg, #f59e0b, #fb7185);
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+        }
+        .card-paid.alerting .summary-count,
+        .card-paid.alerting .summary-label {
+            color: var(--success);
+        }
+        @keyframes pulse-alert {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
 
         /* Barra de Ferramentas */
         .toolbar {
@@ -125,11 +140,12 @@
 
         /* Tabela */
         .table-container { background: white; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow-x: auto; }
-        .clients-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        .clients-table { width: 100%; border-collapse: collapse; min-width: 980px; }
         .clients-table th, .clients-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
         .clients-table th { background-color: #f8fafc; font-weight: 600; color: var(--text-dark); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
         .clients-table tr:hover { background-color: #f9f9f9; }
         .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
+        .payment-status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
         .client-note-inline { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
         .action-buttons { display: flex; gap: 5px; }
         .sort-th {
@@ -241,6 +257,9 @@
                         <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
                             <span class="sidebar-icon">🧩</span> Recursos
                         </a>
+                        <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">💳</span> API de Pagamentos
+                        </a>
                     </div>
                 </div>
                 <!-- Fim do novo menu de Produtos -->
@@ -300,6 +319,10 @@
                 <div class="summary-card card-info" onclick="filterByStatus('4', this)">
                     <div class="summary-count" id="count-4">0</div>
                     <div class="summary-label">Vence em 4 Dias</div>
+                </div>
+                <div class="summary-card card-paid" onclick="filterByPaymentStatus('pago', this)">
+                    <div class="summary-count" id="count-paid">0</div>
+                    <div class="summary-label">Pagos</div>
                 </div>
             </div>
 
@@ -396,12 +419,23 @@
             </div>
 
             <div class="form-group">
-                <label>Servidor / Plano</label>
-                <input type="text" id="clientServer" placeholder="Ex: Servidor Premium 4K">
+                <label>Produto</label>
+                <select id="clientProduct" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;"></select>
             </div>
             <div class="form-group">
-                <label>URL M3U8 (Opcional)</label>
-                <input type="text" id="clientM3u8" placeholder="http://servidor.com/get.php?username=...">
+                <label>Valor</label>
+                <input type="number" id="clientValue" min="0" step="0.01" placeholder="Selecionado automaticamente">
+                <small style="color: #999; font-size: 0.75rem;">Você pode ajustar este valor para aplicar desconto.</small>
+            </div>
+            <div class="form-group">
+                <label>Status do pagamento</label>
+                <select id="clientPaymentStatus" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                    <option value="concluido">Concluído</option>
+                    <option value="atrasado">Atrasado</option>
+                    <option value="cancelado">Cancelado</option>
+                </select>
             </div>
             <div class="form-group">
                 <label>Observações</label>
@@ -491,18 +525,105 @@
         // ==========================================
 
         let allClients = [];
+        let allProducts = [];
+        let productById = {};
         let currentFilter = 'all';
+        let currentPaymentFilter = 'all';
         let expirationRangeStart = '';
         let expirationRangeEnd = '';
+        let clientsRefreshTimer = null;
         let sortState = {
             key: null,
             direction: 'asc'
         };
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadClients();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadProductsForClients();
+            await loadClients();
+            clientsRefreshTimer = setInterval(loadClients, 60000);
             loadScheduleStatus(); // Carrega o status do agendamento ao iniciar
         });
+
+        function money(value) {
+            const numeric = Number(value || 0);
+            return numeric.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function getProductLabel(client) {
+            if (client.product_id && productById[client.product_id]) {
+                return productById[client.product_id].name;
+            }
+            if (client.server_name) {
+                return client.server_name;
+            }
+            return 'Sem produto';
+        }
+
+        function syncClientValueWithProduct() {
+            const select = document.getElementById('clientProduct');
+            const input = document.getElementById('clientValue');
+            const product = productById[select.value];
+            if (product) {
+                input.value = Number(product.price || 0).toFixed(2);
+            } else {
+                input.value = '';
+            }
+        }
+
+        function paymentStatusLabel(value) {
+            const map = {
+                pendente: 'Pendente',
+                pago: 'Pago',
+                concluido: 'Concluído',
+                atrasado: 'Atrasado',
+                cancelado: 'Cancelado'
+            };
+            return map[normalizePaymentStatus(value)] || 'Pendente';
+        }
+
+        function paymentStatusColor(value) {
+            const normalized = normalizePaymentStatus(value);
+            if (normalized === 'pago') return 'var(--success)';
+            if (normalized === 'concluido') return 'var(--primary)';
+            if (normalized === 'atrasado') return 'var(--danger)';
+            if (normalized === 'cancelado') return 'var(--neutral)';
+            return 'var(--warning)';
+        }
+
+        function normalizePaymentStatus(value) {
+            return String(value || 'pendente')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+        }
+
+        function getEffectivePaymentStatus(client) {
+            const normalized = normalizePaymentStatus(client && client.payment_status);
+            if (client && client.diffDays < 0 && normalized !== 'cancelado') {
+                return 'pendente';
+            }
+            return normalized;
+        }
+
+        async function loadProductsForClients() {
+            const response = await apiFetch('/products');
+            if (response.status === 401) {
+                window.location.href = 'login.html';
+                return;
+            }
+            if (!response.ok) {
+                throw new Error('Falha ao carregar produtos.');
+            }
+            allProducts = await response.json();
+            productById = {};
+            const select = document.getElementById('clientProduct');
+            select.innerHTML = '<option value="">Selecione um produto</option>' + allProducts.map(product => {
+                productById[product.id] = product;
+                return `<option value="${product.id}">${product.name} - ${money(product.price)}</option>`;
+            }).join('');
+            select.addEventListener('change', syncClientValueWithProduct);
+        }
 
         async function loadClients() {
             const list = document.getElementById('clientsList');
@@ -530,13 +651,15 @@
         }
 
         function updateDashboardCounts() {
-            const counts = { all: allClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
-            allClients.forEach(c => {
+            const baseClients = allClients.filter(client => matchesExpirationRange(client.expiration_date));
+            const counts = { all: baseClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0, paid: 0 };
+            baseClients.forEach(c => {
                 if (c.diffDays < 0) counts.expired++;
                 if (c.diffDays === 1) counts.d1++;
                 if (c.diffDays === 2) counts.d2++;
                 if (c.diffDays === 3) counts.d3++;
                 if (c.diffDays === 4) counts.d4++;
+                if (getEffectivePaymentStatus(c) === 'pago') counts.paid++;
             });
             document.getElementById('count-all').textContent = counts.all;
             document.getElementById('count-expired').textContent = counts.expired;
@@ -544,12 +667,23 @@
             document.getElementById('count-2').textContent = counts.d2;
             document.getElementById('count-3').textContent = counts.d3;
             document.getElementById('count-4').textContent = counts.d4;
+            document.getElementById('count-paid').textContent = counts.paid;
+            document.querySelector('.card-paid').classList.toggle('alerting', counts.paid > 0);
         }
 
         function filterByStatus(status, cardElement) {
             currentFilter = status;
+            currentPaymentFilter = 'all';
             document.querySelectorAll('.summary-card').forEach(c => c.classList.remove('active'));
             if(cardElement) cardElement.classList.add('active');
+            applyFilters();
+        }
+
+        function filterByPaymentStatus(status, cardElement) {
+            currentPaymentFilter = status;
+            currentFilter = 'all';
+            document.querySelectorAll('.summary-card').forEach(c => c.classList.remove('active'));
+            if (cardElement) cardElement.classList.add('active');
             applyFilters();
         }
 
@@ -564,6 +698,10 @@
                 else if (currentFilter === '3') statusMatch = client.diffDays === 3;
                 else if (currentFilter === '4') statusMatch = client.diffDays === 4;
 
+                const paymentMatch =
+                    currentPaymentFilter === 'all' ||
+                    getEffectivePaymentStatus(client) === currentPaymentFilter;
+
                 const searchMatch =
                     client.login.toLowerCase().includes(searchTerm) ||
                     client.whatsapp.includes(searchTerm) ||
@@ -571,7 +709,7 @@
 
                 const expirationMatch = matchesExpirationRange(client.expiration_date);
 
-                return statusMatch && searchMatch && expirationMatch;
+                return statusMatch && paymentMatch && searchMatch && expirationMatch;
             });
 
             filtered = sortClients(filtered);
@@ -610,6 +748,7 @@
 
             expirationRangeStart = start;
             expirationRangeEnd = end;
+            updateDashboardCounts();
             applyFilters();
         }
 
@@ -618,6 +757,7 @@
             expirationRangeEnd = '';
             document.getElementById('expirationStart').value = '';
             document.getElementById('expirationEnd').value = '';
+            updateDashboardCounts();
             applyFilters();
         }
 
@@ -678,7 +818,10 @@
                                 </button>
                             </th>
                             <th class="sort-th">
-                                Status
+                                STATUS
+                            </th>
+                            <th class="sort-th">
+                                Status da assinatura
                                 <button type="button" class="sort-btn" title="Ordenar por status" onclick="toggleSort('status')">
                                     ${sortState.key === 'status' ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕'}
                                 </button>
@@ -697,16 +840,24 @@
                 else if (client.diffDays <= 3) { statusColor = 'var(--warning)'; }
 
                 const notesHtml = client.notes ? `<span class="client-note-inline">📝 ${client.notes}</span>` : '';
+                const productHtml = `<span class="client-note-inline">📦 ${getProductLabel(client)}</span>`;
+                const valueHtml = client.m3u8_url ? `<span class="client-note-inline">💲 ${money(client.m3u8_url)}</span>` : '';
+                const paymentStatus = getEffectivePaymentStatus(client);
+                const paymentHtml = `<span class="client-note-inline">STATUS: ${paymentStatusLabel(paymentStatus)}</span>`;
 
                 return `
                 <tr>
                     <td>
                         <div style="font-weight: bold; color: var(--text-dark);">${client.name}</div>
+                        ${productHtml}
+                        ${valueHtml}
+                        ${paymentHtml}
                         ${notesHtml}
                     </td>
                     <td>${client.login}</td>
                     <td>${client.whatsapp}</td>
                     <td>${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
+                    <td><span class="payment-status-badge" style="background: ${paymentStatusColor(paymentStatus)};">${paymentStatusLabel(paymentStatus)}</span></td>
                     <td><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
                     <td>
                         <div class="action-buttons">
@@ -742,9 +893,15 @@
                 document.getElementById('clientReminderDays').value = client.reminder_days_before || 3;
                 // --------------------------------------------------------------------
 
-                document.getElementById('clientServer').value = client.server_name;
+                const productSelect = document.getElementById('clientProduct');
+                const fallbackProduct = client.product_id || (function () {
+                    const matched = allProducts.find(function (product) { return product.name === client.server_name; });
+                    return matched ? matched.id : '';
+                })();
+                productSelect.value = fallbackProduct || '';
+                document.getElementById('clientPaymentStatus').value = getEffectivePaymentStatus(client);
                 document.getElementById('clientNotes').value = client.notes || '';
-                document.getElementById('clientM3u8').value = client.m3u8_url || '';
+                document.getElementById('clientValue').value = client.m3u8_url || (fallbackProduct && productById[fallbackProduct] ? Number(productById[fallbackProduct].price || 0).toFixed(2) : '');
                 if (client.custom_fields) {
                     Object.entries(client.custom_fields).forEach(([key, value]) => addCustomFieldInput(key, value));
                 }
@@ -752,11 +909,14 @@
                 title.textContent = "Novo Cliente";
                 document.getElementById('clientId').value = '';
                 document.querySelectorAll('#clientModal input, #clientModal textarea').forEach(i => i.value = '');
+                document.querySelectorAll('#clientModal select').forEach(i => i.value = '');
                 document.getElementById('clientNotificationChannel').value = 'whatsapp';
+                document.getElementById('clientPaymentStatus').value = 'pendente';
 
                 // --- NOVA LINHA: Define o padrão como 3 para novos clientes ---
                 document.getElementById('clientReminderDays').value = '3';
                 // --------------------------------------------------------------
+                syncClientValueWithProduct();
             }
             modal.style.display = 'flex';
         }
@@ -783,6 +943,9 @@
                 const val = row.querySelector('.field-value').value.trim();
                 if (key) customFields[key] = val;
             });
+            const productSelect = document.getElementById('clientProduct');
+            const productId = parseInt(productSelect.value, 10) || null;
+            const selectedProduct = productId ? productById[productId] : null;
 
             const data = {
                 name: document.getElementById('clientName').value,
@@ -790,18 +953,21 @@
                 whatsapp: document.getElementById('clientWhatsapp').value,
                 notification_channel: document.getElementById('clientNotificationChannel').value,
                 expiration_date: document.getElementById('clientExpiration').value,
+                product_id: productId,
 
                 // --- NOVA LINHA: Envia a configuração de dias para o backend ---
                 reminder_days_before: document.getElementById('clientReminderDays').value,
                 // ---------------------------------------------------------------
 
-                server_name: document.getElementById('clientServer').value,
+                server_name: selectedProduct ? selectedProduct.name : '',
                 notes: document.getElementById('clientNotes').value,
-                m3u8_url: document.getElementById('clientM3u8').value,
+                m3u8_url: document.getElementById('clientValue').value,
+                payment_status: document.getElementById('clientPaymentStatus').value,
                 custom_fields: customFields
             };
 
             if (!data.name || !data.login || !data.expiration_date) { alert("Preencha os campos obrigatórios."); return; }
+            if (!data.product_id) { alert("Selecione um produto."); return; }
 
             const method = id ? 'PUT' : 'POST';
             const url = id ? `/clients/${id}` : '/clients/';
@@ -829,13 +995,15 @@
             const modal = document.getElementById('detailsModal');
             const content = document.getElementById('detailsContent');
             let customFieldsHtml = '';
+            const productLabel = getProductLabel(client);
+            const valueLabel = client.m3u8_url ? money(client.m3u8_url) : '';
+            const paymentStatus = getEffectivePaymentStatus(client);
             if (client.custom_fields && Object.keys(client.custom_fields).length > 0) {
                 customFieldsHtml = `<h4 style="margin-top:10px; border-bottom:1px solid #eee;">Infos Adicionais</h4>`;
                 Object.entries(client.custom_fields).forEach(([key, value]) => {
                     customFieldsHtml += `<div><strong>${key}:</strong> ${value}</div>`;
                 });
             }
-            const m3u8Html = client.m3u8_url ? `<div style="background: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 0.85rem;"><strong>M3U8:</strong> <a href="${client.m3u8_url}" target="_blank">${client.m3u8_url}</a></div>` : '';
             const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
 
             content.innerHTML = `
@@ -845,10 +1013,12 @@
                     <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
                     <div><strong>Canal:</strong> ${channelIcon}</div>
                     <div><strong>Vencimento:</strong> ${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</div>
-                    <div><strong>Servidor:</strong> ${client.server_name}</div>
+                    <div><strong>Produto:</strong> ${productLabel}</div>
+                    <div><strong>Valor:</strong> ${valueLabel}</div>
+                    <div><strong>Status do pagamento:</strong> ${paymentStatusLabel(paymentStatus)}</div>
                 </div>
                 ${client.notes ? `<div style="margin-top:10px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:5px;"><strong>Obs:</strong> ${client.notes}</div>` : ''}
-                ${customFieldsHtml} ${m3u8Html}
+                ${customFieldsHtml}
             `;
             modal.style.display = 'flex';
         }
@@ -953,6 +1123,8 @@
         // 3. Executa o envio com o filtro selecionado
         async function executeBatchProcess() {
             const filterType = document.getElementById('batchFilter').value;
+            const startDate = document.getElementById('expirationStart').value;
+            const endDate = document.getElementById('expirationEnd').value;
 
             closeBatchModal();
             showNotification("Iniciando envio em massa...", "info");
@@ -960,7 +1132,12 @@
             try {
                 // Enviamos o filtro via Query Parameter para o backend
                 // Ex: /clients/process-now?filter_type=3
-                const response = await apiFetch(`/clients/process-now?filter_type=${filterType}`, { method: 'POST' });
+                const queryParams = new URLSearchParams();
+                queryParams.set('filter_type', filterType);
+                if (startDate) queryParams.set('expiration_start', startDate);
+                if (endDate) queryParams.set('expiration_end', endDate);
+
+                const response = await apiFetch(`/clients/process-now?${queryParams.toString()}`, { method: 'POST' });
                 const result = await response.json();
 
                 if (response.ok) {

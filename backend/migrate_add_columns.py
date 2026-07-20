@@ -48,6 +48,8 @@ def run():
         add_column_if_missing(conn, "users", "whatsapp_apikey",         "VARCHAR(255) DEFAULT NULL")
         add_column_if_missing(conn, "users", "is_active",               "TINYINT(1) NOT NULL DEFAULT 1")
         add_column_if_missing(conn, "products", "plan_id",              "INT DEFAULT NULL")
+        add_column_if_missing(conn, "clients", "product_id",            "INT DEFAULT NULL")
+        add_column_if_missing(conn, "clients", "payment_status",        "VARCHAR(20) NOT NULL DEFAULT 'pendente'")
         conn.execute(text("UPDATE users SET feature_flags = :f WHERE feature_flags IS NULL"), {"f": DEFAULT_FLAGS})
         conn.execute(text("UPDATE users SET feature_flags = JSON_SET(feature_flags, '$.admin', TRUE) WHERE role = 'super_admin'"))
         conn.execute(text("UPDATE users SET reseller_feature_flags = :f WHERE reseller_feature_flags IS NULL"), {"f": DEFAULT_FLAGS})

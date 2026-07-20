@@ -8,6 +8,8 @@ class ClientBase(BaseModel):
     name: str
     login: str
     server_name: str
+    product_id: Optional[int] = None
+    payment_status: Optional[str] = "pendente"
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None

@@ -39,11 +39,25 @@ function loadPage() {
     loadUserInfo(); // Esta função agora também cuida das permissões da UI
     loadURLs();
     loadWhatsAppStatus();
-    loadSettings();
-    loadTelegramSettings();
     applyInitialSectionFromHash();
+    loadActiveSectionData(getRequestedSection());
     window.addEventListener('hashchange', applyInitialSectionFromHash);
+    window.addEventListener('hashchange', () => loadActiveSectionData(getRequestedSection()));
     setInterval(loadURLs, 30000); // Atualiza os monitores a cada 30 segundos
+}
+
+function loadActiveSectionData(sectionId) {
+    if (sectionId === 'telegram') {
+        loadTelegramSettings();
+        return;
+    }
+    if (sectionId === 'settings') {
+        loadSettings();
+        return;
+    }
+    if (sectionId === 'whatsapp') {
+        loadWhatsAppStatus();
+    }
 }
 
 function getRequestedSection() {
@@ -317,6 +331,8 @@ function setupSidebarNavigation() {
             } else {
                 history.replaceState(null, '', `dashboard.html#${targetId}`);
             }
+
+            loadActiveSectionData(targetId);
 
             // Fecha a sidebar no mobile após clicar
             if (window.innerWidth <= 768 && sidebar) {

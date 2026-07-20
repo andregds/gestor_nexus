@@ -118,6 +118,8 @@ class Client(Base):
     name = Column(String(255), index=True)
     login = Column(String(100), index=True)
     server_name = Column(String(100))
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    payment_status = Column(String(20), default="pendente", nullable=False)
     whatsapp = Column(String(50))
     expiration_date = Column(Date)
     notes = Column(String(500), nullable=True)
@@ -130,6 +132,7 @@ class Client(Base):
     notify_after_expiration = Column(Boolean, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
+    product = relationship("Product")
 
 
 class Message(Base):

@@ -79,6 +79,8 @@ def _run_startup_migration():
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS client_limit INT NOT NULL DEFAULT 0",
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_api_settings JSON DEFAULT NULL",
                     "ALTER TABLE products ADD COLUMN IF NOT EXISTS plan_id INT DEFAULT NULL",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS product_id INT DEFAULT NULL",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'pendente'",
                 ]
                 for _stmt in _alter_stmts:
                     try:
@@ -115,6 +117,23 @@ def _run_startup_migration():
                 if "plan_id" not in _product_existing:
                     try:
                         _conn.execute(text("ALTER TABLE products ADD COLUMN plan_id INTEGER DEFAULT NULL"))
+                        _conn.commit()
+                    except Exception:
+                        _conn.rollback()
+
+                try:
+                    _client_existing = {row[1] for row in _conn.execute(text("PRAGMA table_info(clients)"))}
+                except Exception:
+                    _client_existing = set()
+                if "product_id" not in _client_existing:
+                    try:
+                        _conn.execute(text("ALTER TABLE clients ADD COLUMN product_id INTEGER DEFAULT NULL"))
+                        _conn.commit()
+                    except Exception:
+                        _conn.rollback()
+                if "payment_status" not in _client_existing:
+                    try:
+                        _conn.execute(text("ALTER TABLE clients ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'pendente'"))
                         _conn.commit()
                     except Exception:
                         _conn.rollback()

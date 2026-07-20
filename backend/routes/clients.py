@@ -5,24 +5,53 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 import asyncio
+from zoneinfo import ZoneInfo  # Import essencial para corrigir o Fuso Horário
+import os
+import unicodedata
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
-from models import User, Client
+from models import User, Client, Product
 from telegram_utils import send_telegram_message
+from routes import messages as messages_route  # NOVO IMPORT PARA MENSAGENS
+from core.security import verify_password # Import for password verification
 
 # --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
-from whatsapp_utils import send_whatsapp_notification
+from whatsapp_utils import send_whatsapp_notification, send_whatsapp_image
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
+ALLOWED_PAYMENT_STATUSES = {"pendente", "pago", "concluido", "atrasado", "cancelado"}
+
+
+def _normalize_payment_status(status_value: Optional[str]) -> str:
+    status_value = unicodedata.normalize("NFKD", (status_value or "pendente").strip().lower())
+    status_value = "".join(ch for ch in status_value if not unicodedata.combining(ch))
+    if status_value not in ALLOWED_PAYMENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Status do pagamento inválido.")
+    return status_value
+
+
+def _sync_payment_status_with_expiration(client: Client, today: Optional[date] = None) -> bool:
+    today = today or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    if client.expiration_date and client.expiration_date < today and client.payment_status != "cancelado":
+        if client.payment_status != "pendente":
+            client.payment_status = "pendente"
+            return True
+    return False
+
 
 # --- SCHEMAS ---
+
+class PasswordConfirmation(BaseModel):
+    password: str
 
 class ClientCreate(BaseModel):
     name: str
     login: str
     server_name: str
+    product_id: Optional[int] = None
+    payment_status: Optional[str] = "pendente"
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None
@@ -39,6 +68,8 @@ class ClientUpdate(BaseModel):
     name: Optional[str] = None
     login: Optional[str] = None
     server_name: Optional[str] = None
+    product_id: Optional[int] = None
+    payment_status: Optional[str] = None
     whatsapp: Optional[str] = None
     expiration_date: Optional[date] = None
     notes: Optional[str] = None
@@ -56,7 +87,7 @@ class ClientResponse(ClientCreate):
     owner_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # <--- CORRIGIDO AQUI (Era orm_mode = True)
 
 
 # ==========================================
@@ -66,21 +97,54 @@ class ClientResponse(ClientCreate):
 @router.post("/process-now")
 async def process_reminders_now(
         filter_type: Optional[str] = "default",  # Recebe o filtro do Frontend
+        expiration_start: Optional[date] = None,
+        expiration_end: Optional[date] = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
     """
     Executa a verificação de cobrança IMEDIATAMENTE.
-    Suporta filtros: 'default', 'expired', '0', '1', '2', '3'.
+    Suporta filtros: 'default', 'expired', '0', '1', '2', '3', 'msg_ID'.
     """
-    # Busca todos os clientes do usuário
     clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
-    today = datetime.now().date()
-    sent_count = 0
 
+    # --- CORREÇÃO DE FUSO HORÁRIO (BRASIL) ---
+    try:
+        tz_brazil = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        # Fallback caso o sistema não tenha tzdata (comum em Windows sem config)
+        print("⚠️ Aviso: ZoneInfo não encontrado, usando sistema local.")
+        tz_brazil = None
+
+    if tz_brazil:
+        today = datetime.now(tz_brazil).date()
+    else:
+        today = datetime.now().date()
+    # -----------------------------------------
+
+    selected_filter = str(filter_type or "default")
+    is_custom_message = selected_filter.startswith('msg_')
+    allowed_filters = {"default", "expired", "0", "1", "2", "3", "4"}
+    if not is_custom_message and selected_filter not in allowed_filters:
+        raise HTTPException(status_code=400, detail="Filtro de envio inválido.")
+    if expiration_start and expiration_end and expiration_start > expiration_end:
+        raise HTTPException(status_code=400, detail="A data inicial não pode ser maior que a data final.")
+    custom_message = None
+    if is_custom_message:
+        try:
+            msg_id = int(selected_filter.replace('msg_', ''))
+            custom_message = next((m for m in messages_route.messages if m.get('id') == msg_id), None)
+        except Exception:
+            custom_message = None
+        if not custom_message:
+            raise HTTPException(status_code=400, detail="Mensagem personalizada não encontrada para envio em massa.")
+
+    sent_count = 0
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
-    print(f"📅 Data do Servidor: {today}")
-    print(f"🔍 Filtro Selecionado: {filter_type}")
+    print(f"📅 Data considerada HOJE (BR): {today}")
+    print(f"🔍 Filtro Selecionado: {selected_filter}")
+    if expiration_start or expiration_end:
+        print(f"📆 Intervalo de vencimento: {expiration_start or '...'} até {expiration_end or '...'}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
     # Verifica conexão
@@ -97,94 +161,163 @@ async def process_reminders_now(
 
         # Calcula dias para vencer
         days_diff = (client.expiration_date - today).days
-
+        if expiration_start and client.expiration_date < expiration_start:
+            continue
+        if expiration_end and client.expiration_date > expiration_end:
+            continue
         should_send = False
-        msg = ""
-
-        # --- LÓGICA DE FILTRAGEM ---
-
-        # 1. Filtro: Vencidos (expired)
-        if filter_type == "expired":
-            if days_diff < 0:
+        msg_type = None
+        if is_custom_message:
+            # Mensagem personalizada: apenas clientes não vencidos
+            if days_diff >= 0:
                 should_send = True
-
-        # 2. Filtro: Dias Específicos (0, 1, 2, 3)
-        elif filter_type in ["0", "1", "2", "3"]:
-            # Converte para int para comparar com days_diff
-            target_days = int(filter_type)
-            if days_diff == target_days:
-                should_send = True
-            else:
-                # Debug para entender por que não enviou
-                # print(f"   Ignorado {client.name}: Faltam {days_diff} dias (Filtro pede {target_days})")
-                pass
-
-        # 3. Filtro: Padrão (default) - Respeita a config do cliente
         else:
-            try:
-                threshold = int(client.reminder_days_before)
-            except (ValueError, TypeError):
-                threshold = 3
+            if selected_filter == "default":
+                try:
+                    threshold = int(client.reminder_days_before)
+                except (ValueError, TypeError):
+                    threshold = 3
+                if 0 <= days_diff <= threshold:
+                    should_send = True
+                elif days_diff < 0 and client.notify_after_expiration:
+                    should_send = True
+            elif selected_filter == "expired":
+                should_send = days_diff < 0 and client.notify_after_expiration
+            elif selected_filter in {"0", "1", "2", "3", "4"}:
+                try:
+                    target_day = int(selected_filter)
+                except ValueError:
+                    target_day = None
+                if target_day is not None and days_diff == target_day:
+                    should_send = True
+            # Demais filtros desconhecidos não enviam
+        if not should_send:
+            continue
 
-            if 0 <= days_diff <= threshold:
-                should_send = True
-            elif days_diff < 0 and client.notify_after_expiration:
-                should_send = True
+        # Lógica estrita para o tipo de mensagem (somente para filtros aplicáveis)
+        if not is_custom_message:
+            if days_diff == 0:
+                msg_type = "vence_1"
+            elif days_diff == 1:
+                msg_type = "vence_2"
+            elif days_diff == 2:
+                msg_type = "vence_3"
+            elif days_diff == 3:
+                msg_type = "vence_4"
+            elif days_diff < 0:
+                msg_type = "vencido"
+            else:
+                msg_type = None
+        print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
-        # --- SE PASSOU NO FILTRO, MONTA A MENSAGEM ---
-        if should_send:
-            print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
-
+        # Busca mensagem pré-pronta
+        msg = None
+        image_path = None
+        if is_custom_message:
+            msg = custom_message['content']
+            image_path = custom_message.get('image')
+        else:
+            for m in messages_route.messages:
+                if m["type"] == msg_type:
+                    msg = render_message_template(m["content"], client, days_diff)
+                    if m.get("image"):
+                        # Caminho absoluto ao projeto
+                        rel_path = m["image"].lstrip("/")
+                        abs_path = os.path.join(os.getcwd(), rel_path)
+                        if os.path.isfile(abs_path):
+                            image_path = abs_path
+                        else:
+                            image_path = None
+                    break
+        if not msg:
             if days_diff == 0:
                 msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
             elif days_diff == 1:
                 msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
             elif days_diff > 1:
                 msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-            else:  # Negativo (Vencido)
+            elif days_diff < 0:
                 days_overdue = abs(days_diff)
                 msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
-
-            # --- ENVIO ---
-            channel = client.notification_channel or "whatsapp"
-            success = False
-
-            # Envio WhatsApp
-            if channel == "whatsapp" and has_whatsapp:
-                try:
+        # --- ENVIO ---
+        channel = client.notification_channel or "whatsapp"
+        success = False
+        # Envio WhatsApp
+        if channel == "whatsapp" and has_whatsapp:
+            try:
+                if image_path:
+                    success = await send_whatsapp_image(
+                        number=client.whatsapp,
+                        image_path=image_path,
+                        caption=msg,
+                        instance_name=current_user.whatsapp_instance
+                    )
+                else:
                     success = await send_whatsapp_notification(
                         number=client.whatsapp,
                         message=msg,
                         instance_name=current_user.whatsapp_instance
                     )
-                    if success:
-                        print(f"   -> WhatsApp enviado com sucesso!")
-                    else:
-                        print(f"   -> Falha no envio do WhatsApp (API retornou False)")
-                except Exception as e:
-                    print(f"   -> Erro técnico no WhatsApp: {e}")
-                    success = False
+                if success:
+                    print(f"   -> WhatsApp enviado com sucesso!")
+                else:
+                    print(f"   -> Falha no envio do WhatsApp (API retornou False)")
+            except Exception as e:
+                print(f"   -> Erro técnico no WhatsApp: {e}")
+                success = False
 
-            # Envio Telegram
-            elif channel == "telegram" and has_telegram:
-                try:
-                    await send_telegram_message(
-                        token=current_user.telegram_token,
-                        chat_id=current_user.telegram_chat_id,
-                        message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
-                    )
-                    success = True
-                    print(f"   -> Telegram enviado com sucesso!")
-                except Exception as e:
-                    print(f"   -> Erro técnico no Telegram: {e}")
-                    success = False
+        # Envio Telegram
+        elif channel == "telegram" and has_telegram:
+            try:
+                await send_telegram_message(
+                    token=current_user.telegram_token,
+                    chat_id=current_user.telegram_chat_id,
+                    message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+                )
+                success = True
+                print(f"   -> Telegram enviado com sucesso!")
+            except Exception as e:
+                print(f"   -> Erro técnico no Telegram: {e}")
+                success = False
 
-            if success:
-                sent_count += 1
-                await asyncio.sleep(1)  # Delay para evitar bloqueio
+        if success:
+            sent_count += 1
+            await asyncio.sleep(1)  # Delay para evitar bloqueio
 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
+
+
+@router.post("/delete-all", status_code=status.HTTP_204_NO_CONTENT)
+def delete_all_clients(
+    confirmation: PasswordConfirmation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deleta TODOS os clientes de um usuário após confirmar a senha.
+    """
+    # 1. Verificar a senha do usuário
+    if not verify_password(confirmation.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Senha incorreta. A exclusão não foi realizada.",
+        )
+
+    # 2. Se a senha estiver correta, apagar os clientes
+    try:
+        num_deleted = db.query(Client).filter(Client.owner_id == current_user.id).delete(synchronize_session=False)
+        db.commit()
+        print(f"Usuário {current_user.email} deletou {num_deleted} clientes.")
+    except Exception as e:
+        db.rollback()
+        print(f"Erro ao deletar clientes para o usuário {current_user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ocorreu um erro no servidor ao tentar apagar os clientes."
+        )
+
+    return None
 
 
 # ==========================================
@@ -197,10 +330,26 @@ def create_client(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    product = None
+    payload = client_data.dict()
+    product_id = payload.get("product_id")
+    if product_id is not None:
+        product = db.query(Product).filter(
+            Product.id == product_id,
+            Product.user_id == current_user.id
+        ).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Produto não encontrado")
+        payload["server_name"] = product.name
+        if not payload.get("m3u8_url"):
+            payload["m3u8_url"] = str(product.price)
+    payload["payment_status"] = _normalize_payment_status(payload.get("payment_status"))
+
     new_client = Client(
-        **client_data.dict(),
+        **payload,
         owner_id=current_user.id
     )
+    _sync_payment_status_with_expiration(new_client)
     db.add(new_client)
     db.commit()
     db.refresh(new_client)
@@ -212,7 +361,13 @@ def read_clients(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    return db.query(Client).filter(Client.owner_id == current_user.id).all()
+    clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
+    changed = False
+    for client in clients:
+        changed = _sync_payment_status_with_expiration(client) or changed
+    if changed:
+        db.commit()
+    return clients
 
 
 @router.put("/{client_id}", response_model=ClientResponse)
@@ -227,8 +382,24 @@ def update_client(
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
     update_data = client_data.dict(exclude_unset=True)
+    if "product_id" in update_data:
+        product_id = update_data.get("product_id")
+        if product_id is not None:
+            product = db.query(Product).filter(
+                Product.id == product_id,
+                Product.user_id == current_user.id
+            ).first()
+            if not product:
+                raise HTTPException(status_code=404, detail="Produto não encontrado")
+            update_data["server_name"] = product.name
+            if "m3u8_url" not in update_data or not update_data.get("m3u8_url"):
+                update_data["m3u8_url"] = str(product.price)
+    if "payment_status" in update_data and update_data.get("payment_status") is not None:
+        update_data["payment_status"] = _normalize_payment_status(update_data.get("payment_status"))
     for key, value in update_data.items():
         setattr(client, key, value)
+
+    _sync_payment_status_with_expiration(client)
 
     db.commit()
     db.refresh(client)
@@ -259,27 +430,53 @@ async def send_manual_reminder(
         current_user: User = Depends(get_current_user)
 ):
     """Força o envio da mensagem de cobrança para um cliente específico."""
-
     client = db.query(Client).filter(Client.id == client_id, Client.owner_id == current_user.id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
 
-    today = datetime.now().date()
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     days_diff = (client.expiration_date - today).days
-    msg = ""
 
-    # Lógica de mensagens
-    if days_diff == 3:
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em 3 dias. Evite bloqueios!"
-    elif days_diff == 1:
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff == 0:
-        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-    elif days_diff < 0:
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu. Entre em contato para reativar."
+    # Busca mensagem pré-pronta igual ao agendador
+    def get_predefined_message_and_image(days_diff, client_name):
+        if days_diff < 0:
+            msg_type = "vencido"
+        elif days_diff == 0:
+            msg_type = "vence_1"
+        elif days_diff == 1:
+            msg_type = "vence_2"
+        elif days_diff == 2:
+            msg_type = "vence_3"
+        elif days_diff == 3:
+            msg_type = "vence_4"
+        else:
+            msg_type = None
+        if not msg_type:
+            return None, None
+        for msg in messages_route.messages:
+            if msg["type"] == msg_type:
+                image_path = msg.get("image")
+                if image_path:
+                    image_path = image_path.lstrip("/")
+                    if not os.path.isfile(image_path):
+                        image_path = None
+                return msg["content"].replace("{cliente}", client_name), image_path
+        return None, None
+
+    msg, image_path = get_predefined_message_and_image(days_diff, client.name)
+    if not msg:
+        # fallback antigo
+        if days_diff == 0:
+            msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
+        elif days_diff == 1:
+            msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
+        elif days_diff > 1:
+            msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
+        elif days_diff < 0:
+            days_overdue = abs(days_diff)
+            msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
     else:
-        formatted_date = client.expiration_date.strftime('%d/%m/%Y')
-        msg = f"Olá {client.name}! 📅 Lembrete: Sua assinatura está ativa e vence dia {formatted_date}."
+        msg = render_message_template(msg, client, days_diff)
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -292,11 +489,19 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
 
         try:
-            success = await send_whatsapp_notification(
-                number=client.whatsapp,
-                message=msg,
-                instance_name=current_user.whatsapp_instance
-            )
+            if image_path:
+                success = await send_whatsapp_image(
+                    number=client.whatsapp,
+                    image_path=image_path,
+                    caption=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
+            else:
+                success = await send_whatsapp_notification(
+                    number=client.whatsapp,
+                    message=msg,
+                    instance_name=current_user.whatsapp_instance
+                )
             if not success:
                 error_detail = "A Evolution API retornou erro ou falha no envio."
         except Exception as e:
@@ -324,3 +529,24 @@ async def send_manual_reminder(
     else:
         print(f"❌ Erro no envio manual: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")
+
+
+# Função utilitária para substituir variáveis na mensagem
+
+def render_message_template(template, client, days_diff=None):
+    valor = getattr(client, 'valor', '') if hasattr(client, 'valor') else ''
+    vencimento = getattr(client, 'expiration_date', '') if hasattr(client, 'expiration_date') else ''
+    login = getattr(client, 'login', '') if hasattr(client, 'login') else ''
+    whatsapp = getattr(client, 'whatsapp', '') if hasattr(client, 'whatsapp') else ''
+    return (
+        template
+        .replace('{cliente}', client.name)
+        .replace('{dias}', str(days_diff) if days_diff is not None else '')
+        .replace('{valor}', str(valor))
+        .replace('{vencimento}', str(vencimento))
+        .replace('{login}', str(login))
+        .replace('{whatsapp}', str(whatsapp))
+    )
+
+# Exemplo de uso na função de envio manual e agendado:
+# msg = render_message_template(msg["content"], client, days_diff)
