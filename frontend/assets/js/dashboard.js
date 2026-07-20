@@ -2,23 +2,29 @@
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
  * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
- * @version 2.6
+ * @version 2.7
  */
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
-const API_URL = 'http://localhost:8000';
+const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+    ? 'http://localhost:8000'
+    : window.location.origin; // usa o host atual em produção
+
 let whatsappPollingInterval = null;
 let pollingAttempts = 0;
 const MAX_POLLING_ATTEMPTS = 40; // 40 tentativas * 3s = 2 minutos
+
+// --- ATUALIZAÇÃO: Variável para guardar dados do usuário logado ---
+let currentUser = null;
 
 // ============================
 // INICIALIZAÇÃO
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
-    // A verificação de auth agora é feita pelo apiFetch,
-    // mas mantemos uma inicial para o primeiro carregamento.
-    if (!localStorage.getItem('token')) {
+    // Verifica se o token existe no localStorage
+    const token = localStorage.getItem('token');
+    if (!token) {
         redirectToLogin();
         return;
     }
@@ -30,12 +36,59 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function loadPage() {
     setupSidebarNavigation();
-    loadUserInfo();
+    loadUserInfo(); // Esta função agora também cuida das permissões da UI
     loadURLs();
     loadWhatsAppStatus();
     loadSettings();
     loadTelegramSettings();
-    setInterval(loadURLs, 30000);
+    applyInitialSectionFromHash();
+    window.addEventListener('hashchange', applyInitialSectionFromHash);
+    setInterval(loadURLs, 30000); // Atualiza os monitores a cada 30 segundos
+}
+
+function getRequestedSection() {
+    const currentPage = window.location.pathname.split('/').pop() || '';
+    if (currentPage === 'whatsapp.html') {
+        return 'whatsapp';
+    }
+    if (currentPage === 'dashboard.html') {
+        const hash = window.location.hash ? window.location.hash.replace('#', '') : '';
+        if (hash === 'whatsapp' || hash === 'telegram' || hash === 'settings') {
+            return hash;
+        }
+        return 'dashboard';
+    }
+
+    const hash = window.location.hash ? window.location.hash.replace('#', '') : '';
+    if (hash === 'whatsapp' || hash === 'telegram' || hash === 'settings') {
+        return hash;
+    }
+    return 'dashboard';
+}
+
+function applyInitialSectionFromHash() {
+    const targetId = getRequestedSection();
+    const links = document.querySelectorAll('.sidebar-link');
+    const sections = document.querySelectorAll('.content-section');
+
+    links.forEach((link) => {
+        const linkSection = link.getAttribute('data-section');
+        const isDashboardLink = link.getAttribute('href') === 'dashboard.html' || link.getAttribute('href') === 'dashboard.html#telegram' || link.getAttribute('href') === 'dashboard.html#settings';
+        const shouldBeActive =
+            (targetId === 'dashboard' && link.getAttribute('href') === 'dashboard.html') ||
+            (linkSection === targetId) ||
+            (targetId === 'telegram' && link.getAttribute('href') === 'dashboard.html#telegram') ||
+            (targetId === 'settings' && link.getAttribute('href') === 'dashboard.html#settings');
+
+        if (linkSection || isDashboardLink) {
+            link.classList.toggle('active', shouldBeActive);
+        }
+    });
+
+    sections.forEach((section) => {
+        const sectionName = section.id.replace('section-', '');
+        section.style.display = sectionName === targetId ? 'block' : 'none';
+    });
 }
 
 // ============================
@@ -86,7 +139,7 @@ function showNotification(message, type = 'info') {
     setTimeout(() => {
         notification.style.opacity = '1';
         notification.style.transform = 'translateY(0)';
-    }, 10); // Pequeno delay para a transição funcionar
+    }, 10);
 
     setTimeout(() => {
         notification.style.opacity = '0';
@@ -120,13 +173,15 @@ async function apiFetch(path, options = {}) {
         if (response.status === 401) {
             showNotification("Sessão expirada ou não autorizada. Faça login novamente.", 'error');
             redirectToLogin();
-            return response; // Retorna a resposta 401 para que o chamador possa lidar com ela se necessário
+            // Retornar a resposta aqui é importante para que a cadeia de promessas não quebre
+            return response;
         }
 
         return response;
     } catch (error) {
         console.error('Erro na requisição API:', error);
-        throw error; // Re-lança o erro para ser tratado pela função chamadora
+        showNotification('Erro de conexão com o servidor.', 'error');
+        throw error;
     }
 }
 
@@ -147,24 +202,79 @@ function logout() {
     }
 }
 
+// =================================================
+// CONTROLE DE ACESSO E PERMISSÕES (LÓGICA CENTRAL)
+// =================================================
+
 /**
- * Carrega as informações do usuário logado e atualiza o nome no cabeçalho.
+ * Carrega as informações do usuário, guarda em currentUser e aplica as permissões na UI.
  */
 async function loadUserInfo() {
     try {
         const response = await apiFetch('/users/me');
         if (response.ok) {
-            const user = await response.json();
+            currentUser = await response.json(); // Armazena os dados do usuário
+
+            // Persiste dados de role e feature flags para uso no sidebar.js
+            if (currentUser.role) localStorage.setItem('user_role', currentUser.role);
+            if (currentUser.feature_flags) localStorage.setItem('user_feature_flags', JSON.stringify(currentUser.feature_flags));
+
             const el = document.getElementById('userName');
-            if (el) el.textContent = user.name;
+            if (el) el.textContent = currentUser.name;
+
+            // Exibe o "cargo" do usuário de forma mais amigável
+            const roleEl = document.querySelector('.user-role');
+            if (roleEl) {
+                // Ex: 'super_admin' vira 'Super Admin'
+                const friendlyRole = currentUser.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                roleEl.textContent = friendlyRole;
+            }
+
+            // ✅ APLICA AS REGRAS DE VISIBILIDADE NA INTERFACE
+            applyUIPermissions();
+            window.applyFeatureFlags && window.applyFeatureFlags();
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
     }
 }
 
+/**
+ * Mostra ou esconde elementos da UI com base no role e permissões do usuário.
+ * Esta é a função que faz a mágica de exibir os links corretos.
+ */
+function applyUIPermissions() {
+    if (!currentUser) return;
+
+    const { role, permissions } = currentUser;
+    // Garantimos defaults liberando tudo quando as permissões não vierem do backend
+    const safePermissions = {
+        can_view_clients: permissions?.can_view_clients !== false,
+        can_view_integrations: permissions?.can_view_integrations !== false,
+        can_view_settings: permissions?.can_view_settings !== false,
+    };
+
+    const setElementVisibility = (selector, isVisible) => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.style.display = isVisible ? '' : 'none';
+        }
+    };
+
+    // Menus controlados por permissão (Dashboard sempre liberado)
+    setElementVisibility('[data-permission-key="dashboard"]', true);
+    setElementVisibility('[data-permission-key="clients"]', safePermissions.can_view_clients);
+    setElementVisibility('[data-permission-key="integrations"]', safePermissions.can_view_integrations);
+    setElementVisibility('[data-permission-key="settings"]', safePermissions.can_view_settings);
+
+    // Menus por role
+    setElementVisibility('[data-role-required="reseller"]', true);
+    setElementVisibility('[data-role-required="super_admin"]', true);
+}
+
+
 // ============================
-// NAVEGAÇÃO (CORRIGIDA)
+// NAVEGAÇÃO (SPA)
 // ============================
 /**
  * Configura a navegação da barra lateral para alternar entre as seções de conteúdo.
@@ -179,23 +289,30 @@ function setupSidebarNavigation() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
 
-            // Se o link tiver 'data-section', é uma navegação interna (SPA)
-            if (targetId) {
-                e.preventDefault(); // Impede o recarregamento apenas se for SPA
-
-                links.forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
-
-                sections.forEach(s => {
-                    s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
-                });
-
-                // Fecha a sidebar em telas pequenas após clicar em um link
-                if (window.innerWidth <= 768 && sidebar) {
-                    sidebar.classList.remove('active');
-                }
+            // Se o link não for para uma seão interna (ex: clients.html), deixa o navegador seguir
+            if (!targetId) {
+                return;
             }
-            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
+
+            e.preventDefault(); // Previne a navegação apenas para links de seção
+
+            links.forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+
+            sections.forEach(s => {
+                s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
+            });
+
+            if (targetId === 'dashboard') {
+                history.replaceState(null, '', 'dashboard.html');
+            } else {
+                history.replaceState(null, '', `dashboard.html#${targetId}`);
+            }
+
+            // Fecha a sidebar no mobile após clicar
+            if (window.innerWidth <= 768 && sidebar) {
+                sidebar.classList.remove('active');
+            }
         });
     });
 
@@ -227,7 +344,7 @@ async function loadURLs() {
         urlsList.innerHTML = urls.map(url => renderURLCard(url)).join('');
     } catch (error) {
         console.error('Erro ao carregar URLs:', error);
-        showNotification('Não foi possível atualizar as URLs.', 'error');
+        // A notificação de erro já é mostrada pelo apiFetch
     }
 }
 
@@ -239,8 +356,9 @@ async function loadURLs() {
 function renderURLCard(url) {
     const statusClass = url.status === 'UP' ? 'status-up' : (url.status === 'DOWN' ? 'status-down' : 'status-warning');
     const statusLabel = url.status === 'UP' ? 'ONLINE' : (url.status === 'DOWN' ? 'OFFLINE' : 'ALERTA');
-    const ping = url.response_time ? `${(url.response_time * 1000).toFixed(0)}ms` : '--';
-    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString() : '--:--';
+    const ping = url.response_time != null ? `${(url.response_time).toFixed(0)}ms` : '--'; // Corrigido para não multiplicar por 1000 se o backend já manda em ms
+    const lastCheck = url.last_check ? new Date(url.last_check).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+
     return `
     <article class="url-card ${statusClass}">
         <div class="url-header">
@@ -261,6 +379,7 @@ function renderURLCard(url) {
         </div>
     </article>`;
 }
+
 
 /**
  * Atualiza as estatísticas gerais (Online, Offline, etc.).
@@ -305,7 +424,7 @@ async function addURL() {
             showNotification(`Erro: ${err.detail}`, 'error');
         }
     } catch (e) {
-        showNotification("Erro de conexão ao adicionar URL.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -324,7 +443,7 @@ async function deleteURL(id) {
             showNotification("Falha ao remover monitoramento.", 'error');
         }
     } catch (e) {
-        showNotification("Erro de conexão ao remover URL.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -354,7 +473,7 @@ function whatsappTemplate() {
                     <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
                     <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
                 </div>
-                <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
+                <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem; flex-wrap: wrap;">
                     <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
                     <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
                 </div>
@@ -431,7 +550,6 @@ function updateWhatsAppUI(data) {
  * Inicia o processo de conexão, solicitando um QR Code ao backend.
  */
 async function connectWhatsApp() {
-    // REMOVIDO: O prompt que pedia o número
     const qrContainer = document.getElementById('qrCodeContainer');
     const qrWrapper = document.getElementById('qrCodeImageWrapper');
     qrContainer.style.display = 'block';
@@ -439,8 +557,7 @@ async function connectWhatsApp() {
     try {
         const response = await apiFetch('/whatsapp/connect', {
             method: 'POST',
-            // Enviamos um objeto vazio ou com número nulo, já que o backend agora aceita
-            body: JSON.stringify({ number: "" })
+            body: JSON.stringify({ number: "" }) // O número pode ser opcional dependendo da sua API
         });
         const data = await response.json();
         if (response.ok) {
@@ -456,7 +573,7 @@ async function connectWhatsApp() {
         }
     } catch (error) {
         qrContainer.style.display = 'none';
-        showNotification("Erro de conexão ao tentar conectar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -529,15 +646,13 @@ async function disconnectWhatsApp() {
         const response = await apiFetch('/whatsapp/disconnect', { method: 'POST' });
         if (response.ok) {
             showNotification("Instância desconectada com sucesso.", 'info');
-            // Recarrega o status para mostrar o botão de conectar novamente
             loadWhatsAppStatus();
         } else {
             const data = await response.json();
             showNotification(data.detail || "Falha ao desconectar.", 'error');
         }
     } catch (e) {
-        console.error(e);
-        showNotification("Erro de conexão ao desconectar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -559,8 +674,7 @@ async function testWhatsAppNotification() {
             showNotification(data.detail || 'Falha no envio.', 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification('Erro de conexão ao enviar teste.', 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -572,6 +686,15 @@ async function testWhatsAppNotification() {
  */
 async function loadTelegramSettings() {
     try {
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const tokenInput = document.getElementById('telegramToken');
+            if (tokenInput) tokenInput.value = currentUser.telegram_token || '';
+            const chatInput = document.getElementById('telegramChatId');
+            if (chatInput) chatInput.value = currentUser.telegram_chat_id || '';
+            return;
+        }
+        // Fallback caso seja chamado antes
         const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
@@ -592,7 +715,6 @@ async function saveTelegramSettings() {
     const token = document.getElementById('telegramToken').value.trim();
     const chatId = document.getElementById('telegramChatId').value.trim();
 
-    // Validação: Ou preenche tudo, ou limpa tudo. Não pode deixar um só preenchido.
     if ((token && !chatId) || (!token && chatId)) {
         showNotification("Para ativar, preencha tanto o Token quanto o Chat ID.", 'error');
         return;
@@ -612,8 +734,7 @@ async function saveTelegramSettings() {
             showNotification("Erro ao salvar Telegram.", 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -622,22 +743,18 @@ async function saveTelegramSettings() {
  */
 async function testTelegram() {
     showNotification("Enviando teste...", 'info');
-
     try {
         const response = await apiFetch('/users/me/telegram/test', {
             method: 'POST'
         });
-
         if (response.ok) {
             showNotification("Teste enviado! Verifique seu Telegram.", 'success');
         } else {
             const err = await response.json();
             showNotification(`Erro: ${err.detail}`, 'error');
         }
-
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão ao enviar teste.", 'error');
+        // Erro já notificado pelo apiFetch
     }
 }
 
@@ -649,13 +766,24 @@ async function testTelegram() {
  */
 async function loadSettings() {
     try {
-        const response = await apiFetch('/users/me'); // Reutiliza a rota /me que agora traz os flags
+        // Reutiliza o currentUser se já estiver carregado
+        if (currentUser) {
+            const phoneInput = document.getElementById('settingsPhone');
+            if (phoneInput) phoneInput.value = currentUser.whatsapp_number || '';
+            const checkDown = document.getElementById('checkNotifyDown');
+            if (checkDown) checkDown.checked = currentUser.notify_when_down;
+            const checkUp = document.getElementById('checkNotifyUp');
+            if (checkUp) checkUp.checked = currentUser.notify_when_up;
+            const checkSlow = document.getElementById('checkNotifySlow');
+            if (checkSlow) checkSlow.checked = currentUser.notify_when_slow;
+            return;
+        }
+        // Fallback
+        const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
-            // Preenche telefone
             const phoneInput = document.getElementById('settingsPhone');
             if (phoneInput) phoneInput.value = user.whatsapp_number || '';
-            // Preenche checkboxes
             const checkDown = document.getElementById('checkNotifyDown');
             if (checkDown) checkDown.checked = user.notify_when_down;
             const checkUp = document.getElementById('checkNotifyUp');
@@ -672,15 +800,11 @@ async function loadSettings() {
  * Envia as novas configurações para o backend.
  */
 async function saveSettings() {
-    const phoneInput = document.getElementById('settingsPhone');
-    const phone = phoneInput ? phoneInput.value.replace(/\D/g, '') : ''; // Remove não-números
-    const checkDown = document.getElementById('checkNotifyDown');
-    const notifyDown = checkDown ? checkDown.checked : true;
-    const checkUp = document.getElementById('checkNotifyUp');
-    const notifyUp = checkUp ? checkUp.checked : true;
-    const checkSlow = document.getElementById('checkNotifySlow');
-    const notifySlow = checkSlow ? checkSlow.checked : false;
-    // Validação básica de telefone se preenchido
+    const phone = document.getElementById('settingsPhone')?.value.replace(/\D/g, '') || '';
+    const notifyDown = document.getElementById('checkNotifyDown')?.checked ?? true;
+    const notifyUp = document.getElementById('checkNotifyUp')?.checked ?? true;
+    const notifySlow = document.getElementById('checkNotifySlow')?.checked ?? false;
+
     if (phone && phone.length < 10) {
         showNotification("Número de telefone parece inválido.", 'error');
         return;
@@ -697,13 +821,103 @@ async function saveSettings() {
         });
         if (response.ok) {
             showNotification("Configurações salvas com sucesso!", 'success');
-            // Atualiza info do usuário globalmente se necessário
-            loadUserInfo();
+            loadUserInfo(); // Recarrega os dados do usuário para garantir consistência
         } else {
             showNotification("Erro ao salvar configurações.", 'error');
         }
     } catch (error) {
-        console.error(error);
-        showNotification("Erro de conexão ao salvar.", 'error');
+        // Erro já notificado pelo apiFetch
     }
+}
+
+// ==================================================
+// ZONA DE PERIGO (BACKUP/IMPORT PAGE)
+// ==================================================
+
+/**
+ * Abre o modal de confirmação para apagar todos os clientes.
+ */
+function openDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'flex'; // Usar flex para centralizar
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para apagar todos os clientes.
+ */
+function closeDeleteAllClientsModal() {
+    const modal = document.getElementById('deleteAllClientsModal');
+    if (modal) {
+        modal.style.display = 'none';
+        const passwordInput = document.getElementById('passwordConfirmation');
+        if (passwordInput) {
+            passwordInput.value = ''; // Limpa a senha ao fechar
+        }
+    }
+}
+
+/**
+ * Confirma e executa a exclusão de todos os clientes.
+ */
+async function confirmDeleteAllClients() {
+    const passwordInput = document.getElementById('passwordConfirmation');
+    const password = passwordInput.value;
+
+    if (!password) {
+        showNotification("Por favor, digite sua senha para confirmar.", 'error');
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/clients/delete-all', {
+            method: 'DELETE',
+            body: JSON.stringify({ password: password })
+        });
+
+        if (response.ok) {
+            showNotification("Limpeza de banco de dados concluída com sucesso!", 'success');
+            closeDeleteAllClientsModal();
+            setTimeout(() => {
+                window.location.href = 'clients.html';
+            }, 3000);
+        } else {
+            const error = await response.json();
+            showNotification(error.detail || "Senha incorreta ou falha ao apagar.", 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao apagar todos os clientes:', error);
+        showNotification("Ocorreu um erro de comunicação.", 'error');
+    }
+}
+
+
+/**
+ * Abre o modal de confirmação para o reset de fábrica.
+ */
+function openFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+/**
+ * Fecha o modal de confirmação para o reset de fábrica.
+ */
+function closeFactoryResetModal() {
+    const modal = document.getElementById('factoryResetModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Confirma e executa o reset de fábrica.
+ */
+async function confirmFactoryReset() {
+    // Lógica para o reset de fábrica
+    showNotification("Função de reset de fábrica ainda não implementada.", 'info');
+    closeFactoryResetModal();
 }
