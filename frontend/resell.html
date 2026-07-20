@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Revendedores</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        /* Ajustes de Layout */
+        body { background-color: #f1f5f9; }
+        main.main-content { padding: 2rem; width: 100%; }
+        .section {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
+        }
+        .section-title {
+            color: #1e293b;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 1rem;
+        }
+
+        /* Formulários */
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: #475569; font-weight: 600; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            color: #0f172a;
+        }
+
+        /* Botões */
+        .btn {
+            padding: 0.4rem 0.8rem;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;
+            color: white;
+            margin-right: 5px;
+            font-weight: 500;
+        }
+        .btn-promote {
+            background-color: #2563eb; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-promote:hover { background-color: #1d4ed8; }
+
+        .btn-register {
+            background-color: #10b981; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600; width: 100%;
+        }
+        .btn-register:hover { background-color: #059669; }
+
+        .btn-edit { background-color: #f59e0b; }
+        .btn-edit:hover { background-color: #d97706; }
+
+        .btn-reset { background-color: #64748b; }
+        .btn-reset:hover { background-color: #475569; }
+
+        .btn-delete { background-color: #ef4444; }
+        .btn-delete:hover { background-color: #dc2626; }
+
+        .btn-toggle-active.active { background-color: #ef4444; }
+        .btn-toggle-active.active:hover { background-color: #dc2626; }
+
+        .btn-toggle-active.blocked { background-color: #22c55e; }
+        .btn-toggle-active.blocked:hover { background-color: #16a34a; }
+
+        /* Tabela */
+        .table-responsive { overflow-x: auto; }
+        .table { width: 100%; border-collapse: collapse; text-align: left; }
+        .table th, .table td { padding: 12px 15px; border-bottom: 1px solid #e2e8f0; }
+        .table th { background-color: #f8fafc; font-weight: 600; color: #475569; }
+        .badge-role-reseller {
+            background-color: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .blocked-row {
+            background-color: #fee2e2 !important;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+        .blocked-row td { color: #7f1d1d; }
+
+        .register-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        @media (max-width: 768px) { .register-grid { grid-template-columns: 1fr; } }
+
+        .credits-display {
+            background-color: #e0f2fe; color: #0369a1; padding: 0.5rem 1rem;
+            border-radius: 6px; font-weight: bold; margin-top: 5px; display: inline-block;
+        }
+
+        /* --- ESTILOS DO MODAL --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem;
+        }
+        .modal-footer {
+            display: flex; justify-content: flex-end; gap: 10px; margin-top: 1.5rem;
+        }
+        .btn-cancel {
+            background-color: #94a3b8; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+        }
+        .btn-save {
+            background-color: #2563eb; color: white; padding: 0.75rem 1.5rem;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-wrapper" class="dashboard-container">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">👥</span> Clientes
+                        </a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">📂</span> Importar / Padronizar
+                        </a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">💾</span> Backup / Exportar
+                        </a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
+                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
+                        </a>
+                    </div>
+                </div>
+
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
+                        </a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🏷️</span> Categorias
+                        </a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">📄</span> Planos
+                        </a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
+                            <span class="sidebar-icon">🧩</span> Recursos
+                        </a>
+                    </div>
+                </div>
+
+                <a href="whatsapp.html" class="sidebar-link">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html" class="sidebar-link">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html#settings" class="sidebar-link">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+                <a href="resell.html" class="sidebar-link active">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role" id="userRole">...</div>
+                <div class="credits-display" id="userCredits">Limite: ...</div>
+                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 10px; display:block;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="reseller-panel" style="display: none;">
+
+                <!-- SEÇÃO 1: CADASTRAR -->
+                <div class="section">
+                    <h2 class="section-title">1. Cadastrar Novo Usuário</h2>
+                    <p style="margin-bottom: 1rem; color: #64748b;">Cadastre um usuário aqui para que ele apareça na lista de promoção abaixo.</p>
+                    <form id="register-form">
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Nome Completo</label>
+                                <input type="text" id="reg-name" required placeholder="Ex: João Silva">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="reg-email" required placeholder="Ex: joao@email.com">
+                            </div>
+                        </div>
+                        <div class="register-grid">
+                            <div class="form-group">
+                                <label>Senha</label>
+                                <input type="password" id="reg-password" required placeholder="******">
+                            </div>
+                            <div class="form-group">
+                                <label>Confirmar Senha</label>
+                                <input type="password" id="reg-confirm-password" required placeholder="******">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-register">Cadastrar Usuário</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 2: PROMOVER -->
+                <div class="section">
+                    <h2 class="section-title">2. Promover a Revendedor</h2>
+                    <form id="promote-form">
+                        <div class="form-group">
+                            <label for="user-to-promote">Selecione um Usuário para Promover</label>
+                            <select id="user-to-promote" required>
+                                <option value="">Carregando usuários...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="credits-to-give">Limite de Clientes</label>
+                            <input type="number" id="credits-to-give" required min="1" placeholder="Ex: 50" value="10">
+                            <small style="color: #64748b;">Isso será descontado do seu limite atual.</small>
+                        </div>
+                        <button type="submit" class="btn-promote">Promover a Revendedor</button>
+                    </form>
+                </div>
+
+                <!-- SEÇÃO 3: LISTA -->
+                <div class="section">
+                    <h2 class="section-title">Revendedores Ativos</h2>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>Função</th>
+                                    <th>Limite</th>
+                                    <th>Ações</th> <!-- Nova Coluna -->
+                                </tr>
+                            </thead>
+                            <tbody id="resellers-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="access-denied" style="display: none;">
+                <h1>Acesso Negado</h1>
+                <p>Você não tem permissão para visualizar esta página.</p>
+                <a href="dashboard.html">Voltar ao Dashboard</a>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0; color: #1e293b;">Editar Revendedor</h3>
+                <span onclick="closeEditModal()" style="cursor:pointer; font-size:1.5rem;">&times;</span>
+            </div>
+            <form id="edit-form">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="edit-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="edit-email" required>
+                </div>
+                <div class="form-group">
+                    <label>Limite de Clientes</label>
+                    <input type="number" id="edit-limit" required min="0">
+                    <small style="color: #64748b;">Aumentar este valor descontará do seu saldo.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" onclick="closeEditModal()">Cancelar</button>
+                    <button type="submit" class="btn-save">Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- IMPORTAÇÃO DO SCRIPT PADRÃO -->
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/main.js"></script>
+
+    <script>
+        // O token é usado aqui para verificação inicial de redirecionamento
+        const token = localStorage.getItem('token');
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Carrega info da sidebar e obtém o usuário atual (função do main.js)
+            const currentUser = await loadSidebarInfo();
+
+            if (!currentUser) {
+                // Se falhar (ex: token inválido), o main.js ou o catch aqui trata
+                return;
+            }
+
+            // Lógica específica desta página
+            if (['reseller', 'super_admin'].includes(currentUser.role)) {
+                document.getElementById('reseller-panel').style.display = 'block';
+                await loadResellers();
+                await loadUsersToPromote();
+            } else {
+                document.getElementById('access-denied').style.display = 'block';
+            }
+        });
+
+        async function loadResellers() {
+            try {
+                const resellers = await fetchAPI('/resellers/');
+                const listElement = document.getElementById('resellers-list');
+                listElement.innerHTML = '';
+
+                if (resellers.length === 0) {
+                    listElement.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nenhum revendedor encontrado.</td></tr>';
+                } else {
+                    resellers.forEach(user => {
+                        let limitDisplay = user.client_limit;
+                        if (user.role === 'super_admin') limitDisplay = "∞";
+
+                        // Cria o objeto user em string para passar para a função de edição
+                        const userStr = JSON.stringify(user).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+
+                        // Lógica visual de bloqueio
+                        const rowClass = !user.is_active ? 'blocked-row' : '';
+                        const toggleButtonText = user.is_active ? '🚫 Bloquear' : '✅ Desbloquear';
+                        const toggleButtonClass = user.is_active ? 'active' : 'blocked';
+
+                        listElement.innerHTML += `
+                            <tr class="${rowClass}">
+                                <td>${user.id}</td>
+                                <td>${user.name}</td>
+                                <td>${user.email}</td>
+                                <td><span class="badge-role-reseller">${user.role}</span></td>
+                                <td><strong>${limitDisplay}</strong></td>
+                                <td>
+                                    <button class="btn btn-edit" onclick='openEditModal(${userStr})'>✏️ Editar</button>
+                                    <button class="btn btn-reset" onclick="resetPassword(${user.id})">🔑 Resetar Senha</button>
+                                    <button class="btn btn-toggle-active ${toggleButtonClass}" onclick="toggleActive(${user.id}, ${user.is_active})">${toggleButtonText}</button>
+                                    <button class="btn btn-delete" onclick="deleteReseller(${user.id})">🗑️ Deletar</button>
+                                </td>
+                            </tr>`;
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function loadUsersToPromote() {
+            try {
+                const promotableUsers = await fetchAPI('/resellers/promotable');
+                const selectElement = document.getElementById('user-to-promote');
+                selectElement.innerHTML = '<option value="">Selecione um usuário</option>';
+
+                if (promotableUsers.length > 0) {
+                    promotableUsers.forEach(user => {
+                        selectElement.innerHTML += `<option value="${user.id}">${user.name} (${user.email})</option>`;
+                    });
+                } else {
+                     selectElement.innerHTML = '<option value="">Nenhum usuário comum disponível.</option>';
+                }
+            } catch(error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const confirmPass = document.getElementById('reg-confirm-password').value;
+
+            if (password !== confirmPass) {
+                alert("As senhas não coincidem!");
+                return;
+            }
+
+            try {
+                const newUser = await fetchAPI('/resellers/create-user', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                alert(`Usuário "${newUser.name}" cadastrado com sucesso! Agora você pode promovê-lo na lista abaixo.`);
+                document.getElementById('register-form').reset();
+                await loadUsersToPromote();
+
+            } catch (error) {
+                alert("Erro ao cadastrar: " + error.message);
+            }
+        });
+
+        document.getElementById('promote-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('user-to-promote').value;
+            const credits = document.getElementById('credits-to-give').value;
+
+            if (!userId) return alert('Selecione um usuário.');
+            if (!credits || credits < 1) return alert('Defina uma quantidade válida de limite.');
+
+            if (!confirm(`Promover este usuário a revendedor e definir limite de ${credits}?`)) return;
+
+            try {
+                await fetchAPI(`/resellers/promote/${userId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ credits: parseInt(credits) })
+                });
+
+                alert('Sucesso! Usuário promovido e limite definido.');
+                location.reload();
+
+            } catch (error) {
+                alert(`Erro: ${error.message}`);
+            }
+        });
+
+        // --- FUNÇÕES DO MODAL DE EDIÇÃO ---
+
+        function openEditModal(user) {
+            document.getElementById('edit-id').value = user.id;
+            document.getElementById('edit-name').value = user.name;
+            document.getElementById('edit-email').value = user.email;
+            document.getElementById('edit-limit').value = user.client_limit;
+
+            const modal = document.getElementById('editModal');
+            modal.style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        }
+
+        document.getElementById('edit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-id').value;
+            const name = document.getElementById('edit-name').value;
+            const email = document.getElementById('edit-email').value;
+            const limit = document.getElementById('edit-limit').value;
+
+            try {
+                await fetchAPI(`/resellers/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        name: name,
+                        email: email,
+                        client_limit: parseInt(limit)
+                    })
+                });
+
+                alert("Revendedor atualizado com sucesso!");
+                closeEditModal();
+                location.reload();
+
+            } catch (error) {
+                alert("Erro ao atualizar: " + error.message);
+            }
+        });
+
+        // --- FUNÇÕES DE AÇÃO ---
+
+        async function resetPassword(userId) {
+            const newPassword = prompt("Digite a NOVA senha para este usuário (mínimo 6 caracteres):");
+            if (!newPassword || newPassword.length < 6) {
+                alert("Operação cancelada ou senha inválida.");
+                return;
+            }
+
+            if (!confirm(`Tem certeza que deseja resetar a senha do usuário ID ${userId}?`)) return;
+
+            try {
+                await fetchAPI(`/resellers/${userId}/reset-password`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ new_password: newPassword })
+                });
+                alert("Senha resetada com sucesso!");
+
+            } catch (error) {
+                alert("Erro ao resetar senha: " + error.message);
+            }
+        }
+
+        async function toggleActive(userId, isActive) {
+            let reason = null;
+
+            if (isActive) {
+                reason = prompt("Digite o motivo do bloqueio (Ex: Falta de pagamento):");
+                if (reason === null) return;
+                if (reason.trim() === "") reason = "Motivo não especificado";
+
+                if (!confirm(`Tem certeza que deseja BLOQUEAR o usuário ID ${userId} pelo motivo: "${reason}"?`)) return;
+            } else {
+                if (!confirm(`Tem certeza que deseja DESBLOQUEAR o acesso do usuário ID ${userId}?`)) return;
+            }
+
+            try {
+                await fetchAPI(`/resellers/${userId}/toggle-active`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ reason: reason })
+                });
+
+                const action = isActive ? "bloqueado" : "desbloqueado";
+                alert(`Usuário ${action} com sucesso!`);
+                location.reload();
+            } catch (error) {
+                const action = isActive ? "bloquear" : "desbloquear";
+                alert(`Erro ao ${action} usuário: ` + error.message);
+            }
+        }
+
+        async function deleteReseller(userId) {
+            if (!confirm(`Tem certeza que deseja DELETAR o usuário ID ${userId}? Esta ação é irreversível.`)) return;
+
+            try {
+                await fetchAPI(`/resellers/${userId}`, { method: 'DELETE' });
+                alert('Usuário removido com sucesso!');
+                location.reload();
+            } catch (error) {
+                alert('Erro ao deletar usuário: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

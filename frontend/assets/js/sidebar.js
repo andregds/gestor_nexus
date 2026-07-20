@@ -56,7 +56,7 @@ function loadFeatureFlags() {
 
 function applyFeatureFlags() {
     const flags = loadFeatureFlags();
-    const alwaysVisibleKeys = new Set(['resell', 'super_admin', 'telegram', 'products']);
+    const alwaysVisibleKeys = new Set(['resell', 'super_admin']);
 
     document.querySelectorAll('[data-feature-key]').forEach((el) => {
         const key = el.getAttribute('data-feature-key');
@@ -65,8 +65,18 @@ function applyFeatureFlags() {
         el.style.display = allowed ? '' : 'none';
     });
 
-    // Oculta grupos cujos sub-itens estejam todos ocultos
+    document.querySelectorAll('a[href="resell.html"]').forEach((link) => {
+        link.style.display = flags.resell === false ? 'none' : '';
+    });
+
+    // Oculta grupos cujo próprio flag esteja desligado
     document.querySelectorAll('.sidebar-group').forEach((group) => {
+        const groupKey = group.getAttribute('data-feature-key');
+        if (groupKey && flags[groupKey] === false && !alwaysVisibleKeys.has(groupKey)) {
+            group.style.display = 'none';
+            return;
+        }
+
         const submenu = group.querySelector('.sidebar-submenu');
         if (!submenu) return;
         const hasVisible = Array.from(submenu.querySelectorAll('a')).some(
@@ -75,23 +85,8 @@ function applyFeatureFlags() {
         group.style.display = hasVisible ? '' : 'none';
     });
 
-    forceAlwaysVisibleGroups(alwaysVisibleKeys);
-
     // Redireciona se a página atual estiver oculta para o usuário
     redirectIfPageHidden(flags);
-}
-
-function forceAlwaysVisibleGroups(alwaysVisibleKeys) {
-    alwaysVisibleKeys.forEach((key) => {
-        const elements = document.querySelectorAll(`[data-feature-key="${key}"]`);
-        elements.forEach((el) => {
-            el.style.display = '';
-            const group = el.closest('.sidebar-group');
-            if (group) {
-                group.style.display = '';
-            }
-        });
-    });
 }
 
 function redirectIfPageHidden(flags) {
