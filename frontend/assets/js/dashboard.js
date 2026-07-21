@@ -291,8 +291,10 @@ function applyUIPermissions() {
     setElementVisibility('[data-permission-key="settings"]', safePermissions.can_view_settings);
 
     // Menus por role
-    setElementVisibility('[data-role-required="reseller"]', true);
-    setElementVisibility('[data-role-required="super_admin"]', true);
+    const isSuperAdmin = role === 'super_admin';
+    const canAccessReseller = isSuperAdmin || role === 'reseller';
+    setElementVisibility('[data-role-required="reseller"]', canAccessReseller);
+    setElementVisibility('[data-role-required="super_admin"]', isSuperAdmin);
 }
 
 

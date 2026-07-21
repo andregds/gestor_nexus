@@ -13,6 +13,17 @@ const SIDEBAR_API_BASE = (typeof API_URL !== 'undefined' && API_URL)
     ? API_URL
     : ((['localhost', '127.0.0.1'].includes(window.location.hostname)) ? 'http://localhost:8000' : window.location.origin);
 
+function getCurrentRole() {
+    return localStorage.getItem(USER_ROLE_KEY) || 'user';
+}
+
+function roleAllowsAccess(requiredRole, currentRole) {
+    if (!requiredRole) return true;
+    if (currentRole === 'super_admin') return true;
+    if (requiredRole === 'reseller') return currentRole === 'reseller';
+    return currentRole === requiredRole;
+}
+
 // ---------------------------------------------------------------------------
 // 1. CONTEXTO DO USUÁRIO
 // ---------------------------------------------------------------------------
@@ -59,12 +70,18 @@ function loadFeatureFlags() {
 function applyFeatureFlags() {
     const flags = loadFeatureFlags();
     const alwaysVisibleKeys = new Set(['resell', 'super_admin']);
+    const currentRole = getCurrentRole();
 
     document.querySelectorAll('[data-feature-key]').forEach((el) => {
         const key = el.getAttribute('data-feature-key');
         // Respeita o flag definido pelo super_admin; default true se não definido
         const allowed = alwaysVisibleKeys.has(key) || flags[key] !== false;
         el.style.display = allowed ? '' : 'none';
+    });
+
+    document.querySelectorAll('[data-role-required]').forEach((el) => {
+        const requiredRole = el.getAttribute('data-role-required');
+        el.style.display = roleAllowsAccess(requiredRole, currentRole) ? '' : 'none';
     });
 
     document.querySelectorAll('a[href="resell.html"]').forEach((link) => {
@@ -209,21 +226,26 @@ function markActiveLink() {
 function ensureSuperAdminLink() {
     const menu = document.querySelector('.sidebar-menu');
     if (!menu) return;
-    if (menu.querySelector('[data-feature-key="super_admin"]')) return;
+    if (menu.querySelector('[data-role-required="super_admin"]')) return;
 
     const link = document.createElement('a');
-    link.href                 = 'admin.html';
+    link.href                 = 'produtos-gestor.html';
     link.className            = 'sidebar-link';
-    link.dataset.featureKey   = 'super_admin';
     link.dataset.roleRequired = 'super_admin';
-    link.innerHTML            = '<span class="sidebar-icon">👑</span> Super Admin';
+    link.innerHTML            = '<span class="sidebar-icon">👑</span> Produtos do Gestor';
 
-    const adminLink = menu.querySelector('[data-feature-key="admin"]');
-    if (adminLink && adminLink.parentNode === menu) {
-        adminLink.insertAdjacentElement('afterend', link);
-    } else {
-        menu.appendChild(link);
+    const productsSubmenu = document.getElementById('productsSubmenu');
+    if (productsSubmenu) {
+        const apiLink = productsSubmenu.querySelector('a[href="api-pagamentos.html"]');
+        if (apiLink) {
+            apiLink.insertAdjacentElement('afterend', link);
+        } else {
+            productsSubmenu.appendChild(link);
+        }
+        return;
     }
+
+    menu.appendChild(link);
 }
 
 // ---------------------------------------------------------------------------

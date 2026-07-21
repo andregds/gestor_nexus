@@ -4,85 +4,240 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Criar Conta | Nexus Monitor</title>
-    <!-- Link para o CSS principal -->
     <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .register-wrap {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+        .register-card {
+            width: 100%;
+            max-width: 1100px;
+            background: #fff;
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 18px 0 28px;
+        }
+        .plan-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all .2s ease;
+            background: #f8fafc;
+        }
+        .plan-card:hover,
+        .plan-card.selected {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            transform: translateY(-1px);
+        }
+        .plan-card .tag {
+            display: inline-block;
+            font-size: .72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #2563eb;
+            background: #eff6ff;
+            padding: 4px 8px;
+            border-radius: 999px;
+            margin-bottom: 10px;
+        }
+        .plan-card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+        .plan-card .price { font-size: 1.5rem; font-weight: 800; color: #0f172a; }
+        .plan-card p { margin: 6px 0 0; color: #64748b; font-size: .88rem; }
+        .register-grid {
+            display: grid;
+            grid-template-columns: 1.1fr .9fr;
+            gap: 24px;
+            align-items: start;
+        }
+        .summary-box {
+            border: 1px solid #dbeafe;
+            background: #eff6ff;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+            color: #1e3a8a;
+        }
+        @media (max-width: 900px) {
+            .register-grid { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
-<body class="auth-body">
-
-    <div class="auth-container">
-        <div class="auth-card">
-            <div class="auth-header">
+<body>
+    <div class="register-wrap">
+        <div class="register-card">
+            <div class="auth-header" style="text-align:center;">
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
-                <p>Crie sua conta para começar a monitorar</p>
+                <p>Escolha um plano e crie sua conta</p>
             </div>
 
-            <form id="registerForm" onsubmit="handleRegister(event)">
-                <div class="form-group">
-                    <label for="name">Nome Completo</label>
-                    <input type="text" id="name" placeholder="Seu nome" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="email">E-mail</label>
-                    <input type="email" id="email" placeholder="seu@email.com" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="password">Senha</label>
-                    <input type="password" id="password" placeholder="Sua senha segura" required>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-block">Criar Conta</button>
-            </form>
-
-            <div class="auth-footer">
-                <p>Já tem uma conta? <a href="login.html">Fazer Login</a></p>
+            <div class="summary-box">
+                <strong>Plano selecionado:</strong> <span id="selectedPlanLabel">Mensal</span>
             </div>
 
-            <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.9rem;"></div>
+            <div class="pricing-grid" id="pricingGrid"></div>
+
+            <div class="register-grid">
+                <div>
+                    <div class="form-group">
+                        <label for="name">Nome Completo</label>
+                        <input type="text" id="name" placeholder="Seu nome" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">E-mail</label>
+                        <input type="email" id="email" placeholder="seu@email.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Senha</label>
+                        <input type="password" id="password" placeholder="Sua senha segura" required>
+                    </div>
+
+                    <button type="button" class="btn btn-primary btn-block" onclick="handleRegister()">Criar Conta Grátis</button>
+                </div>
+
+                <div>
+                    <div class="card" style="height:100%;">
+                        <h3 style="margin-bottom: .75rem; color: var(--primary);">O que você recebe</h3>
+                        <ul style="margin: 0; padding-left: 1.1rem; color: #475569; line-height: 1.8;">
+                            <li>Monitoramento de serviços em tempo real</li>
+                            <li>Alertas por WhatsApp e Telegram</li>
+                            <li>Gestão de clientes, planos e pagamentos</li>
+                            <li>Interface pronta para uso</li>
+                        </ul>
+                        <div class="auth-footer" style="margin-top: 1.5rem; text-align:left;">
+                            <p>Já tem uma conta? <a href="login.html">Fazer Login</a></p>
+                        </div>
+                        <div id="message" style="margin-top: 15px; min-height: 20px;"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+            ? 'http://localhost:8000'
+            : window.location.origin;
 
-        async function handleRegister(event) {
-            event.preventDefault();
+        const STORAGE_KEY = 'landing_page_pricing_config';
+        const DEFAULT_CONFIG = {
+            plans: {
+                monthly: { title: 'Mensal', price: 49.90, description: 'Renovação mensal com flexibilidade.' },
+                quarterly: { title: 'Trimestral', price: 129.90, description: 'Mais estabilidade por 3 meses.' },
+                semiannual: { title: 'Semestral', price: 229.90, description: 'Economia para meio ano.' },
+                yearly: { title: 'Anual', price: 399.90, description: 'Melhor custo-benefício do catálogo.' }
+            }
+        };
 
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
+        let selectedPlan = 'monthly';
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function money(value) {
+            const numeric = Number(value || 0);
+            return numeric.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function loadConfig() {
+            try {
+                return Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || {});
+            } catch (error) {
+                return DEFAULT_CONFIG;
+            }
+        }
+
+        function renderPricing() {
+            const config = loadConfig();
+            const plans = config.plans || DEFAULT_CONFIG.plans;
+            const grid = document.getElementById('pricingGrid');
+            grid.innerHTML = '';
+            Object.keys(plans).forEach((key) => {
+                const plan = plans[key];
+                const card = document.createElement('div');
+                card.className = `plan-card ${key === selectedPlan ? 'selected' : ''}`;
+                card.onclick = () => selectPlan(key);
+                card.innerHTML = `
+                    <div class="tag">${escapeHtml(plan.title)}</div>
+                    <h3>${escapeHtml(plan.title)}</h3>
+                    <div class="price">${money(plan.price)}</div>
+                    <p>${escapeHtml(plan.description || '')}</p>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function selectPlan(planKey) {
+            selectedPlan = planKey;
+            const config = loadConfig();
+            const plan = config.plans?.[planKey] || DEFAULT_CONFIG.plans[planKey];
+            document.getElementById('selectedPlanLabel').textContent = plan.title;
+            renderPricing();
+        }
+
+        async function handleRegister() {
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const msgDiv = document.getElementById('message');
 
+            if (!name || !email || !password) {
+                msgDiv.textContent = 'Preencha todos os campos.';
+                msgDiv.style.color = 'var(--danger)';
+                return;
+            }
+
             msgDiv.textContent = 'Criando conta...';
-            msgDiv.style.color = '#666';
+            msgDiv.style.color = '#64748b';
 
             try {
                 const response = await fetch(`${API_URL}/register`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password })
                 });
 
                 if (response.ok) {
                     msgDiv.textContent = 'Conta criada com sucesso! Redirecionando...';
-                    msgDiv.style.color = 'green';
-                    setTimeout(() => {
-                        window.location.href = 'login.html';
-                    }, 2000);
+                    msgDiv.style.color = 'var(--success)';
+                    setTimeout(() => { window.location.href = 'login.html'; }, 1500);
                 } else {
                     const data = await response.json();
                     msgDiv.textContent = data.detail || 'Erro ao criar conta.';
-                    msgDiv.style.color = 'red';
+                    msgDiv.style.color = 'var(--danger)';
                 }
             } catch (error) {
                 console.error(error);
                 msgDiv.textContent = 'Erro de conexão com o servidor.';
-                msgDiv.style.color = 'red';
+                msgDiv.style.color = 'var(--danger)';
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const config = loadConfig();
+            document.getElementById('selectedPlanLabel').textContent = config.plans?.[selectedPlan]?.title || DEFAULT_CONFIG.plans[selectedPlan].title;
+            renderPricing();
+        });
     </script>
 </body>
 </html>
