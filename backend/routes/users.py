@@ -730,7 +730,7 @@ async def test_payment_complete(
 
 @router.post("/me/payment/create-checkout")
 def create_real_checkout(
-        payload: PaymentTestPayload,
+        payload: PaymentTestConnectionRequest,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
