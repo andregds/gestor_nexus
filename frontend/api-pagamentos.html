@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API de Pagamentos | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script>
+        const API_URL = (window.location.protocol === 'file:' || window.location.origin === 'null' || !window.location.hostname)
+            ? 'http://localhost:8000'
+            : (['localhost', '127.0.0.1'].includes(window.location.hostname)
+            ? 'http://localhost:8000'
+            : window.location.origin);
+    </script>
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard">
+                    <span class="sidebar-icon">📊</span> Dashboard
+                </a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">👥</span> Clientes</a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">📂</span> Importar / Padronizar</a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">💾</span> Backup / Exportar</a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas</a>
+                    </div>
+                </div>
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="true" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu is-open" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🛒</span> Produtos/Serviços</a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🏷️</span> Categorias</a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">📄</span> Planos</a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🧩</span> Recursos</a>
+                        <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink active" data-feature-key="products"><span class="sidebar-icon">💳</span> API de Pagamentos</a>
+                    </div>
+                </div>
+                <a href="whatsapp.html" class="sidebar-link" data-feature-key="whatsapp">
+                    <span class="sidebar-icon">📱</span> Integração WhatsApp
+                </a>
+                <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram">
+                    <span class="sidebar-icon">✈️</span> Integração Telegram
+                </a>
+                <a href="dashboard.html#settings" class="sidebar-link" data-feature-key="settings">
+                    <span class="sidebar-icon">⚙️</span> Configurações
+                </a>
+                <a href="resell.html" class="sidebar-link" data-feature-key="resell">
+                    <span class="sidebar-icon">💼</span> Revendedores
+                </a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button onclick="logout()" style="background:none; border:none; color:#ef4444; font-size:0.8rem; cursor:pointer; margin-top:5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <h2>API de Pagamentos</h2>
+                    <p>Configuração individual do seu gateway. Cada conta salva os próprios dados no banco.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 style="margin-bottom: 1rem; color: var(--primary);">Configurar integração</h3>
+                <div class="form-group">
+                    <label>Nome da integração</label>
+                    <input type="text" id="gatewayName" placeholder="Ex: InfinitePay Checkout">
+                </div>
+                <div class="form-group">
+                    <label>Banco / Operadora</label>
+                    <input type="text" id="bankName" placeholder="Ex: InfinitePay, Banco Inter, PagBank">
+                </div>
+                <div class="form-group">
+                    <label>Handle / Conta</label>
+                    <input type="text" id="handle" placeholder="nome-da-minha-loja">
+                </div>
+                <div class="form-group">
+                    <label>URL Base da API</label>
+                    <input type="text" id="apiBaseUrl" placeholder="https://api.checkout.infinitepay.io">
+                </div>
+                <div class="form-group">
+                    <label>Endpoint de criação de link</label>
+                    <input type="text" id="linksEndpoint" placeholder="/links">
+                </div>
+                <div class="form-group">
+                    <label>Endpoint de consulta</label>
+                    <input type="text" id="paymentCheckEndpoint" placeholder="/payment_check">
+                </div>
+                <div class="form-group">
+                    <label>Webhook URL</label>
+                    <input type="text" id="webhookUrl" placeholder="https://seu-dominio.com/v1/webhooks/infinitepay">
+                    <small style="color:var(--text-muted); display:block; margin-top:6px;">Em local, a rota pública de webhook já existe no backend; em produção, use a URL do domínio real.</small>
+                </div>
+                <div class="form-group">
+                    <label>Redirect URL</label>
+                    <input type="text" id="redirectUrl" placeholder="https://seu-dominio.com/pedido/confirmado">
+                </div>
+                <div class="form-group">
+                    <label>Chave da API</label>
+                    <input type="text" id="apiKey" placeholder="Cole sua chave aqui">
+                </div>
+                <div class="form-group">
+                    <label>Webhook Secret</label>
+                    <input type="text" id="webhookSecret" placeholder="Segredo do webhook">
+                </div>
+                <div class="form-group">
+                    <label>Ambiente</label>
+                    <select id="environment">
+                        <option value="sandbox">Sandbox</option>
+                        <option value="production">Produção</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="enabled">
+                        Integração ativa
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Observações</label>
+                    <textarea id="notes" rows="4" placeholder="Anote regras do seu banco, taxas, contas e qualquer detalhe interno."></textarea>
+                </div>
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal()">Teste de conexão</button>
+                    <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings()">Restaurar padrão</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadPaymentSettings()">Recarregar</button>
+                    <button type="button" class="btn btn-primary" onclick="savePaymentSettings()">Salvar</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="connectionTestModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:2000; align-items:center; justify-content:center; padding:20px;">
+        <div class="card" style="max-width:520px; width:100%; margin:0; position:relative;">
+            <button type="button" onclick="closeConnectionTestModal()" style="position:absolute; top:14px; right:14px; border:none; background:none; font-size:1.2rem; cursor:pointer;">✖</button>
+            <h3 style="margin-bottom:1rem; color:var(--primary);">Teste de conexão</h3>
+            <p style="margin-bottom:1rem; color:var(--text-muted);">Preencha com um produto fictício e um valor para validar a comunicação com o gateway.</p>
+            <div class="form-group">
+                <label>Nome do produto fictício</label>
+                <input type="text" id="testProductName" placeholder="Ex: Produto Teste Nexus">
+            </div>
+            <div class="form-group">
+                <label>Valor</label>
+                <input type="number" id="testProductValue" min="0.01" step="0.01" placeholder="Ex: 10.00">
+            </div>
+            <div class="form-group" id="connectionTestResult" style="display:none; padding:12px; border-radius:8px; background:#0f172a; color:#e2e8f0; white-space:pre-wrap;"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:1.25rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeConnectionTestModal()">Cancelar</button>
+                <button type="button" class="btn btn-secondary" onclick="runConnectionTest(false)">Testar conexão</button>
+                <button type="button" class="btn btn-primary" onclick="runConnectionTest(true)">Teste completo</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/sidebar.js"></script>
+    <script>
+        const DEFAULT_PAYMENT_SETTINGS = {
+            gateway_name: 'InfinitePay Checkout',
+            bank_name: '',
+            handle: '',
+            api_base_url: 'https://api.checkout.infinitepay.io',
+            links_endpoint: '/links',
+            payment_check_endpoint: '/payment_check',
+            webhook_url: '',
+            redirect_url: '',
+            api_key: '',
+            webhook_secret: '',
+            environment: 'production',
+            enabled: false,
+            notes: ''
+        };
+
+        function apiFetch(path, options = {}) {
+            const token = localStorage.getItem('token');
+            const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+            if (token) headers.Authorization = `Bearer ${token}`;
+            return fetch(`${API_URL}${path}`, Object.assign({}, options, { headers }));
+        }
+
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notificationContainer') || (() => {
+                const div = document.createElement('div');
+                div.id = 'notificationContainer';
+                div.style.position = 'fixed';
+                div.style.top = '20px';
+                div.style.right = '20px';
+                div.style.zIndex = '1000';
+                div.style.display = 'flex';
+                div.style.flexDirection = 'column';
+                div.style.gap = '10px';
+                document.body.appendChild(div);
+                return div;
+            })();
+
+            const note = document.createElement('div');
+            note.className = `notification ${type}`;
+            note.textContent = message;
+            note.style.padding = '10px 16px';
+            note.style.borderRadius = '6px';
+            note.style.color = '#fff';
+            note.style.fontWeight = '600';
+            note.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)';
+            note.style.background = type === 'success' ? '#16a34a' : (type === 'error' ? '#dc2626' : '#2563eb');
+            container.appendChild(note);
+            setTimeout(() => note.remove(), 4000);
+        }
+
+        function logout() {
+            if (confirm('Tem certeza que deseja sair?')) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user_role');
+                localStorage.removeItem('user_feature_flags');
+                window.location.href = 'login.html';
+            }
+        }
+
+        function normalizePaymentSettings(saved) {
+            return Object.assign({}, DEFAULT_PAYMENT_SETTINGS, saved || {});
+        }
+
+        function fillPaymentSettings(settings) {
+            document.getElementById('gatewayName').value = settings.gateway_name || '';
+            document.getElementById('bankName').value = settings.bank_name || '';
+            document.getElementById('handle').value = settings.handle || '';
+            document.getElementById('apiBaseUrl').value = settings.api_base_url || '';
+            document.getElementById('linksEndpoint').value = settings.links_endpoint || '';
+            document.getElementById('paymentCheckEndpoint').value = settings.payment_check_endpoint || '';
+            document.getElementById('webhookUrl').value = settings.webhook_url || '';
+            document.getElementById('redirectUrl').value = settings.redirect_url || '';
+            document.getElementById('apiKey').value = settings.api_key || '';
+            document.getElementById('webhookSecret').value = settings.webhook_secret || '';
+            document.getElementById('environment').value = settings.environment || 'production';
+            document.getElementById('enabled').checked = Boolean(settings.enabled);
+            document.getElementById('notes').value = settings.notes || '';
+        }
+
+        function loadPaymentSettings() {
+            apiFetch('/users/me')
+                .then((response) => {
+                    if (response.status === 401) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+                    if (!response.ok) {
+                        throw new Error('Falha ao carregar configurações.');
+                    }
+                    return response.json();
+                })
+                .then((user) => {
+                    if (!user) return;
+                    document.getElementById('userName').textContent = user.name || 'Usuário';
+                    fillPaymentSettings(normalizePaymentSettings(user.payment_api_settings));
+                })
+                .catch(() => {
+                    showNotification('Não foi possível carregar a configuração salva.', 'error');
+                    fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+                });
+        }
+
+        function readFormPaymentSettings() {
+            return normalizePaymentSettings({
+                gateway_name: document.getElementById('gatewayName').value.trim(),
+                bank_name: document.getElementById('bankName').value.trim(),
+                handle: document.getElementById('handle').value.trim(),
+                api_base_url: document.getElementById('apiBaseUrl').value.trim(),
+                links_endpoint: document.getElementById('linksEndpoint').value.trim(),
+                payment_check_endpoint: document.getElementById('paymentCheckEndpoint').value.trim(),
+                webhook_url: document.getElementById('webhookUrl').value.trim(),
+                redirect_url: document.getElementById('redirectUrl').value.trim(),
+                api_key: document.getElementById('apiKey').value.trim(),
+                webhook_secret: document.getElementById('webhookSecret').value.trim(),
+                environment: document.getElementById('environment').value,
+                enabled: document.getElementById('enabled').checked,
+                notes: document.getElementById('notes').value.trim()
+            });
+        }
+
+        async function verifySavedSettings(expected) {
+            const response = await apiFetch('/users/me');
+            if (!response.ok) {
+                throw new Error('Não foi possível validar o salvamento.');
+            }
+            const user = await response.json();
+            const saved = normalizePaymentSettings(user.payment_api_settings);
+            const keys = Object.keys(expected);
+            const mismatches = keys.filter((key) => {
+                if (typeof expected[key] === 'boolean') {
+                    return Boolean(saved[key]) !== Boolean(expected[key]);
+                }
+                return String(saved[key] || '') !== String(expected[key] || '');
+            });
+            return { user, mismatches };
+        }
+
+        function resetPaymentSettings() {
+            fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+        }
+
+        function openConnectionTestModal() {
+            document.getElementById('connectionTestModal').style.display = 'flex';
+            document.getElementById('connectionTestResult').style.display = 'none';
+            document.getElementById('connectionTestResult').textContent = '';
+            document.getElementById('testProductName').value = document.getElementById('testProductName').value || 'Produto Teste Nexus';
+            document.getElementById('testProductValue').value = document.getElementById('testProductValue').value || '10.00';
+        }
+
+        function closeConnectionTestModal() {
+            document.getElementById('connectionTestModal').style.display = 'none';
+        }
+
+        async function runConnectionTest(fullTest = false) {
+            const productName = document.getElementById('testProductName').value.trim();
+            const value = parseFloat(String(document.getElementById('testProductValue').value).replace(',', '.'));
+            const resultBox = document.getElementById('connectionTestResult');
+
+            if (!productName) {
+                showNotification('Informe o nome do produto fictício.', 'error');
+                return;
+            }
+            if (!value || value <= 0) {
+                showNotification('Informe um valor válido.', 'error');
+                return;
+            }
+
+            resultBox.style.display = 'block';
+            resultBox.textContent = fullTest ? 'Executando teste completo...' : 'Testando conexão...';
+
+            try {
+                const response = await apiFetch(fullTest ? '/users/me/payment/test-complete' : '/users/me/payment/test-connection', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        product_name: productName,
+                        amount: value
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Falha ao testar a conexão.');
+                }
+
+                const checkoutText = data.checkout_response ? JSON.stringify(data.checkout_response, null, 2) : (data.gateway_response ? JSON.stringify(data.gateway_response, null, 2) : '');
+                const webhookText = data.webhook_result ? JSON.stringify(data.webhook_result, null, 2) : '';
+                const lines = [
+                    data.message,
+                    '',
+                    `Cobrança gerada no gateway: ${data.checkout_created ? 'sim' : 'não'}`,
+                    `Webhook recebido: ${data.webhook_received ? 'sim' : 'não'}`,
+                    `Pagamento confirmado: ${data.payment_confirmed ? 'sim' : 'não'}`,
+                ];
+                if (checkoutText) {
+                    lines.push('');
+                    lines.push('Resposta da cobrança:');
+                    lines.push(checkoutText);
+                }
+                if (webhookText) {
+                    lines.push('');
+                    lines.push('Resposta do webhook:');
+                    lines.push(webhookText);
+                }
+                lines.push('');
+                lines.push('sucesso!');
+                resultBox.textContent = lines.join('\n');
+                showNotification(fullTest ? 'Teste completo concluído com sucesso!' : 'Teste de conexão concluído com sucesso!', 'success');
+            } catch (error) {
+                resultBox.textContent = `Erro: ${error.message}`;
+                showNotification(error.message || 'Erro no teste de conexão.', 'error');
+            }
+        }
+
+        function savePaymentSettings() {
+            const data = readFormPaymentSettings();
+
+            apiFetch('/users/me/settings', {
+                method: 'PATCH',
+                body: JSON.stringify({ payment_api_settings: data })
+            })
+            .then((response) => {
+                if (response.status === 401) {
+                    window.location.href = 'login.html';
+                    return null;
+                }
+                if (!response.ok) {
+                    return response.json().then((err) => {
+                        throw new Error(err.detail || 'Falha ao salvar.');
+                    });
+                }
+                return response.json();
+            })
+            .then((user) => {
+                if (!user) return;
+                fillPaymentSettings(normalizePaymentSettings(user.payment_api_settings));
+                return verifySavedSettings(data);
+            })
+            .then((result) => {
+                if (!result) return;
+                if (result.mismatches.length) {
+                    showNotification('Salvo com diferença em alguns campos. Recarregue a página.', 'error');
+                    console.warn('Diferenças após salvamento:', result.mismatches);
+                    return;
+                }
+                showNotification('Configuração salva e validada na sua conta.', 'success');
+            })
+            .catch((error) => {
+                showNotification(error.message || 'Erro ao salvar configuração.', 'error');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', loadPaymentSettings);
+    </script>
+</body>
+</html>
