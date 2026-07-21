@@ -226,6 +226,11 @@ def _build_infinitepay_payload(current_user: User, settings: dict, payload: Paym
     redirect_url = (settings.get("redirect_url") or "").strip()
 
     amount_cents = int(round(payload.amount * 100))
+    
+    # Gateway exige no mínimo 2 centavos (0.02)
+    if amount_cents < 2:
+        raise ValueError("O valor deve ser no minimo R$ 0.02 (2 centavos)")
+    
     request_body = {
         "handle": handle,
         "order_nsu": f"TESTE-CONEXAO-{current_user.id}",
