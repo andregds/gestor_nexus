@@ -115,14 +115,6 @@
                     <input type="text" id="redirectUrl" placeholder="https://seu-dominio.com/pedido/confirmado">
                 </div>
                 <div class="form-group">
-                    <label>Chave da API</label>
-                    <input type="text" id="apiKey" placeholder="Cole sua chave aqui">
-                </div>
-                <div class="form-group">
-                    <label>Webhook Secret</label>
-                    <input type="text" id="webhookSecret" placeholder="Segredo do webhook">
-                </div>
-                <div class="form-group">
                     <label>Ambiente</label>
                     <select id="environment">
                         <option value="sandbox">Sandbox</option>
@@ -182,8 +174,6 @@
             payment_check_endpoint: '/payment_check',
             webhook_url: '',
             redirect_url: '',
-            api_key: '',
-            webhook_secret: '',
             environment: 'production',
             enabled: false,
             notes: ''
@@ -246,8 +236,6 @@
             document.getElementById('paymentCheckEndpoint').value = settings.payment_check_endpoint || '';
             document.getElementById('webhookUrl').value = settings.webhook_url || '';
             document.getElementById('redirectUrl').value = settings.redirect_url || '';
-            document.getElementById('apiKey').value = settings.api_key || '';
-            document.getElementById('webhookSecret').value = settings.webhook_secret || '';
             document.getElementById('environment').value = settings.environment || 'production';
             document.getElementById('enabled').checked = Boolean(settings.enabled);
             document.getElementById('notes').value = settings.notes || '';
@@ -286,8 +274,6 @@
                 payment_check_endpoint: document.getElementById('paymentCheckEndpoint').value.trim(),
                 webhook_url: document.getElementById('webhookUrl').value.trim(),
                 redirect_url: document.getElementById('redirectUrl').value.trim(),
-                api_key: document.getElementById('apiKey').value.trim(),
-                webhook_secret: document.getElementById('webhookSecret').value.trim(),
                 environment: document.getElementById('environment').value,
                 enabled: document.getElementById('enabled').checked,
                 notes: document.getElementById('notes').value.trim()
