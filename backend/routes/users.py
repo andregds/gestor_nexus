@@ -368,20 +368,20 @@ def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
 def _process_infinitepay_webhook(webhook_payload: InfinitePayWebhookPayload, db: Session):
     """
     Processa webhook de pagamento confirmado.
-    Renova automaticamente a conta do usuário.
+    Renova automaticamente a conta do usuario.
     """
     payload_data = _payload_to_dict(webhook_payload)
     
-    print(f"\n[WEBHOOK] ═══════════════════════════════════════")
-    print(f"[WEBHOOK] 📩 NOVO WEBHOOK RECEBIDO")
-    print(f"[WEBHOOK] ═══════════════════════════════════════")
-    print(f"[WEBHOOK] 📊 Payload completo: {payload_data}")
+    print(f"\n[WEBHOOK] ================================================")
+    print(f"[WEBHOOK] NOVO WEBHOOK RECEBIDO")
+    print(f"[WEBHOOK] ================================================")
+    print(f"[WEBHOOK] Payload completo: {payload_data}")
     
     # Valida valores de pagamento
     amount_value = webhook_payload.amount
     paid_value = webhook_payload.paid_amount
     if amount_value is not None and paid_value is not None and paid_value < amount_value:
-        print(f"[WEBHOOK] ⚠️  paid_amount ({paid_value}) < amount ({amount_value})")
+        print(f"[WEBHOOK] AVISO: paid_amount ({paid_value}) < amount ({amount_value})")
         raise HTTPException(status_code=400, detail="paid_amount menor que o valor esperado.")
 
     # Extrai status do pagamento
@@ -454,11 +454,11 @@ def _process_infinitepay_webhook(webhook_payload: InfinitePayWebhookPayload, db:
     print(f"  - is_active: {user_db.is_active}")
     print(f"  - block_reason: {user_db.block_reason}")
     print(f"[WEBHOOK] RENOVACAO CONCLUIDA COM SUCESSO!")
-    print(f"[WEBHOOK] ================================\n")
+    print(f"[WEBHOOK] ================================================\n")
     
     return {
         "success": True,
-        "message": "Webhook processado com sucesso. Usuário renovado.",
+        "message": "Webhook processado com sucesso. Usuario renovado.",
         "user_id": user_db.id,
         "user_email": user_db.email,
         "new_expiration": str(user_db.trial_expires_at),
