@@ -15,7 +15,7 @@ from schemas.user import UserResponse, UserSettingsUpdate, DEFAULT_PAYMENT_API_S
 from core.security import get_plan_duration_days
 from models import User
 
-# Defaults para evitar None em permissões/feature flags antigos
+# Defaults para evitar None em permisses/feature flags antigos
 DEFAULT_PERMISSIONS = {
     "can_view_dashboard": True,
     "can_view_clients": True,
@@ -44,7 +44,7 @@ def _safe_dict(value, default):
 def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]):
     effective = DEFAULT_FEATURE_FLAGS.copy()
 
-    # Herda padrão do dono (quando o dono é revendedor) caso exista
+    # Herda padro do dono (quando o dono  revendedor) caso exista
     parent_flags = None
     if user.owner_id and db:
         parent = db.query(User).filter(User.id == user.owner_id).first()
@@ -53,7 +53,7 @@ def _compute_effective_flags(user: User, user_flags: dict, db: Optional[Session]
     if parent_flags:
         effective.update(parent_flags)
 
-    # Aplica overrides do próprio usuário
+    # Aplica overrides do prprio usurio
     effective.update(user_flags or {})
 
     # Super admin sempre enxerga o console
@@ -74,29 +74,29 @@ def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = T
     reseller_flags = _safe_dict(user.reseller_feature_flags, DEFAULT_RESELLER_FEATURE_FLAGS)
     payment_settings = _safe_dict(user.payment_api_settings, DEFAULT_PAYMENT_API_SETTINGS)
 
-    # Super admin não pode perder o console
+    # Super admin no pode perder o console
     if user.role == "super_admin":
         user_flags["admin"] = True
 
     effective_flags = _compute_effective_flags(user, user_flags, db)
 
-    # Aplica no objeto carregado na sessão atual
+    # Aplica no objeto carregado na sesso atual
     user.permissions = permissions
     user.feature_flags = user_flags
     user.reseller_feature_flags = reseller_flags
     user.payment_api_settings = payment_settings
-    # effective_feature_flags não é coluna do banco — atribui como atributo dinâmico
+    # effective_feature_flags no  coluna do banco  atribui como atributo dinmico
     object.__setattr__(user, 'effective_feature_flags', effective_flags)
 
-    # Persiste apenas se solicitado e tivermos sessão válida
-    # NÃO chama db.add() para evitar conflito "already attached to session"
+    # Persiste apenas se solicitado e tivermos sesso vlida
+    # NO chama db.add() para evitar conflito "already attached to session"
     if persist and db:
         sess = object_session(user)
         if sess is db:
             try:
                 db.commit()
                 db.refresh(user)
-                # Reaplica effective após refresh (refresh sobrescreve atributos dinâmicos)
+                # Reaplica effective aps refresh (refresh sobrescreve atributos dinmicos)
                 object.__setattr__(user, 'effective_feature_flags', effective_flags)
             except Exception:
                 db.rollback()
@@ -104,33 +104,33 @@ def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = T
     return user
 
 
-router = APIRouter(prefix="/users", tags=["Usuários"])
+router = APIRouter(prefix="/users", tags=["Usurios"])
 payment_webhook_router = APIRouter(prefix="/v1/webhooks", tags=["Pagamentos"])
 
 
 @router.get("/me", response_model=UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Retorna informações do usuário logado garantindo dicts nos campos opcionais."""
-    # Recarrega o usuário na sessão atual para evitar conflitos entre sessões
+    """Retorna informaes do usurio logado garantindo dicts nos campos opcionais."""
+    # Recarrega o usurio na sesso atual para evitar conflitos entre sesses
     user_db = db.query(User).filter(User.id == current_user.id).first()
     if not user_db:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    # Passa db apenas para lookup do pai (effective flags), mas não persiste no GET
+        raise HTTPException(status_code=404, detail="Usurio no encontrado")
+    # Passa db apenas para lookup do pai (effective flags), mas no persiste no GET
     return _ensure_defaults(user_db, db=db, persist=False)
 
 
-# Rota para salvar configurações gerais
+# Rota para salvar configuraes gerais
 @router.patch("/me/settings", response_model=UserResponse)
 def update_user_settings(
         settings: UserSettingsUpdate,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    # Garante que o usuário está na sessão atual
+    # Garante que o usurio est na sesso atual
     user_in_db = db.query(User).filter(User.id == current_user.id).first()
 
     if not user_in_db:
-        # Fallback caso não encontre (raro se estiver logado)
+        # Fallback caso no encontre (raro se estiver logado)
         user_in_db = db.merge(current_user)
 
     if settings.whatsapp_number is not None:
@@ -164,13 +164,13 @@ async def test_telegram_notification(
         current_user: User = Depends(get_current_user)
 ):
     if not current_user.telegram_token or not current_user.telegram_chat_id:
-        raise HTTPException(status_code=400, detail="Telegram não configurado. Salve as configurações primeiro.")
+        raise HTTPException(status_code=400, detail="Telegram no configurado. Salve as configuraes primeiro.")
 
     try:
         await send_telegram_message(
             token=current_user.telegram_token,
             chat_id=current_user.telegram_chat_id,
-            message="🔔 *Teste de Notificação - Nexus Monitor*\n\nSe você recebeu esta mensagem, a integração está funcionando perfeitamente! 🚀"
+            message=" *Teste de Notificao - Nexus Monitor*\n\nSe voc recebeu esta mensagem, a integrao est funcionando perfeitamente! "
         )
         return {"message": "Mensagem de teste enviada com sucesso!"}
     except Exception as e:
@@ -302,14 +302,14 @@ def _extract_customer_email(payload: dict) -> Optional[str]:
 
 def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
     """
-    Busca usuário por múltiplos identificadores em cascata:
+    Busca usuario por multiplos identificadores em cascata:
     1. renewal_invoice_slug
     2. renewal_order_nsu
     3. email do cliente
     """
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
     
-    # 1️⃣ Tenta por invoice_slug
+    # Tenta por invoice_slug
     invoice_slug = (
         payload.get("invoice_slug")
         or payload.get("invoiceSlug")
@@ -319,13 +319,13 @@ def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
         or metadata.get("invoice_slug")
     )
     if invoice_slug:
-        print(f"[WEBHOOK] 🔍 Buscando por invoice_slug: {invoice_slug}")
+        print(f"[WEBHOOK] Buscando por invoice_slug: {invoice_slug}")
         user_db = db.query(User).filter(User.renewal_invoice_slug == str(invoice_slug)).first()
         if user_db:
-            print(f"[WEBHOOK] ✅ Usuário encontrado por invoice_slug: {user_db.id}")
+            print(f"[WEBHOOK] Usuario encontrado por invoice_slug: {user_db.id}")
             return user_db
 
-    # 2️⃣ Tenta por order_nsu (com format PLAN-ID-... ou RENEW-ID-...)
+    # Tenta por order_nsu (com format PLAN-ID-... ou RENEW-ID-...)
     order_nsu = (
         payload.get("order_nsu")
         or payload.get("orderNsu")
@@ -336,32 +336,32 @@ def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
     )
     
     if order_nsu:
-        print(f"[WEBHOOK] 🔍 Buscando por order_nsu: {order_nsu}")
+        print(f"[WEBHOOK] Buscando por order_nsu: {order_nsu}")
         user_id = _extract_user_id_from_order(str(order_nsu or ""))
         if user_id is not None:
-            print(f"[WEBHOOK] 🔍 Extraiu user_id do order_nsu: {user_id}")
+            print(f"[WEBHOOK] Extraiu user_id do order_nsu: {user_id}")
             user_db = db.query(User).filter(User.id == user_id).first()
             if user_db:
-                print(f"[WEBHOOK] ✅ Usuário encontrado por order_nsu/user_id: {user_db.id}")
+                print(f"[WEBHOOK] Usuario encontrado por order_nsu/user_id: {user_db.id}")
                 return user_db
         
-        # Tenta encontrar por renewal_order_nsu (se já foi pago antes)
-        print(f"[WEBHOOK] 🔍 Buscando por renewal_order_nsu: {order_nsu}")
+        # Tenta encontrar por renewal_order_nsu (se ja foi pago antes)
+        print(f"[WEBHOOK] Buscando por renewal_order_nsu: {order_nsu}")
         user_db = db.query(User).filter(User.renewal_order_nsu == str(order_nsu)).first()
         if user_db:
-            print(f"[WEBHOOK] ✅ Usuário encontrado por renewal_order_nsu: {user_db.id}")
+            print(f"[WEBHOOK] Usuario encontrado por renewal_order_nsu: {user_db.id}")
             return user_db
 
-    # 3️⃣ Tenta por email (último recurso)
+    # Tenta por email (ultimo recurso)
     customer_email = _extract_customer_email(payload)
     if customer_email:
-        print(f"[WEBHOOK] 🔍 Buscando por email: {customer_email}")
+        print(f"[WEBHOOK] Buscando por email: {customer_email}")
         user_db = db.query(User).filter(User.email == customer_email).first()
         if user_db:
-            print(f"[WEBHOOK] ✅ Usuário encontrado por email: {user_db.id}")
+            print(f"[WEBHOOK] Usuario encontrado por email: {user_db.id}")
             return user_db
 
-    print(f"[WEBHOOK] ❌ Nenhum usuário encontrado. Payload: {payload}")
+    print(f"[WEBHOOK] ERRO: Nenhum usuario encontrado. Payload: {payload}")
     return None
 
 
@@ -531,7 +531,7 @@ async def test_payment_connection(
 ):
     user_db = db.query(User).filter(User.id == current_user.id).first()
     if not user_db:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="Usurio no encontrado")
 
     settings = _normalize_payment_settings(user_db.payment_api_settings)
 
@@ -558,7 +558,7 @@ async def test_payment_connection(
         detail = response.text
         raise HTTPException(
             status_code=502,
-            detail=f"Gateway retornou erro ao testar a conexão: {detail}"
+            detail=f"Gateway retornou erro ao testar a conexo: {detail}"
         )
 
     try:
@@ -567,7 +567,7 @@ async def test_payment_connection(
         gateway_data = {"raw_response": response.text}
 
     return {
-        "message": "Conexão validada com sucesso!",
+        "message": "Conexo validada com sucesso!",
         "success": True,
         "integration_enabled": bool(settings.get("enabled")),
         "checkout_created": True,
@@ -586,7 +586,7 @@ async def test_payment_complete(
     try:
         user_db = db.query(User).filter(User.id == current_user.id).first()
         if not user_db:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+            raise HTTPException(status_code=404, detail="Usurio no encontrado")
 
         settings = _normalize_payment_settings(user_db.payment_api_settings)
         
@@ -688,7 +688,7 @@ async def test_payment_complete(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"\n[TEST-ERROR] Erro não tratado em test_payment_complete: {str(e)}\n")
+        print(f"\n[TEST-ERROR] Erro no tratado em test_payment_complete: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 
@@ -698,13 +698,13 @@ def debug_user_renewal_status(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """DEBUG: Mostra estado de renovação de um usuário"""
+    """DEBUG: Mostra estado de renovao de um usurio"""
     if current_user.role != "super_admin":
         raise HTTPException(status_code=403, detail="Apenas Super Admin")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="Usurio no encontrado")
     
     return {
         "user_id": user.id,
@@ -727,7 +727,7 @@ def debug_user_renewal_status(
             "status_atual": "ATIVO" if user.is_active else "INATIVO",
             "motivo_bloqueio": user.block_reason,
             "pode_renovar": user.renewal_order_nsu is not None or user.renewal_invoice_slug is not None,
-            "renovação_manual": user.trial_expires_manually_set,
+            "renovao_manual": user.trial_expires_manually_set,
         }
     }
 
@@ -738,38 +738,38 @@ async def test_webhook_directly(
         db: Session = Depends(get_db)
 ):
     """
-    Simula um webhook de pagamento confirmado para testar a renovação automática.
-    ⚠️ APENAS PARA TESTES - Não usa gateway real.
+    Simula um webhook de pagamento confirmado para testar a renovacao automatica.
+    APENAS PARA TESTES - Nao usa gateway real.
     """
-    print(f"[TEST-WEBHOOK] 🧪 Iniciando teste de webhook para usuário {current_user.id} ({current_user.email})")
+    print(f"[TEST-WEBHOOK] Iniciando teste de webhook para usuario {current_user.id} ({current_user.email})")
     
-    # Busca o usuário novamente para ter renewal_order_nsu atualizado
+    # Busca o usuario novamente para ter renewal_order_nsu atualizado
     user_db = db.query(User).filter(User.id == current_user.id).first()
     if not user_db:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="Usuario nao encontrado")
     
-    print(f"[TEST-WEBHOOK] 📋 Dados do usuário:")
+    print(f"[TEST-WEBHOOK] Dados do usuario:")
     print(f"  - renewal_order_nsu: {user_db.renewal_order_nsu}")
     print(f"  - renewal_invoice_slug: {user_db.renewal_invoice_slug}")
     print(f"  - email: {user_db.email}")
     
     # Cria um payload de teste realista
-    # Usa o renewal_order_nsu real do usuário se existir, senão usa o email como fallback
+    # Usa o renewal_order_nsu real do usuario se existir, senao usa o email como fallback
     order_nsu_value = user_db.renewal_order_nsu or f"PLAN-{current_user.id}-{int(datetime.utcnow().timestamp())}"
     
     webhook_payload = InfinitePayWebhookPayload(
         invoice_slug=user_db.renewal_invoice_slug or f"TEST-INVOICE-{current_user.id}-{int(datetime.utcnow().timestamp())}",
-        amount=4990,  # R$ 49.90 em centavos
+        amount=4990,
         paid_amount=4990,
         installments=1,
         capture_method="pix",
         transaction_nsu=f"TEST-TX-{current_user.id}-{int(datetime.utcnow().timestamp())}",
         order_nsu=order_nsu_value,
         receipt_url="https://checkout.infinitepay.io/receipt/teste",
-        status="approved",  # Status que confirma o pagamento
+        status="approved",
     )
     
-    print(f"[TEST-WEBHOOK] 📝 Payload para webhook:")
+    print(f"[TEST-WEBHOOK] Payload para webhook:")
     print(f"  - order_nsu: {webhook_payload.order_nsu}")
     print(f"  - invoice_slug: {webhook_payload.invoice_slug}")
     print(f"  - status: {webhook_payload.status}")
@@ -777,17 +777,17 @@ async def test_webhook_directly(
     # Processa como webhook real
     webhook_result = _process_infinitepay_webhook(webhook_payload, db)
     
-    print(f"[TEST-WEBHOOK] ✅ Resultado do webhook: {webhook_result}")
+    print(f"[TEST-WEBHOOK] Resultado do webhook: {webhook_result}")
     
-    # Recarrega o usuário para verificar se foi atualizado
+    # Recarrega o usuario para verificar se foi atualizado
     db.refresh(user_db)
-    print(f"[TEST-WEBHOOK] 🔄 Usuário após webhook:")
+    print(f"[TEST-WEBHOOK] Usuario apos webhook:")
     print(f"  - is_active: {user_db.is_active}")
     print(f"  - trial_expires_at: {user_db.trial_expires_at}")
     print(f"  - block_reason: {user_db.block_reason}")
     
     return {
-        "message": "🎉 Webhook de teste processado com sucesso! Verifique os logs do backend.",
+        "message": "Webhook de teste processado com sucesso! Verifique os logs do backend.",
         "success": True,
         "webhook_result": webhook_result,
         "test_user_id": current_user.id,
@@ -807,14 +807,14 @@ def update_notification_schedule(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    """Atualiza o horário e se o agendamento está ativo."""
+    """Atualiza o horrio e se o agendamento est ativo."""
 
-    # --- CORREÇÃO PRINCIPAL AQUI ---
-    # Buscamos o usuário novamente na sessão atual para garantir que o commit funcione
+    # --- CORREO PRINCIPAL AQUI ---
+    # Buscamos o usurio novamente na sesso atual para garantir que o commit funcione
     user_db = db.query(User).filter(User.id == current_user.id).first()
 
     if not user_db:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        raise HTTPException(status_code=404, detail="Usurio no encontrado")
 
     # Atualiza os campos
     user_db.notification_time = schedule_data.time
@@ -824,7 +824,7 @@ def update_notification_schedule(
     db.refresh(user_db)
 
     return {
-        "message": "Configuração de agendamento atualizada com sucesso!",
+        "message": "Configurao de agendamento atualizada com sucesso!",
         "time": user_db.notification_time,
         "enabled": user_db.notifications_enabled
     }
@@ -835,8 +835,8 @@ def get_notification_schedule(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)  # Adicionado DB session para leitura atualizada
 ):
-    """Retorna o horário e status configurados."""
-    # Também garantimos a leitura atualizada do banco
+    """Retorna o horrio e status configurados."""
+    # Tambm garantimos a leitura atualizada do banco
     user_db = db.query(User).filter(User.id == current_user.id).first()
 
     return {
