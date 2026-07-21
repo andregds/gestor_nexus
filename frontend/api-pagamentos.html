@@ -115,19 +115,6 @@
                     <input type="text" id="redirectUrl" placeholder="https://seu-dominio.com/pedido/confirmado">
                 </div>
                 <div class="form-group">
-                    <label>Ambiente</label>
-                    <select id="environment">
-                        <option value="sandbox">Sandbox</option>
-                        <option value="production">Produção</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label style="display:flex; align-items:center; gap:8px;">
-                        <input type="checkbox" id="enabled">
-                        Integração ativa
-                    </label>
-                </div>
-                <div class="form-group">
                     <label>Observações</label>
                     <textarea id="notes" rows="4" placeholder="Anote regras do seu banco, taxas, contas e qualquer detalhe interno."></textarea>
                 </div>
@@ -174,8 +161,6 @@
             payment_check_endpoint: '/payment_check',
             webhook_url: '',
             redirect_url: '',
-            environment: 'production',
-            enabled: false,
             notes: ''
         };
 
@@ -236,8 +221,6 @@
             document.getElementById('paymentCheckEndpoint').value = settings.payment_check_endpoint || '';
             document.getElementById('webhookUrl').value = settings.webhook_url || '';
             document.getElementById('redirectUrl').value = settings.redirect_url || '';
-            document.getElementById('environment').value = settings.environment || 'production';
-            document.getElementById('enabled').checked = Boolean(settings.enabled);
             document.getElementById('notes').value = settings.notes || '';
         }
 
@@ -274,8 +257,6 @@
                 payment_check_endpoint: document.getElementById('paymentCheckEndpoint').value.trim(),
                 webhook_url: document.getElementById('webhookUrl').value.trim(),
                 redirect_url: document.getElementById('redirectUrl').value.trim(),
-                environment: document.getElementById('environment').value,
-                enabled: document.getElementById('enabled').checked,
                 notes: document.getElementById('notes').value.trim()
             });
         }
