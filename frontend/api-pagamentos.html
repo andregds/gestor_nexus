@@ -453,6 +453,8 @@
                 showNotification(error.message || 'Erro ao sincronizar pagamento.', 'error');
             }
         }
+
+        function savePaymentSettings() {
             const data = readFormPaymentSettings();
 
             apiFetch('/users/me/settings', {
