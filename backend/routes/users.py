@@ -303,11 +303,45 @@ def _extract_customer_email(payload: dict) -> Optional[str]:
 def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
     """
     Busca usuario por multiplos identificadores em cascata:
-    1. renewal_invoice_slug
-    2. renewal_order_nsu
-    3. email do cliente
+    1. user_id direto no payload
+    2. renewal_invoice_slug
+    3. renewal_order_nsu
+    4. order_nsu (extrai user_id)
+    5. email do cliente
     """
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    
+    # Tenta user_id direto (novo - para usuarios novos)
+    user_id_direct = (
+        payload.get("user_id")
+        or payload.get("userId")
+        or metadata.get("user_id")
+    )
+    if user_id_direct:
+        try:
+            user_db = db.query(User).filter(User.id == int(user_id_direct)).first()
+            if user_db:
+                print(f"[WEBHOOK] Usuario encontrado por user_id direto: {user_db.id}")
+                return user_db
+        except (TypeError, ValueError):
+            pass
+    
+    # Tenta customer_id
+    customer_id = (
+        payload.get("customer_id")
+        or payload.get("customerId")
+        or metadata.get("customer_id")
+    )
+    if customer_id:
+        try:
+            customer_obj = payload.get("customer")
+            if isinstance(customer_obj, dict) and customer_obj.get("id"):
+                user_db = db.query(User).filter(User.id == int(customer_obj.get("id"))).first()
+                if user_db:
+                    print(f"[WEBHOOK] Usuario encontrado por customer.id: {user_db.id}")
+                    return user_db
+        except (TypeError, ValueError):
+            pass
     
     # Tenta por invoice_slug
     invoice_slug = (
@@ -692,6 +726,82 @@ async def test_payment_complete(
     except Exception as e:
         print(f"\n[TEST-ERROR] Erro no tratado em test_payment_complete: {str(e)}\n")
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+
+@router.post("/me/payment/create-checkout")
+def create_real_checkout(
+        payload: PaymentTestPayload,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Gera um checkout REAL para pagamento via InfinitePay.
+    O usuario sera redirecionado para o gateway para fazer o pagamento.
+    """
+    try:
+        print(f"\n[CREATE-REAL-CHECKOUT] Gerando checkout real para usuario {current_user.id}")
+        
+        from core.security import create_checkout_link_for_user
+        
+        checkout_url, gateway_response = create_checkout_link_for_user(current_user, db)
+        
+        print(f"[CREATE-REAL-CHECKOUT] Checkout gerado: {checkout_url[:80]}...")
+        
+        return {
+            "success": True,
+            "checkout_url": checkout_url,
+            "url": checkout_url,
+            "gateway_response": gateway_response,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[CREATE-REAL-CHECKOUT] Erro: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro ao criar checkout: {str(e)}")
+
+
+@router.post("/me/payment/sync")
+def sync_payment(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Sincroniza o status de pagamento com o gateway.
+    Util para renovacoes que nao chegaram via webhook.
+    """
+    try:
+        print(f"\n[SYNC-PAYMENT] Sincronizando pagamento para usuario {current_user.id}")
+        
+        if not current_user.renewal_order_nsu and not current_user.renewal_invoice_slug:
+            return {
+                "success": False,
+                "message": "Nenhuma renovacao pendente",
+                "status": "no_renewal_pending",
+            }
+        
+        from core.security import sync_user_payment_from_gateway
+        
+        result = sync_user_payment_from_gateway(current_user, db)
+        
+        if result:
+            return {
+                "success": True,
+                "message": "Pagamento sincronizado e usuario renovado!",
+                "user_id": current_user.id,
+                "is_active": current_user.is_active,
+                "trial_expires_at": str(current_user.trial_expires_at),
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Pagamento ainda nao confirmado no gateway",
+                "status": "payment_not_confirmed",
+            }
+    
+    except Exception as e:
+        print(f"[SYNC-PAYMENT] Erro: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro ao sincronizar: {str(e)}")
 
 
 @router.get("/admin/users/{user_id}/debug")
