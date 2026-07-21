@@ -669,6 +669,8 @@ async def test_payment_complete(
                 transaction_nsu=f"TEST-TX-{current_user.id}",
                 order_nsu=request_body["order_nsu"],
                 receipt_url="https://checkout.infinitepay.io/receipt/teste",
+                customer_email=current_user.email,
+                status="approved",
             )
             webhook_result = _process_infinitepay_webhook(webhook_payload, db)
         except Exception as e:
