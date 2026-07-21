@@ -170,7 +170,13 @@
             const token = localStorage.getItem('token');
             const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
             if (token) headers.Authorization = `Bearer ${token}`;
-            return fetch(`${API_URL}${path}`, Object.assign({}, options, { headers }));
+            
+            // Adiciona timeout de 10 segundos se não especificado
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            return fetch(`${API_URL}${path}`, Object.assign({}, options, { headers, signal: controller.signal }))
+                .finally(() => clearTimeout(timeoutId));
         }
 
         function showNotification(message, type = 'info') {
@@ -227,8 +233,10 @@
         }
 
         function loadPaymentSettings() {
+            console.log('Iniciando carregamento de configurações...');
             apiFetch('/users/me')
                 .then((response) => {
+                    console.log('Resposta de /users/me:', response.status);
                     if (response.status === 401) {
                         window.location.href = 'login.html';
                         return null;
@@ -240,10 +248,13 @@
                 })
                 .then((user) => {
                     if (!user) return;
+                    console.log('Usuário carregado:', user.name);
                     document.getElementById('userName').textContent = user.name || 'Usuário';
                     fillPaymentSettings(normalizePaymentSettings(user.payment_api_settings));
+                    console.log('Configurações preenchidas');
                 })
-                .catch(() => {
+                .catch((error) => {
+                    console.error('Erro ao carregar:', error);
                     showNotification('Não foi possível carregar a configuração salva.', 'error');
                     fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
                 });
