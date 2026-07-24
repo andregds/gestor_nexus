@@ -27,6 +27,8 @@ class ClientCreate(BaseModel):
     name: str
     login: str
     server_name: Optional[str] = None
+    plan_price: Optional[float] = None
+    selected_products: Optional[List[Dict[str, Any]]] = None
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None
@@ -43,6 +45,8 @@ class ClientUpdate(BaseModel):
     name: Optional[str] = None
     login: Optional[str] = None
     server_name: Optional[str] = None
+    plan_price: Optional[float] = None
+    selected_products: Optional[List[Dict[str, Any]]] = None
     whatsapp: Optional[str] = None
     expiration_date: Optional[date] = None
     notes: Optional[str] = None
@@ -76,6 +80,49 @@ def mark_user_last_reminder_run(db: Session, user_id: int):
         return
     user_db.last_reminder_run_at = datetime.now()
     db.commit()
+
+
+def normalize_selected_products(selected_products: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    if not selected_products:
+        return []
+
+    normalized_products: List[Dict[str, Any]] = []
+
+    for item in selected_products:
+        if not isinstance(item, dict):
+            continue
+
+        product_name = str(item.get("name", "") or "").strip()
+        product_id_value = item.get("product_id")
+        price_value = item.get("price")
+
+        if not product_name:
+            continue
+
+        try:
+            product_price = float(price_value)
+        except (TypeError, ValueError):
+            continue
+
+        if product_price < 0:
+            continue
+
+        product_id = None
+        if product_id_value not in (None, ""):
+            try:
+                product_id = int(product_id_value)
+            except (TypeError, ValueError):
+                product_id = None
+
+        normalized_products.append(
+            {
+                "product_id": product_id,
+                "name": product_name,
+                "price": round(product_price, 2),
+            }
+        )
+
+    return normalized_products
 
 
 # ==========================================
@@ -298,8 +345,10 @@ def create_client(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    payload = client_data.dict()
+    payload["selected_products"] = normalize_selected_products(payload.get("selected_products"))
     new_client = Client(
-        **client_data.dict(),
+        **payload,
         owner_id=current_user.id
     )
     db.add(new_client)
@@ -328,6 +377,8 @@ def update_client(
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
     update_data = client_data.dict(exclude_unset=True)
+    if "selected_products" in update_data:
+        update_data["selected_products"] = normalize_selected_products(update_data.get("selected_products"))
     for key, value in update_data.items():
         setattr(client, key, value)
 

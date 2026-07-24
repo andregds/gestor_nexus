@@ -1,6 +1,6 @@
 # backend/schemas/client.py
 from pydantic import BaseModel
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from datetime import date
 
 
@@ -8,6 +8,8 @@ class ClientBase(BaseModel):
     name: str
     login: str
     server_name: Optional[str] = None
+    plan_price: Optional[float] = None
+    selected_products: Optional[List[Dict[str, Any]]] = None
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None

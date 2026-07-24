@@ -143,6 +143,8 @@ class Client(Base):
     name = Column(String, index=True)
     login = Column(String, index=True)
     server_name = Column(String)
+    plan_price = Column(Float, nullable=True)
+    selected_products = Column(JSON, nullable=True)
     whatsapp = Column(String)
 
     # Colunas presentes no banco de dados (produtos / status de pagamento)

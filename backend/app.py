@@ -34,6 +34,10 @@ def ensure_client_error_columns():
         client_columns = {column["name"] for column in inspector.get_columns("clients")} if "clients" in inspector.get_table_names() else set()
         if "clients" not in inspector.get_table_names():
             return
+        if "plan_price" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN plan_price FLOAT NULL"))
+        if "selected_products" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN selected_products JSON NULL"))
         if "reminder_error_message" not in client_columns:
             connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_message VARCHAR(500)"))
         if "reminder_error_at" not in client_columns:

@@ -989,12 +989,35 @@
             </div>
 
             <div class="form-group">
-                <label>Servidor / Plano</label>
-                <input type="text" id="clientServer" placeholder="Ex: Servidor Premium 4K">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.35rem;">
+                    <label style="margin-bottom:0;">Plano</label>
+                    <a href="planos.html" style="font-size:0.82rem; font-weight:600; color:var(--primary); text-decoration:underline;">Cadastrar Plano</a>
+                </div>
+                <div style="display:grid; grid-template-columns:minmax(0, 1fr) 150px; gap:0.75rem; align-items:end;">
+                    <select id="clientServer" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="">Carregando planos...</option>
+                    </select>
+                    <div>
+                        <label for="clientPlanPrice" style="margin-bottom:0.35rem;">R$</label>
+                        <input type="number" id="clientPlanPrice" placeholder="0,00" min="0" step="0.01">
+                    </div>
+                </div>
             </div>
             <div class="form-group">
-                <label>URL M3U8 (Opcional)</label>
-                <input type="text" id="clientM3u8" placeholder="http://servidor.com/get.php?username=...">
+                <div style="display:grid; grid-template-columns:minmax(0, 1fr) 130px 96px; gap:0.75rem; align-items:center; margin-bottom:0.45rem; font-size:0.82rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">
+                    <div>Produto</div>
+                    <div>R$</div>
+                    <div></div>
+                </div>
+                <div id="clientProductsContainer" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-top:0.45rem;">
+                    <div id="clientProductsHint" style="display:none; color:var(--text-muted); font-size:0.83rem; line-height:1.3;">Nenhum produto cadastrado.</div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addProductSelectionRow()">+ Produto</button>
+                </div>
+                <div id="clientTotalAmountCard" style="margin-top:0.65rem; padding:0.8rem 0.95rem; border-radius:12px; background:rgba(16, 185, 129, 0.12); border:1px solid rgba(16, 185, 129, 0.35);">
+                    <div style="font-size:0.8rem; font-weight:700; color:#047857; text-transform:uppercase; letter-spacing:0.04em;">Valor somado de todos</div>
+                    <div id="clientTotalAmount" style="font-size:1.35rem; font-weight:800; color:#065f46; margin-top:0.2rem;">R$ 0,00</div>
+                </div>
             </div>
             <div class="form-group">
                 <label>Observações</label>
@@ -1089,6 +1112,8 @@
         let currentFilter = 'all';
         let currentPage = 1;
         let itemsPerPage = 20;
+        let allPlans = [];
+        let allProducts = [];
         const EXPIRATION_RANGE_STORAGE_KEY = 'clients_expiration_range';
         const EXPIRATION_RANGE_INPUTS_STORAGE_KEY = 'clients_expiration_range_inputs';
         let expirationRangeStart = '';
@@ -1120,6 +1145,60 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function normalizeCurrencyInput(value) {
+            const rawValue = String(value ?? '').trim();
+            if (!rawValue) {
+                return '';
+            }
+
+            if (rawValue.includes(',') && rawValue.includes('.')) {
+                return rawValue.replace(/\./g, '').replace(',', '.');
+            }
+
+            if (rawValue.includes(',')) {
+                return rawValue.replace(',', '.');
+            }
+
+            return rawValue;
+        }
+
+        function parseCurrencyValue(value) {
+            const normalizedValue = normalizeCurrencyInput(value);
+            if (!normalizedValue) {
+                return null;
+            }
+
+            const numericValue = Number.parseFloat(normalizedValue);
+            return Number.isFinite(numericValue) ? numericValue : null;
+        }
+
+        function formatCurrencyInput(value) {
+            const numericValue = parseCurrencyValue(value);
+            if (numericValue === null) {
+                return '';
+            }
+            return numericValue.toFixed(2);
+        }
+
+        function formatMoneyDisplay(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) {
+                return 'R$ 0,00';
+            }
+            return numericValue.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+        }
+
+        function encodeClientData(client) {
+            return encodeURIComponent(JSON.stringify(client));
+        }
+
+        function decodeClientData(encoded) {
+            return JSON.parse(decodeURIComponent(encoded));
         }
 
         function isNotificationIntegrationMessage(message) {
@@ -1156,10 +1235,313 @@
         document.addEventListener('DOMContentLoaded', () => {
             restoreExpirationRangeFilter();
             setupExpirationFilterInteractions();
+            loadPlanOptions();
+            loadProductCatalog();
             loadClients();
             loadScheduleStatus(); // Carrega o status do agendamento ao iniciar
             updateBatchRangeHint();
         });
+
+        function getPlanNamesMatch(planName, selectedValue) {
+            return String(planName || '').trim() === String(selectedValue || '').trim();
+        }
+
+        function getPlanByName(planName) {
+            const normalizedPlanName = String(planName || '').trim();
+            if (!normalizedPlanName) {
+                return null;
+            }
+            return allPlans.find((plan) => getPlanNamesMatch(plan.name, normalizedPlanName)) || null;
+        }
+
+        function getAvailableProducts() {
+            return Array.isArray(allProducts) ? allProducts : [];
+        }
+
+        function getProductById(productId) {
+            if (productId === null || productId === undefined || productId === '') {
+                return null;
+            }
+            return allProducts.find((product) => Number(product.id) === Number(productId)) || null;
+        }
+
+        function renderPlanOptions(selectedValue = '') {
+            const select = document.getElementById('clientServer');
+            if (!select) {
+                return;
+            }
+
+            const normalizedSelectedValue = String(selectedValue || '').trim();
+            const hasRegisteredPlans = Array.isArray(allPlans) && allPlans.length > 0;
+            const hasLegacySelectedValue = normalizedSelectedValue
+                && !allPlans.some((plan) => getPlanNamesMatch(plan.name, normalizedSelectedValue));
+
+            const options = ['<option value="">Selecione um plano</option>'];
+
+            if (hasLegacySelectedValue) {
+                options.push(`<option value="${escapeHtml(normalizedSelectedValue)}">Plano atual: ${escapeHtml(normalizedSelectedValue)}</option>`);
+            }
+
+            if (hasRegisteredPlans) {
+                allPlans.forEach((plan) => {
+                    options.push(`<option value="${escapeHtml(plan.name)}">${escapeHtml(plan.name)}</option>`);
+                });
+            } else {
+                options.push('<option value="" disabled>Nenhum plano cadastrado</option>');
+            }
+
+            select.innerHTML = options.join('');
+            select.disabled = !hasRegisteredPlans && !hasLegacySelectedValue;
+            select.value = normalizedSelectedValue;
+        }
+
+        async function loadPlanOptions(selectedValue = '') {
+            const select = document.getElementById('clientServer');
+            if (!select) {
+                return;
+            }
+
+            select.disabled = true;
+            select.innerHTML = '<option value="">Carregando planos...</option>';
+
+            try {
+                const response = await apiFetch('/plans');
+                if (response.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Falha ao carregar planos.');
+                }
+
+                allPlans = await response.json();
+                renderPlanOptions(selectedValue);
+            } catch (error) {
+                console.error('Erro ao carregar planos:', error);
+                allPlans = [];
+                renderPlanOptions(selectedValue);
+            }
+        }
+
+        async function loadProductCatalog() {
+            try {
+                const response = await apiFetch('/products');
+                if (response.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Falha ao carregar produtos.');
+                }
+                allProducts = await response.json();
+            } catch (error) {
+                console.error('Erro ao carregar produtos:', error);
+                allProducts = [];
+            }
+        }
+
+        function syncPlanPriceWithSelection(forceUpdate = true) {
+            const planSelect = document.getElementById('clientServer');
+            const priceInput = document.getElementById('clientPlanPrice');
+            if (!planSelect || !priceInput) {
+                return;
+            }
+
+            const selectedPlan = getPlanByName(planSelect.value);
+            if (!selectedPlan) {
+                if (forceUpdate) {
+                    priceInput.value = '';
+                }
+                return;
+            }
+
+            if (!forceUpdate && String(priceInput.value || '').trim()) {
+                return;
+            }
+
+            priceInput.value = formatCurrencyInput(selectedPlan.price);
+        }
+
+        function updateProductsHint() {
+            const hint = document.getElementById('clientProductsHint');
+            if (!hint) {
+                return;
+            }
+            const availableProducts = getAvailableProducts();
+            hint.style.display = availableProducts.length === 0 ? 'block' : 'none';
+            hint.textContent = 'Nenhum produto cadastrado.';
+        }
+
+        function renderProductRowOptions(select, selectedItem = null) {
+            if (!select) {
+                return;
+            }
+
+            const availableProducts = getAvailableProducts();
+            const selectedProductId = selectedItem && selectedItem.product_id != null ? String(selectedItem.product_id) : '';
+            const selectedProductName = String(selectedItem?.name || '').trim();
+            const hasLegacySelectedProduct = selectedProductName
+                && !availableProducts.some((product) => String(product.id) === selectedProductId);
+
+            const options = ['<option value="">Selecione um produto</option>'];
+
+            if (hasLegacySelectedProduct) {
+                options.push(`<option value="${escapeHtml(selectedProductId)}">Produto atual: ${escapeHtml(selectedProductName)}</option>`);
+            }
+
+            availableProducts.forEach((product) => {
+                options.push(
+                    `<option value="${product.id}">${escapeHtml(product.name)} - ${formatMoneyDisplay(product.price)}</option>`
+                );
+            });
+
+            select.innerHTML = options.join('');
+            select.value = selectedProductId;
+            select.disabled = !availableProducts.length && !hasLegacySelectedProduct;
+        }
+
+        function syncProductRowPrice(row, fallbackItem = null) {
+            if (!row) {
+                return;
+            }
+
+            const select = row.querySelector('.client-product-select');
+            const priceInput = row.querySelector('.client-product-price');
+            if (!select || !priceInput) {
+                return;
+            }
+
+            const selectedProduct = getProductById(select.value);
+            if (selectedProduct) {
+                priceInput.value = formatCurrencyInput(selectedProduct.price);
+            } else if (fallbackItem && fallbackItem.price != null) {
+                priceInput.value = formatCurrencyInput(fallbackItem.price);
+            } else {
+                priceInput.value = '';
+            }
+        }
+
+        function updateClientTotalAmount() {
+            const planValue = parseCurrencyValue(document.getElementById('clientPlanPrice')?.value) || 0;
+            const productTotal = Array.from(document.querySelectorAll('.client-product-row .client-product-price'))
+                .reduce((sum, input) => sum + (parseCurrencyValue(input.value) || 0), 0);
+            const totalTarget = document.getElementById('clientTotalAmount');
+            if (totalTarget) {
+                totalTarget.textContent = formatMoneyDisplay(planValue + productTotal);
+            }
+        }
+
+        function getClientTotalAmount(client) {
+            const planValue = Number(client?.plan_price) || 0;
+            const productTotal = Array.isArray(client?.selected_products)
+                ? client.selected_products.reduce((sum, product) => sum + (Number(product?.price) || 0), 0)
+                : 0;
+            return planValue + productTotal;
+        }
+
+        async function addProductSelectionRow(selectedItem = null) {
+            const container = document.getElementById('clientProductsContainer');
+            if (!container) {
+                return;
+            }
+
+            await loadProductCatalog();
+            rerenderProductRows();
+
+            const row = document.createElement('div');
+            row.className = 'client-product-row';
+            row.innerHTML = `
+                <div style="display:grid; grid-template-columns:minmax(0, 1fr) 130px 96px; gap:0.75rem; align-items:center;">
+                    <select class="client-product-select" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;" aria-label="Produto">
+                        <option value="">Selecione um produto</option>
+                    </select>
+                    <input type="number" class="client-product-price" placeholder="0,00" min="0" step="0.01" aria-label="Valor do produto">
+                    <button type="button" class="btn btn-danger btn-sm" onclick="removeProductSelectionRow(this)" style="height:42px;">Remover</button>
+                </div>
+            `;
+
+            container.appendChild(row);
+            const select = row.querySelector('.client-product-select');
+            renderProductRowOptions(select, selectedItem);
+            syncProductRowPrice(row, selectedItem);
+            updateProductsHint();
+            updateClientTotalAmount();
+        }
+
+        function removeProductSelectionRow(button) {
+            const row = button?.closest('.client-product-row');
+            if (row) {
+                row.remove();
+            }
+            updateProductsHint();
+            updateClientTotalAmount();
+        }
+
+        function rerenderProductRows() {
+            document.querySelectorAll('.client-product-row').forEach((row) => {
+                const select = row.querySelector('.client-product-select');
+                const priceInput = row.querySelector('.client-product-price');
+                const existingItem = {
+                    product_id: select && select.value ? Number(select.value) : null,
+                    name: select && select.selectedOptions.length ? select.selectedOptions[0].textContent.replace(/\s-\sR\$.*/, '').replace(/^Produto atual:\s*/, '').trim() : '',
+                    price: parseCurrencyValue(priceInput?.value) || 0
+                };
+                renderProductRowOptions(select, existingItem);
+                syncProductRowPrice(row, existingItem);
+            });
+            updateProductsHint();
+            updateClientTotalAmount();
+        }
+
+        function getSelectedProductsPayload() {
+            return Array.from(document.querySelectorAll('.client-product-row')).map((row) => {
+                const select = row.querySelector('.client-product-select');
+                const priceInput = row.querySelector('.client-product-price');
+                const selectedProduct = getProductById(select?.value);
+                const selectedOptionText = select && select.selectedOptions.length ? select.selectedOptions[0].textContent : '';
+                const fallbackName = selectedOptionText
+                    .replace(/\s-\sR\$.*/, '')
+                    .replace(/^Produto atual:\s*/, '')
+                    .trim();
+                const productName = selectedProduct ? selectedProduct.name : fallbackName;
+                const productPrice = parseCurrencyValue(priceInput?.value);
+
+                if (!productName || productPrice === null) {
+                    return null;
+                }
+
+                return {
+                    product_id: selectedProduct ? selectedProduct.id : null,
+                    name: productName,
+                    price: productPrice
+                };
+            }).filter(Boolean);
+        }
+
+        function validateSelectedProductsRows() {
+            const rows = Array.from(document.querySelectorAll('.client-product-row'));
+            for (const row of rows) {
+                const select = row.querySelector('.client-product-select');
+                const priceInput = row.querySelector('.client-product-price');
+                const selectedProduct = getProductById(select?.value);
+                const hasLegacyProduct = Boolean(
+                    select && select.selectedOptions.length
+                    && String(select.selectedOptions[0].textContent || '').trim()
+                    && select.selectedOptions[0].textContent !== 'Selecione um produto'
+                );
+                const priceValue = parseCurrencyValue(priceInput?.value);
+
+                if (!selectedProduct && !hasLegacyProduct) {
+                    return 'Selecione um produto em todas as linhas adicionadas.';
+                }
+
+                if (priceValue === null) {
+                    return 'Informe um valor válido para todos os produtos adicionados.';
+                }
+            }
+
+            return null;
+        }
 
         function setupExpirationFilterInteractions() {
             const startInput = document.getElementById('expirationStart');
@@ -1197,6 +1579,38 @@
                 persistCurrentInputs();
             });
         }
+
+        document.addEventListener('change', (event) => {
+            if (event.target && event.target.id === 'clientServer') {
+                syncPlanPriceWithSelection(true);
+                rerenderProductRows();
+            }
+            if (event.target && event.target.classList.contains('client-product-select')) {
+                const row = event.target.closest('.client-product-row');
+                syncProductRowPrice(row);
+                updateClientTotalAmount();
+            }
+        });
+
+        document.addEventListener('blur', (event) => {
+            if (event.target && event.target.id === 'clientPlanPrice') {
+                event.target.value = formatCurrencyInput(event.target.value);
+                updateClientTotalAmount();
+            }
+            if (event.target && event.target.classList.contains('client-product-price')) {
+                event.target.value = formatCurrencyInput(event.target.value);
+                updateClientTotalAmount();
+            }
+        }, true);
+
+        document.addEventListener('input', (event) => {
+            if (event.target && event.target.id === 'clientPlanPrice') {
+                updateClientTotalAmount();
+            }
+            if (event.target && event.target.classList.contains('client-product-price')) {
+                updateClientTotalAmount();
+            }
+        });
 
         // Alterna a exibição dos submenus da sidebar (comportamento sanfona)
         function toggleSubmenu(toggle) {
@@ -1634,6 +2048,7 @@
                             <th>Nome / Obs</th>
                             <th>Login</th>
                             <th>WhatsApp</th>
+                            <th>Valor</th>
                             <th class="sort-th">
                                 Vencimento
                                 <button type="button" class="sort-btn" title="Ordenar por vencimento" onclick="toggleSort('expiration')">
@@ -1678,13 +2093,14 @@
                     </td>
                     <td data-label="Login">${client.login}</td>
                     <td data-label="WhatsApp">${client.whatsapp}</td>
+                    <td data-label="Valor">${formatMoneyDisplay(getClientTotalAmount(client))}</td>
                     <td data-label="Vencimento">${formatLocalDate(client.expiration_date)}</td>
                     <td data-label="Status"><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
                     <td data-label="Ações" class="client-actions-cell">
                         <div class="action-buttons">
                             <button class="btn btn-secondary btn-sm" title="Enviar Cobrança Agora" onclick="sendManualReminder(${client.id})">📨</button>
-                            <button class="btn btn-secondary btn-sm" title="Detalhes" onclick='openDetailsModal(${JSON.stringify(client)})'>👁️</button>
-                            <button class="btn btn-primary btn-sm" title="Editar" onclick='openClientModal(${JSON.stringify(client)})'>✏️</button>
+                            <button class="btn btn-secondary btn-sm" title="Detalhes" onclick="openDetailsModalFromEncoded('${encodeClientData(client)}')">👁️</button>
+                            <button class="btn btn-primary btn-sm" title="Editar" onclick="openClientModalFromEncoded('${encodeClientData(client)}')">✏️</button>
                             <button class="btn btn-danger btn-sm" title="Excluir" onclick="deleteClient(${client.id})">🗑️</button>
                         </div>
                     </td>
@@ -1779,11 +2195,14 @@
         }
 
         // --- FUNÇÕES DE MODAL (CRUD) ---
-        function openClientModal(client = null) {
+        async function openClientModal(client = null) {
             const modal = document.getElementById('clientModal');
             const title = document.getElementById('modalTitle');
             const container = document.getElementById('customFieldsContainer');
             container.innerHTML = '';
+            document.getElementById('clientProductsContainer').innerHTML = '';
+            const selectedPlan = client && client.server_name ? client.server_name : '';
+            await Promise.all([loadPlanOptions(selectedPlan), loadProductCatalog()]);
 
             if (client) {
                 title.textContent = "Editar Cliente";
@@ -1797,10 +2216,17 @@
                 // --- NOVA LINHA: Carrega os dias configurados ou usa 3 como padrão ---
                 document.getElementById('clientReminderDays').value = client.reminder_days_before || 3;
                 // --------------------------------------------------------------------
-
-                document.getElementById('clientServer').value = client.server_name;
+                document.getElementById('clientServer').value = client.server_name || '';
+                document.getElementById('clientPlanPrice').value = client.plan_price != null
+                    ? formatCurrencyInput(client.plan_price)
+                    : '';
+                if (!document.getElementById('clientPlanPrice').value) {
+                    syncPlanPriceWithSelection(true);
+                }
+                for (const product of (Array.isArray(client.selected_products) ? client.selected_products : [])) {
+                    await addProductSelectionRow(product);
+                }
                 document.getElementById('clientNotes').value = client.notes || '';
-                document.getElementById('clientM3u8').value = client.m3u8_url || '';
                 if (client.custom_fields) {
                     Object.entries(client.custom_fields).forEach(([key, value]) => addCustomFieldInput(key, value));
                 }
@@ -1809,12 +2235,20 @@
                 document.getElementById('clientId').value = '';
                 document.querySelectorAll('#clientModal input, #clientModal textarea').forEach(i => i.value = '');
                 document.getElementById('clientNotificationChannel').value = 'whatsapp';
+                document.getElementById('clientServer').value = '';
+                document.getElementById('clientPlanPrice').value = '';
 
                 // --- NOVA LINHA: Define o padrão como 3 para novos clientes ---
                 document.getElementById('clientReminderDays').value = '3';
                 // --------------------------------------------------------------
             }
+            updateProductsHint();
+            updateClientTotalAmount();
             modal.style.display = 'flex';
+        }
+
+        function openClientModalFromEncoded(encoded) {
+            return openClientModal(decodeClientData(encoded));
         }
 
         function closeClientModal() { document.getElementById('clientModal').style.display = 'none'; }
@@ -1851,13 +2285,17 @@
                 reminder_days_before: document.getElementById('clientReminderDays').value,
                 // ---------------------------------------------------------------
 
-                server_name: document.getElementById('clientServer').value,
+                server_name: document.getElementById('clientServer').value.trim(),
+                plan_price: parseCurrencyValue(document.getElementById('clientPlanPrice').value),
+                selected_products: getSelectedProductsPayload(),
                 notes: document.getElementById('clientNotes').value,
-                m3u8_url: document.getElementById('clientM3u8').value,
                 custom_fields: customFields
             };
 
             if (!data.name || !data.login || !data.expiration_date) { alert("Preencha os campos obrigatórios."); return; }
+            if (document.getElementById('clientPlanPrice').value.trim() && data.plan_price === null) { alert("Informe um valor válido no campo R$."); return; }
+            const selectedProductsError = validateSelectedProductsRows();
+            if (selectedProductsError) { alert(selectedProductsError); return; }
 
             const method = id ? 'PUT' : 'POST';
             const url = id ? `/clients/${id}` : '/clients/';
@@ -1891,7 +2329,6 @@
                     customFieldsHtml += `<div><strong>${key}:</strong> ${value}</div>`;
                 });
             }
-            const m3u8Html = client.m3u8_url ? `<div style="background: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 0.85rem;"><strong>M3U8:</strong> <a href="${client.m3u8_url}" target="_blank">${client.m3u8_url}</a></div>` : '';
             const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
             const errorHtml = hasReminderError(client)
                 ? `
@@ -1901,6 +2338,23 @@
                     </div>
                 `
                 : '';
+            const selectedProducts = Array.isArray(client.selected_products) ? client.selected_products : [];
+            const productsHtml = selectedProducts.length
+                ? `
+                    <div style="margin-top:10px;">
+                        <h4 style="margin-bottom:0.65rem; border-bottom:1px solid #eee; padding-bottom:0.35rem;">Produtos adicionais</h4>
+                        <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                            ${selectedProducts.map((product) => `
+                                <div style="display:flex; justify-content:space-between; gap:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0.65rem 0.8rem;">
+                                    <span>${escapeHtml(product.name || '-')}</span>
+                                    <strong>${product.price != null ? formatMoneyDisplay(product.price) : '-'}</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `
+                : '';
+            const totalAmount = getClientTotalAmount(client);
 
             content.innerHTML = `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -1909,13 +2363,23 @@
                     <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
                     <div><strong>Canal:</strong> ${channelIcon}</div>
                     <div><strong>Vencimento:</strong> ${formatLocalDate(client.expiration_date)}</div>
-                    <div><strong>Servidor:</strong> ${client.server_name}</div>
+                    <div><strong>Plano:</strong> ${client.server_name}</div>
+                    <div><strong>Valor do plano:</strong> ${client.plan_price != null ? formatMoneyDisplay(client.plan_price) : '-'}</div>
+                </div>
+                ${productsHtml}
+                <div style="margin-top:10px; padding:0.9rem 1rem; border-radius:12px; background:rgba(16, 185, 129, 0.12); border:1px solid rgba(16, 185, 129, 0.35);">
+                    <div style="font-size:0.8rem; font-weight:700; color:#047857; text-transform:uppercase; letter-spacing:0.04em;">Valor somado de todos</div>
+                    <div style="font-size:1.35rem; font-weight:800; color:#065f46; margin-top:0.2rem;">${formatMoneyDisplay(totalAmount)}</div>
                 </div>
                 ${client.notes ? `<div style="margin-top:10px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:5px;"><strong>Obs:</strong> ${client.notes}</div>` : ''}
                 ${errorHtml}
-                ${customFieldsHtml} ${m3u8Html}
+                ${customFieldsHtml}
             `;
             modal.style.display = 'flex';
+        }
+
+        function openDetailsModalFromEncoded(encoded) {
+            openDetailsModal(decodeClientData(encoded));
         }
         function closeDetailsModal() { document.getElementById('detailsModal').style.display = 'none'; }
 

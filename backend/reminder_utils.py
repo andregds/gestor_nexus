@@ -190,10 +190,18 @@ def build_reminder_context(client, user, days_diff: int) -> Dict[str, str]:
     client_name = str(getattr(client, "name", "") or "").strip()
     client_login = str(getattr(client, "login", "") or "").strip()
     server_name = str(getattr(client, "server_name", "") or "").strip()
+    plan_price_value = getattr(client, "plan_price", None)
     whatsapp = str(getattr(client, "whatsapp", "") or "").strip()
     days_left = str(max(days_diff, 0))
     days_overdue = str(abs(days_diff)) if days_diff < 0 else "0"
     owner_name = str(getattr(user, "name", "") or "").strip()
+    plan_price = ""
+
+    if plan_price_value is not None:
+        try:
+            plan_price = f"{float(plan_price_value):.2f}"
+        except (TypeError, ValueError):
+            plan_price = ""
 
     return {
         "nome_cliente": client_name,
@@ -202,6 +210,7 @@ def build_reminder_context(client, user, days_diff: int) -> Dict[str, str]:
         "dias_atraso": days_overdue,
         "login_cliente": client_login,
         "nome_servidor": server_name,
+        "valor_plano": plan_price,
         "whatsapp_cliente": whatsapp,
         "nome_responsavel": owner_name,
         # Compatibilidade com placeholders legados em inglês.
@@ -211,6 +220,7 @@ def build_reminder_context(client, user, days_diff: int) -> Dict[str, str]:
         "days_overdue": days_overdue,
         "login": client_login,
         "server_name": server_name,
+        "plan_price": plan_price,
         "whatsapp": whatsapp,
         "owner_name": owner_name,
     }
