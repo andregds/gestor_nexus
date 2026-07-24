@@ -41,7 +41,6 @@
                         <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🛒</span> Produtos/Serviços</a>
                         <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🏷️</span> Categorias</a>
                         <a href="planos.html" class="sidebar-link sidebar-sublink active" data-feature-key="products"><span class="sidebar-icon">📄</span> Planos</a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🧩</span> Recursos</a>
                         <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">💳</span> API de Pagamentos</a>
                     </div>
                 </div>
@@ -75,30 +74,43 @@
                 <div class="row g-3">
                     <div class="col-12 col-xl-4">
                         <div class="card h-100">
-                            <h3 id="formTitle" class="mb-3">Novo plano</h3>
+                            <div class="mb-3">
+                                <h3 id="formTitle" class="mb-1">Novo plano</h3>
+                                <p class="text-muted mb-0">Defina nome, valor e recorrência em um fluxo mais direto.</p>
+                            </div>
                             <input type="hidden" id="planId">
-                            <div class="form-group mb-3">
-                                <label>Nome</label>
-                                <input type="text" id="planName" class="form-control" placeholder="Ex: Plano Premium">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <div class="form-group">
+                                        <label class="form-label">Nome</label>
+                                        <input type="text" id="planName" class="form-control" placeholder="Ex: Plano Premium">
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-5">
+                                    <div class="form-group h-100">
+                                        <label class="form-label">Valor</label>
+                                        <input type="number" id="planPrice" class="form-control" min="0" step="0.01" placeholder="Ex: 49.90">
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-7">
+                                    <div class="form-group h-100">
+                                        <label class="form-label">Frequência</label>
+                                        <select id="planBillingCycle" class="form-control">
+                                            <option value="monthly">Mensal</option>
+                                            <option value="quarterly">Trimestral</option>
+                                            <option value="semiannual">Semestral</option>
+                                            <option value="yearly">Anual</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-group">
+                                        <label class="form-label">Descrição</label>
+                                        <textarea id="planDescription" class="form-control" rows="4" placeholder="Descrição do plano"></textarea>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-group mb-3">
-                                <label>Descrição</label>
-                                <textarea id="planDescription" class="form-control" rows="4" placeholder="Descrição do plano"></textarea>
-                            </div>
-                            <div class="form-group mb-3">
-                                <label>Valor</label>
-                                <input type="number" id="planPrice" class="form-control" min="0" step="0.01" placeholder="Ex: 49.90">
-                            </div>
-                            <div class="form-group mb-3">
-                                <label>Frequência</label>
-                                <select id="planBillingCycle" class="form-control">
-                                    <option value="monthly">Mensal</option>
-                                    <option value="quarterly">Trimestral</option>
-                                    <option value="semiannual">Semestral</option>
-                                    <option value="yearly">Anual</option>
-                                </select>
-                            </div>
-                            <div class="d-flex gap-2 justify-content-end">
+                            <div class="d-flex gap-2 justify-content-end mt-4 pt-3 border-top">
                                 <button type="button" class="btn btn-secondary" onclick="resetForm()">Limpar</button>
                                 <button type="button" class="btn btn-primary" onclick="savePlan()">Salvar</button>
                             </div>
