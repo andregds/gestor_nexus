@@ -328,7 +328,7 @@ function renderPreview() {
 
 function handleTemplateInput(event) {
     const target = event.target;
-    if (!target || !target.dataset || target.dataset.field !== 'template') {
+    if (!target || !target.closest || target.tagName !== 'TEXTAREA') {
         return;
     }
 
@@ -659,7 +659,9 @@ function renderCustomScenarios() {
             </div>
         </details>
     `).join('');
-    reminderState.custom_scenarios.forEach((scenario) => renderScenarioMediaPreview(scenario.id));
+    reminderState.custom_scenarios.forEach((scenario) => {
+        renderScenarioMediaPreview(scenario.id);
+    });
 }
 
 function renderPreviewScenarioOptions(preferredScenario) {

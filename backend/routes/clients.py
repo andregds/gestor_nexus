@@ -9,7 +9,14 @@ import asyncio
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
 from models import User, Client
-from reminder_utils import build_client_custom_reminder_message, build_client_reminder_message, send_client_reminder
+from reminder_utils import (
+    build_client_custom_reminder_message,
+    build_client_reminder_message,
+    clear_client_reminder_error,
+    normalize_reminder_error_message,
+    send_client_reminder,
+    set_client_reminder_error,
+)
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -51,6 +58,8 @@ class ClientUpdate(BaseModel):
 class ClientResponse(ClientCreate):
     id: int
     owner_id: int
+    reminder_error_message: Optional[str] = None
+    reminder_error_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -59,6 +68,14 @@ class ClientResponse(ClientCreate):
 def resolve_days_window(days_ahead: int, today: date) -> tuple[date, date]:
     offset = max(days_ahead - 1, 0)
     return today - timedelta(days=offset), today + timedelta(days=offset)
+
+
+def mark_user_last_reminder_run(db: Session, user_id: int):
+    user_db = db.query(User).filter(User.id == user_id).first()
+    if not user_db:
+        return
+    user_db.last_reminder_run_at = datetime.now()
+    db.commit()
 
 
 # ==========================================
@@ -193,20 +210,21 @@ async def process_reminders_now(
 
             try:
                 if custom_scenario_id:
-                    msg, _, media = build_client_custom_reminder_message(client, current_user, days_diff, custom_scenario_id)
+                    msg, scenario_data, media = build_client_custom_reminder_message(client, current_user, days_diff, custom_scenario_id)
                 else:
-                    msg, _, media = build_client_reminder_message(client, current_user, days_diff)
+                    msg, template_key, media = build_client_reminder_message(client, current_user, days_diff)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
 
             # --- ENVIO ---
             channel = client.notification_channel or "whatsapp"
             success = False
+            error_detail = ""
 
             # Envio WhatsApp
             if channel == "whatsapp" and has_whatsapp:
                 try:
-                    success, _, _ = await send_client_reminder(
+                    success, _, error_detail = await send_client_reminder(
                         current_user,
                         client,
                         msg,
@@ -216,15 +234,16 @@ async def process_reminders_now(
                     if success:
                         print(f"   -> WhatsApp enviado com sucesso!")
                     else:
-                        print(f"   -> Falha no envio do WhatsApp (API retornou False)")
+                        print(f"   -> Falha no envio do WhatsApp: {error_detail or 'API retornou erro.'}")
                 except Exception as e:
                     print(f"   -> Erro técnico no WhatsApp: {e}")
                     success = False
+                    error_detail = normalize_reminder_error_message(e)
 
             # Envio Telegram
             elif channel == "telegram" and has_telegram:
                 try:
-                    success, _, _ = await send_client_reminder(
+                    success, _, error_detail = await send_client_reminder(
                         current_user,
                         client,
                         msg,
@@ -235,12 +254,19 @@ async def process_reminders_now(
                 except Exception as e:
                     print(f"   -> Erro técnico no Telegram: {e}")
                     success = False
+                    error_detail = normalize_reminder_error_message(e)
 
             if success:
+                if clear_client_reminder_error(client):
+                    db.commit()
                 sent_count += 1
                 await asyncio.sleep(1)  # Delay para evitar bloqueio
- 
+            else:
+                if set_client_reminder_error(client, error_detail or f"Falha ao enviar via {channel}."):
+                    db.commit()
+  
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
+    mark_user_last_reminder_run(db, current_user.id)
     message_label = (
         f" da mensagem personalizada \"{custom_scenario_name}\""
         if custom_scenario_id and custom_scenario_name
@@ -341,7 +367,7 @@ async def send_manual_reminder(
 
     today = datetime.now().date()
     days_diff = (client.expiration_date - today).days
-    msg, _, media = build_client_reminder_message(client, current_user, days_diff)
+    msg, template_key, media = build_client_reminder_message(client, current_user, days_diff)
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -354,7 +380,7 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
 
         try:
-            success, _, _ = await send_client_reminder(
+            success, _, error_detail = await send_client_reminder(
                 current_user,
                 client,
                 msg,
@@ -362,12 +388,15 @@ async def send_manual_reminder(
                 telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
             )
             if not success:
-                error_detail = "A Evolution API retornou erro ou falha no envio."
-        except HTTPException:
+                error_detail = error_detail or "A Evolution API retornou erro ou falha no envio."
+        except HTTPException as exc:
+            error_detail = normalize_reminder_error_message(exc)
+            if set_client_reminder_error(client, error_detail):
+                db.commit()
             raise
         except Exception as e:
             success = False
-            error_detail = str(e)
+            error_detail = normalize_reminder_error_message(e)
 
     # --- ENVIO VIA TELEGRAM ---
     elif channel == "telegram":
@@ -375,21 +404,30 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="Telegram não configurado.")
 
         try:
-            success, _, _ = await send_client_reminder(
+            success, _, error_detail = await send_client_reminder(
                 current_user,
                 client,
                 msg,
                 media=media,
                 telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
             )
-        except HTTPException:
+        except HTTPException as exc:
+            error_detail = normalize_reminder_error_message(exc)
+            if set_client_reminder_error(client, error_detail):
+                db.commit()
             raise
         except Exception as e:
             success = False
-            error_detail = f"Erro Telegram: {str(e)}"
+            error_detail = normalize_reminder_error_message(e)
 
     if success:
+        if clear_client_reminder_error(client):
+            db.commit()
+        mark_user_last_reminder_run(db, current_user.id)
         return {"message": f"Mensagem enviada via {channel}!", "sent": True}
     else:
+        if set_client_reminder_error(client, error_detail or f"Falha ao enviar via {channel}."):
+            db.commit()
+        mark_user_last_reminder_run(db, current_user.id)
         print(f"❌ Erro no envio manual: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Falha ao enviar mensagem: {error_detail}")

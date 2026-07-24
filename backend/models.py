@@ -65,6 +65,7 @@ class User(Base):
 
     # NOVO CAMPO: Horário de envio das cobranças (Ex: "09:00")
     notification_time = Column(String(10), default="09:00", nullable=True)
+    last_reminder_run_at = Column(DateTime, nullable=True)
 
     # Configuração de pagamento por usuário (JSON)
     payment_api_settings = Column(JSON, default={
@@ -167,6 +168,8 @@ class Client(Base):
     reminder_enabled = Column(Boolean, default=True)
     reminder_days_before = Column(String, default="3")
     notify_after_expiration = Column(Boolean, default=True)
+    reminder_error_message = Column(String(500), nullable=True)
+    reminder_error_at = Column(DateTime, nullable=True)
 
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")

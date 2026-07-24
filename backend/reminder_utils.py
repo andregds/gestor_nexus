@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_utils import send_telegram_message
@@ -12,6 +13,14 @@ DEFAULT_REMINDER_TEMPLATES = {
     "today": "Olá {nome_cliente}! 🚨 Sua assinatura vence hoje ({data_vencimento}). Renove agora para continuar com o acesso ativo.",
     "overdue": "Olá {nome_cliente}. ❌ Sua assinatura venceu há {dias_atraso} dias, em {data_vencimento}. Entre em contato para reativar o acesso.",
     "fallback": "Olá {nome_cliente}! 📌 Lembrete: sua assinatura está ativa e vence no dia {data_vencimento}.",
+}
+
+SYSTEM_TEMPLATE_LABELS = {
+    "upcoming": "Antes do vencimento",
+    "tomorrow": "Vence amanhã",
+    "today": "Vence hoje",
+    "overdue": "Assinatura vencida",
+    "fallback": "Mensagem padrão",
 }
 
 EMPTY_REMINDER_MEDIA = {
@@ -226,6 +235,33 @@ def render_reminder_template(template: str, context: Dict[str, str]) -> str:
     return rendered
 
 
+def normalize_reminder_error_message(error: Any) -> str:
+    detail = getattr(error, "detail", error)
+    message = str(detail or "").strip()
+    if not message:
+        return "Falha ao enviar a mensagem."
+    return message[:500]
+
+
+def set_client_reminder_error(client, error: Any) -> bool:
+    message = normalize_reminder_error_message(error)
+    changed = (
+        getattr(client, "reminder_error_message", None) != message
+        or getattr(client, "reminder_error_at", None) is None
+    )
+    client.reminder_error_message = message
+    client.reminder_error_at = datetime.utcnow()
+    return changed
+
+
+def clear_client_reminder_error(client) -> bool:
+    if not getattr(client, "reminder_error_message", None) and not getattr(client, "reminder_error_at", None):
+        return False
+    client.reminder_error_message = None
+    client.reminder_error_at = None
+    return True
+
+
 def build_client_reminder_message(client, user, days_diff: int) -> Tuple[str, str, Dict[str, str]]:
     templates = get_user_reminder_templates(user)
     template_key = select_template_key(days_diff)
@@ -251,7 +287,13 @@ def build_client_custom_reminder_message(client, user, days_diff: int, scenario_
     return render_reminder_template(template, context), scenario, _normalize_media(scenario.get("media"))
 
 
-async def send_client_reminder(user, client, message: str, telegram_prefix: Optional[str] = None, media: Optional[Dict[str, Any]] = None):
+async def send_client_reminder(
+    user,
+    client,
+    message: str,
+    telegram_prefix: Optional[str] = None,
+    media: Optional[Dict[str, Any]] = None,
+):
     channel = getattr(client, "notification_channel", None) or "whatsapp"
 
     if channel == "whatsapp":

@@ -961,7 +961,8 @@ def update_notification_schedule(
     return {
         "message": "Configurao de agendamento atualizada com sucesso!",
         "time": user_db.notification_time,
-        "enabled": user_db.notifications_enabled
+        "enabled": user_db.notifications_enabled,
+        "last_run_at": user_db.last_reminder_run_at.isoformat() if user_db.last_reminder_run_at else None,
     }
 
 
@@ -976,5 +977,6 @@ def get_notification_schedule(
 
     return {
         "time": user_db.notification_time or "09:00",
-        "enabled": user_db.notifications_enabled if user_db.notifications_enabled is not None else True
+        "enabled": user_db.notifications_enabled if user_db.notifications_enabled is not None else True,
+        "last_run_at": user_db.last_reminder_run_at.isoformat() if user_db.last_reminder_run_at else None,
     }

@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, HttpUrl
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 # Imports locais
@@ -26,7 +27,32 @@ from routes import whatsapp
 
 load_dotenv()
 
+
+def ensure_client_error_columns():
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        client_columns = {column["name"] for column in inspector.get_columns("clients")} if "clients" in inspector.get_table_names() else set()
+        if "clients" not in inspector.get_table_names():
+            return
+        if "reminder_error_message" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_message VARCHAR(500)"))
+        if "reminder_error_at" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_at DATETIME"))
+
+
+def ensure_user_schedule_columns():
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        user_columns = {column["name"] for column in inspector.get_columns("users")} if "users" in inspector.get_table_names() else set()
+        if "users" not in inspector.get_table_names():
+            return
+        if "last_reminder_run_at" not in user_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN last_reminder_run_at DATETIME"))
+
+
 Base.metadata.create_all(bind=engine)
+ensure_client_error_columns()
+ensure_user_schedule_columns()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

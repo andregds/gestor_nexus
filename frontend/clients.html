@@ -14,6 +14,79 @@
             gap: 1rem;
             margin-bottom: 1.5rem;
         }
+        .top-alert-banner {
+            display: none;
+            position: sticky;
+            top: 0.75rem;
+            z-index: 1200;
+            margin-bottom: 1rem;
+            padding: 0.9rem 1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            background: rgba(254, 226, 226, 0.98);
+            color: #991b1b;
+            box-shadow: 0 10px 28px rgba(239, 68, 68, 0.15);
+            animation: topAlertPulse 1.4s ease-in-out infinite;
+        }
+        .top-alert-banner.show {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .top-alert-banner-content {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            min-width: 0;
+        }
+        .top-alert-banner-icon {
+            font-size: 1.15rem;
+            line-height: 1.2;
+            flex: 0 0 auto;
+        }
+        .top-alert-banner-text strong {
+            display: block;
+            margin-bottom: 0.15rem;
+            font-size: 0.95rem;
+        }
+        .top-alert-banner-text span {
+            display: block;
+            line-height: 1.4;
+            font-size: 0.9rem;
+        }
+        .top-alert-banner-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-top: 0.45rem;
+            color: #991b1b;
+            font-weight: 700;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        .top-alert-banner-link:hover {
+            color: #7f1d1d;
+        }
+        .top-alert-banner-close {
+            border: none;
+            background: transparent;
+            color: #991b1b;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.1rem 0.25rem;
+            line-height: 1;
+        }
+        @keyframes topAlertPulse {
+            0%, 100% {
+                background: rgba(254, 242, 242, 0.98);
+                box-shadow: 0 8px 20px rgba(239, 68, 68, 0.12);
+            }
+            50% {
+                background: rgba(254, 226, 226, 1);
+                box-shadow: 0 12px 28px rgba(239, 68, 68, 0.22);
+            }
+        }
 
         .summary-card {
             background: white;
@@ -33,6 +106,26 @@
         .card-expired .summary-count { color: var(--danger); }
         .card-warning .summary-count { color: var(--warning); }
         .card-info .summary-count { color: var(--primary); }
+        .card-error .summary-count { color: #dc2626; }
+        .summary-card.has-pending-errors {
+            background: rgba(254, 226, 226, 0.92);
+            border-color: rgba(248, 113, 113, 0.55);
+            animation: errorPulse 1.6s ease-in-out infinite;
+        }
+        .summary-card.has-pending-errors.active {
+            border-color: #dc2626;
+            background: rgba(254, 226, 226, 1);
+        }
+        @keyframes errorPulse {
+            0%, 100% {
+                box-shadow: 0 2px 4px rgba(239, 68, 68, 0.08);
+                background: rgba(254, 242, 242, 0.92);
+            }
+            50% {
+                box-shadow: 0 8px 24px rgba(239, 68, 68, 0.18);
+                background: rgba(254, 226, 226, 1);
+            }
+        }
 
         /* Barra de Ferramentas */
         .toolbar {
@@ -130,9 +223,30 @@
             flex-wrap: wrap;
             justify-content: flex-end;
         }
-        .schedule-info { display: flex; flex-direction: column; line-height: 1.1; }
+        .schedule-info {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.65rem;
+            line-height: 1.1;
+            margin-bottom: 0.25rem;
+        }
+        .schedule-info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.18rem;
+            padding: 0.45rem 0.55rem;
+            border-radius: 10px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+        }
         .schedule-label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold; }
         .schedule-time { font-size: 1rem; font-weight: bold; color: var(--primary); }
+        .schedule-last-run {
+            font-size: 0.85rem;
+            color: #334155;
+            line-height: 1.25;
+            font-weight: 600;
+        }
         .expiration-filter-widget {
             display: flex;
             flex-direction: column;
@@ -243,6 +357,36 @@
             font-weight: bold;
             color: var(--text-dark);
             overflow-wrap: anywhere;
+        }
+        .client-error-inline {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.45rem;
+            margin-top: 0.45rem;
+            color: #b91c1c;
+            font-size: 0.8rem;
+            line-height: 1.35;
+            font-weight: 600;
+        }
+        .client-error-icon {
+            flex: 0 0 auto;
+            font-size: 0.95rem;
+            line-height: 1.2;
+        }
+        .client-error-text {
+            overflow-wrap: anywhere;
+        }
+        .error-detail-card {
+            margin-top: 1rem;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 10px;
+            padding: 0.9rem 1rem;
+            color: #991b1b;
+        }
+        .error-detail-card strong {
+            display: block;
+            margin-bottom: 0.35rem;
         }
         .action-buttons {
             display: flex;
@@ -656,6 +800,18 @@
 
         <!-- MAIN CONTENT -->
         <main class="main-content">
+            <div id="topAlertBanner" class="top-alert-banner" role="alert" aria-live="assertive">
+                <div class="top-alert-banner-content">
+                    <span class="top-alert-banner-icon">⚠️</span>
+                    <div class="top-alert-banner-text">
+                        <strong id="topAlertBannerTitle">Integração de notificação</strong>
+                        <span id="topAlertBannerMessage">Configure a integração para continuar os envios.</span>
+                        <a href="whatsapp.html" class="top-alert-banner-link">Clique aqui para configurar</a>
+                    </div>
+                </div>
+                <button type="button" class="top-alert-banner-close" onclick="hideTopAlertBanner()" aria-label="Fechar alerta">×</button>
+            </div>
+
             <div class="page-header">
                 <div class="page-title">
                     <h2>Gestão de Clientes</h2>
@@ -688,6 +844,10 @@
                 <div class="summary-card card-info" onclick="filterByStatus('4', this)">
                     <div class="summary-count" id="count-4">0</div>
                     <div class="summary-label">Vence em 4 Dias</div>
+                </div>
+                <div class="summary-card card-error" onclick="filterByStatus('errors', this)" id="card-errors">
+                    <div class="summary-count" id="count-errors">0</div>
+                    <div class="summary-label">Erros de envio</div>
                 </div>
             </div>
 
@@ -739,8 +899,14 @@
                     <div class="schedule-widget">
                         <div class="schedule-widget-header">
                             <div class="schedule-info">
-                                <span class="schedule-label">Envio Automático</span>
-                                <span class="schedule-time" id="displayScheduleTime">--:--</span>
+                                <div class="schedule-info-item">
+                                    <span class="schedule-label">Horário agendado</span>
+                                    <span class="schedule-time" id="displayScheduleTime">--:--</span>
+                                </div>
+                                <div class="schedule-info-item">
+                                    <span class="schedule-label">Última execução</span>
+                                    <span class="schedule-last-run" id="displayLastRun">nunca</span>
+                                </div>
                             </div>
                             <span class="schedule-widget-subtitle">Use este bloco para programar o disparo autom&aacute;tico ou executar a cobran&ccedil;a agora.</span>
                         </div>
@@ -943,6 +1109,50 @@
                 .toLowerCase();
         }
 
+        function hasReminderError(client) {
+            return Boolean(client && typeof client.reminder_error_message === 'string' && client.reminder_error_message.trim());
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function isNotificationIntegrationMessage(message) {
+            if (typeof message !== 'string') {
+                return false;
+            }
+            return message.includes('WhatsApp não conectado. Configure na aba Integração.')
+                || message.includes('Nenhum canal de notificação conectado.');
+        }
+
+        function showTopAlertBanner(message) {
+            const banner = document.getElementById('topAlertBanner');
+            const titleTarget = document.getElementById('topAlertBannerTitle');
+            const messageTarget = document.getElementById('topAlertBannerMessage');
+            if (!banner || !messageTarget || !titleTarget) {
+                return;
+            }
+            const normalizedMessage = message || 'WhatsApp não conectado. Configure na aba Integração.';
+            titleTarget.textContent = normalizedMessage.includes('Nenhum canal de notificação conectado.')
+                ? 'Nenhum canal conectado'
+                : 'WhatsApp desconectado';
+            messageTarget.textContent = normalizedMessage;
+            banner.classList.add('show');
+        }
+
+        function hideTopAlertBanner() {
+            const banner = document.getElementById('topAlertBanner');
+            if (!banner) {
+                return;
+            }
+            banner.classList.remove('show');
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             restoreExpirationRangeFilter();
             setupExpirationFilterInteractions();
@@ -1011,6 +1221,45 @@
             return false;
         }
 
+        function parseLocalDate(dateValue) {
+            if (typeof dateValue !== 'string') {
+                return null;
+            }
+
+            const value = dateValue.trim().slice(0, 10);
+            if (!value) {
+                return null;
+            }
+
+            const parts = value.split('-');
+            if (parts.length !== 3) {
+                return null;
+            }
+
+            const [year, month, day] = parts.map(Number);
+            if (!year || !month || !day) {
+                return null;
+            }
+
+            return new Date(year, month - 1, day);
+        }
+
+        function formatLocalDate(dateValue) {
+            const parsedDate = parseLocalDate(dateValue);
+            return parsedDate ? parsedDate.toLocaleDateString('pt-BR') : '';
+        }
+
+        function formatDateTime(value) {
+            if (!value) {
+                return 'nunca';
+            }
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) {
+                return String(value);
+            }
+            return parsed.toLocaleString('pt-BR');
+        }
+
         async function loadClients() {
             const list = document.getElementById('clientsList');
             try {
@@ -1021,7 +1270,10 @@
                 today.setHours(0,0,0,0);
 
                 allClients = data.map(client => {
-                    const expDate = new Date(client.expiration_date);
+                    const expDate = parseLocalDate(client.expiration_date);
+                    if (!expDate) {
+                        return { ...client, diffDays: null };
+                    }
                     expDate.setHours(0,0,0,0);
                     const diffTime = expDate - today;
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -1042,7 +1294,7 @@
 
         function updateDashboardCounts() {
             const schedulerFilteredClients = getSchedulerFilteredClients();
-            const counts = { all: schedulerFilteredClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
+            const counts = { all: schedulerFilteredClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0, errors: 0 };
             schedulerFilteredClients.forEach(c => {
                 if (c.diffDays < 0) counts.expired++;
                 if (c.diffDays === 1) counts.d1++;
@@ -1050,12 +1302,19 @@
                 if (c.diffDays === 3) counts.d3++;
                 if (c.diffDays === 4) counts.d4++;
             });
+            counts.errors = allClients.filter(hasReminderError).length;
             document.getElementById('count-all').textContent = counts.all;
             document.getElementById('count-expired').textContent = counts.expired;
             document.getElementById('count-1').textContent = counts.d1;
             document.getElementById('count-2').textContent = counts.d2;
             document.getElementById('count-3').textContent = counts.d3;
             document.getElementById('count-4').textContent = counts.d4;
+            document.getElementById('count-errors').textContent = counts.errors;
+
+            const errorCard = document.getElementById('card-errors');
+            if (errorCard) {
+                errorCard.classList.toggle('has-pending-errors', counts.errors > 0);
+            }
         }
 
         function filterByStatus(status, cardElement) {
@@ -1076,6 +1335,7 @@
                 else if (currentFilter === '2') statusMatch = client.diffDays === 2;
                 else if (currentFilter === '3') statusMatch = client.diffDays === 3;
                 else if (currentFilter === '4') statusMatch = client.diffDays === 4;
+                else if (currentFilter === 'errors') statusMatch = hasReminderError(client);
 
                 const clientName = normalizeFilterValue(client.name);
                 const clientLogin = normalizeFilterValue(client.login);
@@ -1086,7 +1346,9 @@
                     clientWhatsapp.includes(searchTerm) ||
                     clientName.includes(searchTerm);
 
-                const expirationMatch = matchesExpirationRange(client.expiration_date, client.diffDays);
+                const expirationMatch = currentFilter === 'errors'
+                    ? true
+                    : matchesExpirationRange(client.expiration_date, client.diffDays);
 
                 return statusMatch && searchMatch && expirationMatch;
             });
@@ -1334,8 +1596,8 @@
                 let bValue;
 
                 if (sortState.key === 'expiration') {
-                    aValue = new Date(a.expiration_date).getTime();
-                    bValue = new Date(b.expiration_date).getTime();
+                    aValue = parseLocalDate(a.expiration_date)?.getTime() || 0;
+                    bValue = parseLocalDate(b.expiration_date)?.getTime() || 0;
                 } else if (sortState.key === 'status') {
                     aValue = a.diffDays;
                     bValue = b.diffDays;
@@ -1392,22 +1654,31 @@
 
             html += paginatedClients.map(client => {
                 let statusColor = 'var(--success)';
-                let statusText = `${client.diffDays} dias`;
+                let statusText = Number.isInteger(client.diffDays) ? `${client.diffDays} dias` : '--';
                 if (client.diffDays < 0) { statusColor = 'var(--danger)'; statusText = 'Vencido'; }
                 else if (client.diffDays === 0) { statusColor = 'var(--warning)'; statusText = 'Vence Hoje'; }
                 else if (client.diffDays <= 3) { statusColor = 'var(--warning)'; }
 
                 const notesHtml = client.notes ? `<span class="client-note-inline">📝 ${client.notes}</span>` : '';
+                const errorHtml = hasReminderError(client)
+                    ? `
+                        <div class="client-error-inline" title="${escapeHtml(client.reminder_error_message)}">
+                            <span class="client-error-icon">❗</span>
+                            <span class="client-error-text">${escapeHtml(client.reminder_error_message)}</span>
+                        </div>
+                    `
+                    : '';
 
                 return `
                 <tr>
                     <td data-label="Cliente" class="client-name-cell">
                         <div class="client-name-main">${client.name}</div>
                         ${notesHtml}
+                        ${errorHtml}
                     </td>
                     <td data-label="Login">${client.login}</td>
                     <td data-label="WhatsApp">${client.whatsapp}</td>
-                    <td data-label="Vencimento">${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
+                    <td data-label="Vencimento">${formatLocalDate(client.expiration_date)}</td>
                     <td data-label="Status"><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
                     <td data-label="Ações" class="client-actions-cell">
                         <div class="action-buttons">
@@ -1622,6 +1893,14 @@
             }
             const m3u8Html = client.m3u8_url ? `<div style="background: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 0.85rem;"><strong>M3U8:</strong> <a href="${client.m3u8_url}" target="_blank">${client.m3u8_url}</a></div>` : '';
             const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
+            const errorHtml = hasReminderError(client)
+                ? `
+                    <div class="error-detail-card">
+                        <strong>❗ Último erro de envio</strong>
+                        <div>${escapeHtml(client.reminder_error_message)}</div>
+                    </div>
+                `
+                : '';
 
             content.innerHTML = `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -1629,10 +1908,11 @@
                     <div><strong>Login:</strong> ${client.login}</div>
                     <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
                     <div><strong>Canal:</strong> ${channelIcon}</div>
-                    <div><strong>Vencimento:</strong> ${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</div>
+                    <div><strong>Vencimento:</strong> ${formatLocalDate(client.expiration_date)}</div>
                     <div><strong>Servidor:</strong> ${client.server_name}</div>
                 </div>
                 ${client.notes ? `<div style="margin-top:10px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:5px;"><strong>Obs:</strong> ${client.notes}</div>` : ''}
+                ${errorHtml}
                 ${customFieldsHtml} ${m3u8Html}
             `;
             modal.style.display = 'flex';
@@ -1651,6 +1931,7 @@
                     // Atualiza o texto do horário
                     document.getElementById('displayScheduleTime').textContent = data.time || "--:--";
                     document.getElementById('scheduleTime').value = data.time || "09:00";
+                    document.getElementById('displayLastRun').textContent = formatDateTime(data.last_run_at);
 
                     // Atualiza o Toggle (Switch)
                     document.getElementById('scheduleToggle').checked = data.enabled;
@@ -1709,12 +1990,17 @@
             try {
                 const response = await apiFetch(`/clients/${clientId}/remind`, { method: 'POST' });
                 const result = await response.json();
+                await loadClients();
 
                 if (response.ok) {
                     showNotification(result.message, "success");
                 } else {
                     // Mostra aviso se não houver critério (ex: faltam 10 dias)
-                    alert(result.detail || "Erro ao enviar.");
+                    if (isNotificationIntegrationMessage(result.detail)) {
+                        showTopAlertBanner(result.detail);
+                    } else {
+                        alert(result.detail || "Erro ao enviar.");
+                    }
                 }
             } catch (error) {
                 console.error(error);
@@ -1759,11 +2045,17 @@
                 // Ex: /clients/process-now?filter_type=3
                 const response = await apiFetch(`/clients/process-now?${query.toString()}`, { method: 'POST' });
                 const result = await response.json();
+                await loadClients();
+                await loadScheduleStatus();
 
                 if (response.ok) {
                     showNotification(result.message, "success");
                 } else {
-                    alert(result.detail || "Erro ao processar.");
+                    if (isNotificationIntegrationMessage(result.detail)) {
+                        showTopAlertBanner(result.detail);
+                    } else {
+                        alert(result.detail || "Erro ao processar.");
+                    }
                 }
             } catch (error) {
                 console.error(error);
@@ -1799,10 +2091,10 @@
             }
 
             const startLabel = expirationRangeStart
-                ? new Date(`${expirationRangeStart}T00:00:00`).toLocaleDateString('pt-BR')
+                ? formatLocalDate(expirationRangeStart)
                 : 'o início';
             const endLabel = expirationRangeEnd
-                ? new Date(`${expirationRangeEnd}T00:00:00`).toLocaleDateString('pt-BR')
+                ? formatLocalDate(expirationRangeEnd)
                 : 'o fim';
 
             hint.textContent = `O envio em massa ficará restrito aos clientes com vencimento entre ${startLabel} e ${endLabel}.`;

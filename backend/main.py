@@ -4,6 +4,7 @@ import time
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
+from sqlalchemy import inspect, text
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -16,10 +17,40 @@ from models import User, Client
 from routes import admin, auth, categories, clients, plans, products, urls, users, whatsapp
 
 # Utilitários de envio
-from reminder_utils import build_client_reminder_message, send_client_reminder
+from reminder_utils import (
+    build_client_reminder_message,
+    clear_client_reminder_error,
+    normalize_reminder_error_message,
+    send_client_reminder,
+    set_client_reminder_error,
+)
+
+
+def ensure_client_error_columns():
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        client_columns = {column["name"] for column in inspector.get_columns("clients")} if "clients" in inspector.get_table_names() else set()
+        if "clients" not in inspector.get_table_names():
+            return
+        if "reminder_error_message" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_message VARCHAR(500)"))
+        if "reminder_error_at" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_at DATETIME"))
+
+
+def ensure_user_schedule_columns():
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        user_columns = {column["name"] for column in inspector.get_columns("users")} if "users" in inspector.get_table_names() else set()
+        if "users" not in inspector.get_table_names():
+            return
+        if "last_reminder_run_at" not in user_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN last_reminder_run_at DATETIME"))
 
 # Cria as tabelas no banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
+ensure_client_error_columns()
+ensure_user_schedule_columns()
 
 
 @asynccontextmanager
@@ -147,9 +178,9 @@ def check_and_send_reminders():
                 # --- NOVA LÓGICA DINÂMICA ---
 
                 if 0 <= days_diff <= days_alert_threshold:
-                    msg, _, media = build_client_reminder_message(client, user, days_diff)
+                    msg, template_key, media = build_client_reminder_message(client, user, days_diff)
                 elif days_diff < 0 and client.notify_after_expiration:
-                    msg, _, media = build_client_reminder_message(client, user, days_diff)
+                    msg, template_key, media = build_client_reminder_message(client, user, days_diff)
 
                 # Se encontrou uma regra válida, envia
                 if msg:
@@ -165,13 +196,22 @@ def check_and_send_reminders():
                             )
                         )
                         if success:
+                            if clear_client_reminder_error(client):
+                                db.commit()
                             print(f"            ✅ {channel.title()} enviado com sucesso!")
                         else:
+                            if set_client_reminder_error(client, error_detail or f"Falha ao enviar via {channel}."):
+                                db.commit()
                             print(f"            ❌ Falha ao enviar via {channel}: {error_detail}")
                     except Exception as e:
+                        if set_client_reminder_error(client, normalize_reminder_error_message(e)):
+                            db.commit()
                         print(f"            ❌ Erro ao enviar lembrete: {e}")
 
                     time.sleep(2)  # Delay para evitar spam
+
+            user.last_reminder_run_at = now
+            db.commit()
 
     except Exception as e:
         print(f"❌ Erro Crítico no Scheduler: {e}")

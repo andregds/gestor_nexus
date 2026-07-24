@@ -213,6 +213,7 @@ async def send_whatsapp_notification(number: str, message: str, instance_name: s
         raise HTTPException(status_code=503, detail="Evolution API não configurada.")
     if not instance_name:
         raise HTTPException(status_code=400, detail="Instância WhatsApp não configurada.")
+
     if media and isinstance(media, dict) and media.get("data_url"):
         return await _send_whatsapp_media(number, message, instance_name, media)
 
