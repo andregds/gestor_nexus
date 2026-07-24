@@ -1,5 +1,5 @@
 # backend/models.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -8,19 +8,54 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    name = Column(String(255), index=True)
+    email = Column(String(255), unique=True, index=True)
+    hashed_password = Column(String(255))
+
+    # Controle de acesso / hierarquia
+    role = Column(String(50), default="user")
+    is_active = Column(Boolean, default=True)
+    block_reason = Column(String(255), nullable=True)
+    client_limit = Column(Integer, default=0)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Permissões e feature flags (armazenados como JSON)
+    permissions = Column(JSON, default={
+        "can_view_dashboard": True,
+        "can_view_clients": True,
+        "can_view_integrations": True,
+        "can_view_settings": True,
+    })
+    feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
+        "admin": False,
+    })
+    reseller_feature_flags = Column(JSON, default={
+        "dashboard": True,
+        "clients": True,
+        "products": True,
+        "whatsapp": True,
+        "telegram": True,
+        "settings": True,
+        "resell": True,
+        "admin": False,
+    })
 
     # Configurações do WhatsApp
-    whatsapp_number = Column(String, nullable=True)
-    whatsapp_instance = Column(String, nullable=True)
-    whatsapp_apikey = Column(String, nullable=True)
-    notification_channel = Column(String, default="whatsapp")
+    whatsapp_number = Column(String(50), nullable=True)
+    whatsapp_instance = Column(String(100), nullable=True)
+    whatsapp_apikey = Column(String(255), nullable=True)
+    notification_channel = Column(String(50), default="whatsapp")
 
     # Configurações do Telegram
-    telegram_token = Column(String, nullable=True)
-    telegram_chat_id = Column(String, nullable=True)
+    telegram_token = Column(String(255), nullable=True)
+    telegram_chat_id = Column(String(100), nullable=True)
 
     # Flags de Notificação Globais
     notifications_enabled = Column(Boolean, default=True)
@@ -29,11 +64,41 @@ class User(Base):
     notify_when_slow = Column(Boolean, default=False)
 
     # NOVO CAMPO: Horário de envio das cobranças (Ex: "09:00")
-    notification_time = Column(String, default="09:00", nullable=True)
+    notification_time = Column(String(10), default="09:00", nullable=True)
+
+    # Configuração de pagamento por usuário (JSON)
+    payment_api_settings = Column(JSON, default={
+        "gateway_name": "InfinitePay Checkout",
+        "bank_name": "",
+        "handle": "blue-play",
+        "api_base_url": "https://api.checkout.infinitepay.io",
+        "links_endpoint": "/links",
+        "payment_check_endpoint": "/payment_check",
+        "webhook_url": "",
+        "redirect_url": "",
+        "api_key": "",
+        "webhook_secret": "",
+        "environment": "production",
+        "enabled": False,
+    })
+
+    # Plano selecionado / período de teste / renovação
+    selected_plan = Column(String(100), nullable=True)
+    selected_plan_label = Column(String(255), nullable=True)
+    selected_plan_price = Column(Float, nullable=True)
+    trial_started_at = Column(DateTime, nullable=True)
+    trial_expires_at = Column(DateTime, nullable=True)
+    trial_expires_manually_set = Column(Boolean, default=False)
+    renewal_order_nsu = Column(String(255), nullable=True)
+    renewal_order_created_at = Column(DateTime, nullable=True)
+    renewal_invoice_slug = Column(String(255), nullable=True)
 
     # Relacionamentos
     urls = relationship("MonitoredURL", back_populates="owner")
     clients = relationship("Client", back_populates="owner")
+    categories = relationship("Category", back_populates="owner")
+    plans = relationship("Plan", back_populates="owner")
+    products = relationship("Product", back_populates="owner")
 
     # --- PROPRIEDADE VIRTUAL CORRIGIDA ---
     @property
@@ -79,6 +144,10 @@ class Client(Base):
     server_name = Column(String)
     whatsapp = Column(String)
 
+    # Colunas presentes no banco de dados (produtos / status de pagamento)
+    product_id = Column(Integer, nullable=True)
+    payment_status = Column(String(20), default="pendente")
+
     # Mantido como Date, pois validade de assinatura geralmente não precisa de hora exata
     expiration_date = Column(Date)
 
@@ -101,3 +170,45 @@ class Client(Base):
 
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
+
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), index=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    owner = relationship("User", back_populates="categories")
+    products = relationship("Product", back_populates="category")
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), index=True, nullable=False)
+    description = Column(String(500), nullable=True)
+    price = Column(Float, nullable=False)
+    billing_cycle = Column(String(50), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    owner = relationship("User", back_populates="plans")
+    products = relationship("Product", back_populates="plan")
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), index=True, nullable=False)
+    description = Column(String(1024), nullable=True)
+    price = Column(Float, nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("plans.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    owner = relationship("User", back_populates="products")
+    category = relationship("Category", back_populates="products")
+    plan = relationship("Plan", back_populates="products")

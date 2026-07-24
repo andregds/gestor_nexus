@@ -37,55 +37,117 @@
         /* Barra de Ferramentas */
         .toolbar {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: stretch;
             margin-bottom: 1rem;
-            gap: 1rem;
+            gap: 0.75rem;
+            width: 100%;
+        }
+
+        .toolbar-primary-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 0 0 auto;
             flex-wrap: wrap;
+            width: 100%;
         }
 
         .search-box {
-            flex: 1;
-            max-width: 400px;
+            max-width: 360px;
             position: relative;
+            flex: 1 1 280px;
+            min-width: 220px;
+        }
+
+        .toolbar-primary-actions .btn {
+            white-space: nowrap;
         }
 
         .search-box input {
             width: 100%;
-            padding: 10px 15px;
+            padding: 9px 14px;
             padding-left: 35px;
             border: 1px solid #ddd;
             border-radius: 6px;
-            font-size: 0.95rem;
+            font-size: 0.92rem;
         }
 
         .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; }
 
         /* --- WIDGET DE AGENDAMENTO --- */
-        .schedule-widget {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .billing-toolbar-group {
+            display: grid;
+            grid-template-columns: minmax(0, 1.9fr) minmax(250px, 0.95fr);
+            align-items: stretch;
+            gap: 10px;
+            flex: 1 1 100%;
             background: white;
-            padding: 8px 15px;
-            border-radius: 30px;
+            padding: 10px 12px;
+            border-radius: 14px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             border: 1px solid #eee;
+            width: 100%;
+            box-sizing: border-box;
         }
-
+        .billing-toolbar-divider {
+            display: none;
+        }
+        .schedule-widget {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 6px;
+            background: #f8fafc;
+            padding: 9px 10px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            min-width: 0;
+            width: 100%;
+        }
+        .schedule-widget-header {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        .schedule-widget-subtitle {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.25;
+        }
+        .schedule-widget-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 0;
+        }
+        .schedule-widget-actions {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
         .schedule-info { display: flex; flex-direction: column; line-height: 1.1; }
         .schedule-label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold; }
-        .schedule-time { font-size: 1.1rem; font-weight: bold; color: var(--primary); }
+        .schedule-time { font-size: 1rem; font-weight: bold; color: var(--primary); }
         .expiration-filter-widget {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            background: white;
-            padding: 10px 14px;
-            border-radius: 14px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border: 1px solid #eee;
-            min-width: 290px;
+            min-width: 0;
+            width: 100%;
+            background: #f8fafc;
+            padding: 9px 10px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        .expiration-filter-heading {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
         }
         .expiration-filter-label {
             font-size: 0.72rem;
@@ -94,25 +156,68 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
+        .expiration-filter-context {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.25;
+        }
         .expiration-filter-fields {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
             align-items: center;
-            flex-wrap: wrap;
         }
         .expiration-filter-fields input {
-            flex: 1;
-            min-width: 120px;
-            padding: 8px 10px;
+            width: 100%;
+            min-width: 0;
+            padding: 6px 9px;
             border: 1px solid #ddd;
             border-radius: 6px;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
+        }
+        .expiration-filter-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .expiration-days-filter {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            flex: 1 1 210px;
+        }
+        .expiration-days-prefix,
+        .expiration-days-suffix {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .expiration-days-filter input {
+            width: 96px;
+            min-width: 96px;
+            max-width: 96px;
+            padding: 6px 9px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.88rem;
+            text-align: center;
         }
         .expiration-filter-actions {
             display: flex;
-            gap: 8px;
+            align-items: center;
+            gap: 5px;
             justify-content: flex-end;
             flex-wrap: wrap;
+        }
+        .expiration-filter-help {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.25;
         }
 
         /* Switch Toggle */
@@ -131,7 +236,19 @@
         .clients-table tr:hover { background-color: #f9f9f9; }
         .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
         .client-note-inline { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-style: italic; }
-        .action-buttons { display: flex; gap: 5px; }
+        .client-name-cell {
+            min-width: 0;
+        }
+        .client-name-main {
+            font-weight: bold;
+            color: var(--text-dark);
+            overflow-wrap: anywhere;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
         .sort-th {
             white-space: nowrap;
         }
@@ -146,6 +263,84 @@
         }
         .sort-btn:hover {
             color: var(--primary);
+        }
+        .results-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid #eef2f7;
+            background: #f8fafc;
+            flex-wrap: wrap;
+        }
+        .page-size-control,
+        .results-summary {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        .page-size-control label {
+            margin: 0;
+            color: inherit;
+            white-space: nowrap;
+        }
+        .page-size-control select {
+            width: auto;
+            min-width: 84px;
+            padding: 0.55rem 2rem 0.55rem 0.75rem;
+            background: white;
+        }
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            flex: 1;
+            flex-wrap: wrap;
+            min-width: 220px;
+        }
+        .pagination-btn,
+        .pagination-page {
+            min-width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid #dbe4f0;
+            background: white;
+            color: var(--text-main);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .pagination-btn:hover,
+        .pagination-page:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-1px);
+        }
+        .pagination-page.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+            box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18);
+        }
+        .pagination-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+            transform: none;
+        }
+        .pagination-ellipsis {
+            min-width: 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .table-empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
         }
 
         /* Modais */
@@ -168,6 +363,11 @@
             border-radius: 0 0 8px 8px;
         }
 
+        /* Garante que o atributo hidden recolha o submenu (sanfona) */
+        .submenu[hidden] {
+            display: none;
+        }
+
         .submenu-link {
             color: #94a3b8; /* Cor mais apagada */
             text-decoration: none;
@@ -181,6 +381,212 @@
 
         .submenu-link:hover {
             color: white;
+        }
+
+        .submenu-link.active {
+            color: white;
+            font-weight: 600;
+        }
+
+        /* Cabeçalho de grupo colapsável */
+        .submenu-toggle .submenu-caret {
+            margin-left: auto;
+            font-size: 0.7rem;
+            transition: transform 0.2s ease;
+        }
+        .submenu-toggle.expanded .submenu-caret {
+            transform: rotate(180deg);
+        }
+
+        @media (max-width: 992px) {
+            .toolbar {
+                align-items: stretch;
+            }
+
+            .toolbar-primary-actions,
+            .search-box,
+            .billing-toolbar-group,
+            .schedule-widget,
+            .expiration-filter-widget {
+                max-width: none;
+                width: 100%;
+                min-width: 0;
+            }
+            .billing-toolbar-group {
+                grid-template-columns: 1fr;
+            }
+            .billing-toolbar-divider {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .summary-container {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .expiration-filter-fields {
+                grid-template-columns: 1fr;
+            }
+
+            .expiration-filter-controls,
+            .expiration-days-filter {
+                align-items: flex-start;
+            }
+
+            .expiration-filter-controls {
+                flex-direction: column;
+            }
+
+            .expiration-filter-actions,
+            .dynamic-field-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .schedule-widget-row {
+                flex-wrap: wrap;
+            }
+
+            .results-footer {
+                justify-content: center;
+            }
+
+            .page-size-control,
+            .results-summary {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .table-container {
+                background: transparent;
+                box-shadow: none;
+                overflow: visible;
+            }
+
+            .clients-table,
+            .clients-table thead,
+            .clients-table tbody,
+            .clients-table tr,
+            .clients-table th,
+            .clients-table td {
+                display: block;
+            }
+
+            .clients-table {
+                min-width: 0;
+            }
+
+            .clients-table thead {
+                display: none;
+            }
+
+            .clients-table tbody {
+                display: grid;
+                gap: 0.9rem;
+            }
+
+            .clients-table tr {
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+                overflow: hidden;
+            }
+
+            .clients-table tr:hover {
+                background: white;
+            }
+
+            .clients-table td {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 1rem;
+                padding: 0.85rem 1rem;
+                text-align: right;
+                border-bottom: 1px solid #f1f5f9;
+            }
+
+            .clients-table td:last-child {
+                border-bottom: none;
+            }
+
+            .clients-table td::before {
+                content: attr(data-label);
+                font-size: 0.74rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                text-align: left;
+                flex: 0 0 92px;
+            }
+
+            .clients-table td:first-child {
+                display: block;
+                text-align: left;
+                padding-bottom: 0.75rem;
+            }
+
+            .clients-table td:first-child::before {
+                display: none;
+            }
+
+            .client-actions-cell::before {
+                margin-top: 0.2rem;
+            }
+
+            .action-buttons {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .action-buttons .btn {
+                flex: 1 1 calc(50% - 5px);
+                min-height: 42px;
+            }
+
+            .results-footer {
+                padding: 1rem 0;
+                background: transparent;
+                border-top: none;
+            }
+
+            .page-size-control,
+            .results-summary {
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 0.85rem 1rem;
+            }
+
+            .pagination {
+                width: 100%;
+                min-width: 0;
+                padding: 0.25rem;
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .summary-container {
+                grid-template-columns: 1fr;
+            }
+
+            .clients-table td::before {
+                flex-basis: 82px;
+            }
+
+            .action-buttons .btn {
+                flex-basis: 100%;
+            }
+
+            .modal-content {
+                padding: 1rem;
+            }
         }
     </style>
 </head>
@@ -198,65 +604,47 @@
                 <div class="brand-logo">NEXUS<span>MONITOR</span></div>
             </div>
             <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard">
+                <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">📊</span> Dashboard
                 </a>
 
-                <!-- MENU CLIENTES -->
-                <div class="sidebar-group" data-feature-key="clients">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
-                        <span class="sidebar-icon">👥</span> Clientes
-                    </button>
-                    <div class="sidebar-submenu" id="clientsSubmenu">
-                        <a href="clients.html" class="sidebar-link sidebar-sublink active" data-feature-key="clients">
-                            <span class="sidebar-icon">👥</span> Clientes
-                        </a>
-                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
-                            <span class="sidebar-icon">📂</span> Importar / Padronizar
-                        </a>
-                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
-                            <span class="sidebar-icon">💾</span> Backup / Exportar
-                        </a>
-                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients">
-                            <span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas
-                        </a>
-                    </div>
+                <!-- Grupo: Clientes -->
+                <a href="#submenu-clientes" class="sidebar-link submenu-toggle active"
+                   role="button" aria-expanded="false" aria-controls="submenu-clientes"
+                   onclick="return toggleSubmenu(this)">
+                    <span class="sidebar-icon">👥</span> Clientes
+                    <span class="submenu-caret" aria-hidden="true">▾</span>
+                </a>
+                <div class="submenu" id="submenu-clientes" hidden>
+                    <a href="clients.html" class="submenu-link active">Lista de Clientes</a>
+                    <a href="import_clients.html" class="submenu-link">Importar Clientes</a>
+                    <a href="backup_clients.html" class="submenu-link">Backup</a>
+                    <a href="messages.html" class="submenu-link">Mensagens</a>
                 </div>
 
-                <!-- Adicionado o novo menu de Produtos -->
-                <div class="sidebar-group" data-feature-key="products">
-                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu" data-feature-key="products">
-                        <span class="sidebar-icon">📦</span> Produtos
-                    </button>
-                    <div class="sidebar-submenu" id="productsSubmenu">
-                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
-                            <span class="sidebar-icon">🛒</span> Produtos/Servicos
-                        </a>
-                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
-                            <span class="sidebar-icon">🏷️</span> Categorias
-                        </a>
-                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
-                            <span class="sidebar-icon">📄</span> Planos
-                        </a>
-                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products">
-                            <span class="sidebar-icon">🧩</span> Recursos
-                        </a>
-                    </div>
+                <!-- Grupo: Produtos -->
+                <a href="#submenu-produtos" class="sidebar-link submenu-toggle"
+                   role="button" aria-expanded="false" aria-controls="submenu-produtos"
+                   onclick="return toggleSubmenu(this)">
+                    <span class="sidebar-icon">📦</span> Produtos
+                    <span class="submenu-caret" aria-hidden="true">▾</span>
+                </a>
+                <div class="submenu" id="submenu-produtos" hidden>
+                    <a href="produtos.html" class="submenu-link">Produtos</a>
+                    <a href="categorias.html" class="submenu-link">Categorias</a>
+                    <a href="planos.html" class="submenu-link">Planos</a>
+                    <a href="recursos.html" class="submenu-link">Recursos</a>
+                    <a href="resell.html" class="submenu-link">Revenda</a>
                 </div>
-                <!-- Fim do novo menu de Produtos -->
 
-                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations">
+                <a href="whatsapp.html" class="sidebar-link">
                     <span class="sidebar-icon">📱</span> Integração WhatsApp
                 </a>
-                <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram">
+                <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">✈️</span> Integração Telegram
                 </a>
-                <a href="dashboard.html#settings" class="sidebar-link" data-permission-key="settings">
+                <a href="dashboard.html" class="sidebar-link">
                     <span class="sidebar-icon">⚙️</span> Configurações
-                </a>
-
-                <a href="resell.html" class="sidebar-link" data-role-required="reseller">
-                    <span class="sidebar-icon">💼</span> Revendedores
                 </a>
             </nav>
             <div class="user-profile">
@@ -305,44 +693,83 @@
 
             <!-- BARRA DE FERRAMENTAS -->
             <div class="toolbar">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="searchInput" placeholder="Buscar por Login ou WhatsApp..." oninput="applyFilters()">
+                <div class="billing-toolbar-group">
+                    <div class="expiration-filter-widget">
+                        <div class="expiration-filter-heading">
+                            <div class="expiration-filter-label">Vencimento entre datas</div>
+                            <div class="expiration-filter-context">Defina quem entra na cobran&ccedil;a e, ao lado, escolha se deseja programar ou disparar o envio.</div>
+                        </div>
+                        <div class="expiration-filter-fields">
+                            <input type="date" id="expirationStart" title="Data inicial">
+                            <input type="date" id="expirationEnd" title="Data final">
+                        </div>
+                        <div class="expiration-filter-controls">
+                            <div class="expiration-days-filter">
+                                <span class="expiration-days-prefix">Filtras os ultimos</span>
+                                <input
+                                    type="text"
+                                    id="expirationDaysAhead"
+                                    list="expirationDaysOptions"
+                                    inputmode="numeric"
+                                    placeholder="5"
+                                    title="Digite ou selecione a quantidade de dias"
+                                    aria-label="Quantidade de dias para vencimento"
+                                >
+                                <datalist id="expirationDaysOptions">
+                                    <option value="1"></option>
+                                    <option value="3"></option>
+                                    <option value="5"></option>
+                                    <option value="7"></option>
+                                    <option value="15"></option>
+                                    <option value="30"></option>
+                                    <option value="60"></option>
+                                </datalist>
+                                <span class="expiration-days-suffix">dias</span>
+                            </div>
+                            <div class="expiration-filter-actions">
+                                <button class="btn btn-primary btn-sm" type="button" onclick="saveExpirationRangeFilter()">Salvar</button>
+                                <button class="btn btn-secondary btn-sm" type="button" onclick="clearExpirationRangeFilter()">Limpar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="billing-toolbar-divider" aria-hidden="true"></div>
+
+                    <!-- WIDGET DE AGENDAMENTO (NOVO) -->
+                    <div class="schedule-widget">
+                        <div class="schedule-widget-header">
+                            <div class="schedule-info">
+                                <span class="schedule-label">Envio Automático</span>
+                                <span class="schedule-time" id="displayScheduleTime">--:--</span>
+                            </div>
+                            <span class="schedule-widget-subtitle">Use este bloco para programar o disparo autom&aacute;tico ou executar a cobran&ccedil;a agora.</span>
+                        </div>
+
+                        <div class="schedule-widget-row">
+                            <label class="switch" title="Ativar/Desativar Envio Automático">
+                                <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
+                                <span class="slider round"></span>
+                            </label>
+
+                            <div class="schedule-widget-actions">
+                                <button class="btn btn-sm btn-secondary" onclick="openScheduleModal()" title="Alterar Horário">✏️</button>
+
+                                <button class="btn btn-sm btn-primary" onclick="runBatchProcess()" title="Verificar e enviar cobranças agora" style="background-color: #8b5cf6; border-color: #8b5cf6;">
+                                    🚀 Executar Agora
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="expiration-filter-widget">
-                    <div class="expiration-filter-label">Vencimento entre datas</div>
-                    <div class="expiration-filter-fields">
-                        <input type="date" id="expirationStart" title="Data inicial" onchange="applyExpirationRangeFilter()">
-                        <input type="date" id="expirationEnd" title="Data final" onchange="applyExpirationRangeFilter()">
-                    </div>
-                    <div class="expiration-filter-actions">
-                        <button class="btn btn-secondary btn-sm" type="button" onclick="clearExpirationRangeFilter()">Limpar</button>
+                <div class="toolbar-primary-actions">
+                    <button class="btn btn-primary" onclick="openClientModal()">+ Novo Cliente</button>
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="searchInput" placeholder="Buscar por Login ou WhatsApp..." oninput="applyFilters()">
                     </div>
                 </div>
 
-                <!-- WIDGET DE AGENDAMENTO (NOVO) -->
-                <div class="schedule-widget">
-                    <div class="schedule-info">
-                        <span class="schedule-label">Envio Automático</span>
-                        <span class="schedule-time" id="displayScheduleTime">--:--</span>
-                    </div>
-
-                    <label class="switch" title="Ativar/Desativar Envio Automático">
-                        <input type="checkbox" id="scheduleToggle" onchange="toggleSchedule()">
-                        <span class="slider round"></span>
-                    </label>
-
-                    <button class="btn btn-sm btn-secondary" onclick="openScheduleModal()" title="Alterar Horário" style="margin-left: 5px;">✏️</button>
-
-                    <!-- NOVO BOTÃO AQUI -->
-                    <button class="btn btn-sm btn-primary" onclick="runBatchProcess()" title="Verificar e enviar cobranças agora" style="margin-left: 5px; background-color: #8b5cf6; border-color: #8b5cf6;">
-                        🚀 Executar Agora
-                    </button>
-                    <!-- FIM DO NOVO BOTÃO -->
-                </div>
-
-                <button class="btn btn-primary" onclick="openClientModal()">+ Novo Cliente</button>
             </div>
 
             <!-- Lista de Clientes (Tabela) -->
@@ -462,6 +889,7 @@
             <p style="color: var(--text-muted); margin-bottom: 1rem;">
                 Selecione qual grupo de clientes deve receber a notificação agora:
             </p>
+            <div id="batchRangeHint" style="display: none; margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(59, 130, 246, 0.08); color: #1d4ed8; font-size: 0.95rem;"></div>
 
             <div class="form-group">
                 <label>Critério de Envio</label>
@@ -482,8 +910,8 @@
         </div>
     </div>
 
-    <script src="assets/js/sidebar.js"></script>
     <script src="assets/js/dashboard.js"></script>
+    <script src="assets/js/sidebar.js"></script>
 
     <script>
         // ==========================================
@@ -491,18 +919,97 @@
         // ==========================================
 
         let allClients = [];
+        let filteredClients = [];
         let currentFilter = 'all';
+        let currentPage = 1;
+        let itemsPerPage = 20;
+        const EXPIRATION_RANGE_STORAGE_KEY = 'clients_expiration_range';
+        const EXPIRATION_RANGE_INPUTS_STORAGE_KEY = 'clients_expiration_range_inputs';
         let expirationRangeStart = '';
         let expirationRangeEnd = '';
+        let expirationDaysAhead = '';
+        const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
         let sortState = {
             key: null,
             direction: 'asc'
         };
 
+        function normalizeFilterValue(value) {
+            return (value || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            restoreExpirationRangeFilter();
+            setupExpirationFilterInteractions();
             loadClients();
             loadScheduleStatus(); // Carrega o status do agendamento ao iniciar
+            updateBatchRangeHint();
         });
+
+        function setupExpirationFilterInteractions() {
+            const startInput = document.getElementById('expirationStart');
+            const endInput = document.getElementById('expirationEnd');
+            const daysInput = document.getElementById('expirationDaysAhead');
+            if (!startInput || !endInput || !daysInput) {
+                return;
+            }
+
+            const persistCurrentInputs = () => {
+                persistExpirationRangeInputs(startInput.value, endInput.value, daysInput.value.trim());
+            };
+
+            const clearDaysWhenDateIsFilled = () => {
+                if (startInput.value) {
+                    daysInput.value = '';
+                }
+                if (endInput.value) {
+                    daysInput.value = '';
+                }
+                persistCurrentInputs();
+            };
+
+            startInput.addEventListener('input', clearDaysWhenDateIsFilled);
+            startInput.addEventListener('change', clearDaysWhenDateIsFilled);
+
+            endInput.addEventListener('input', clearDaysWhenDateIsFilled);
+            endInput.addEventListener('change', clearDaysWhenDateIsFilled);
+
+            daysInput.addEventListener('input', () => {
+                if (daysInput.value.trim()) {
+                    startInput.value = '';
+                    endInput.value = '';
+                }
+                persistCurrentInputs();
+            });
+        }
+
+        // Alterna a exibição dos submenus da sidebar (comportamento sanfona)
+        function toggleSubmenu(toggle) {
+            const submenu = document.getElementById(toggle.getAttribute('aria-controls'));
+            if (!submenu) return false;
+            const willOpen = submenu.hidden;
+
+            // Sanfona: fecha todos os outros submenus antes de abrir este
+            if (willOpen) {
+                document.querySelectorAll('.sidebar-menu .submenu-toggle').forEach(function (other) {
+                    if (other === toggle) return;
+                    const otherSubmenu = document.getElementById(other.getAttribute('aria-controls'));
+                    if (otherSubmenu) otherSubmenu.hidden = true;
+                    other.classList.remove('expanded');
+                    other.setAttribute('aria-expanded', 'false');
+                });
+            }
+
+            submenu.hidden = !willOpen;
+            toggle.classList.toggle('expanded', willOpen);
+            toggle.setAttribute('aria-expanded', String(willOpen));
+            return false;
+        }
 
         async function loadClients() {
             const list = document.getElementById('clientsList');
@@ -529,9 +1036,14 @@
             }
         }
 
+        function getSchedulerFilteredClients() {
+            return allClients.filter(client => matchesExpirationRange(client.expiration_date, client.diffDays));
+        }
+
         function updateDashboardCounts() {
-            const counts = { all: allClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
-            allClients.forEach(c => {
+            const schedulerFilteredClients = getSchedulerFilteredClients();
+            const counts = { all: schedulerFilteredClients.length, expired: 0, d1: 0, d2: 0, d3: 0, d4: 0 };
+            schedulerFilteredClients.forEach(c => {
                 if (c.diffDays < 0) counts.expired++;
                 if (c.diffDays === 1) counts.d1++;
                 if (c.diffDays === 2) counts.d2++;
@@ -553,8 +1065,9 @@
             applyFilters();
         }
 
-        function applyFilters() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        function applyFilters(resetPage = true) {
+            updateDashboardCounts();
+            const searchTerm = normalizeFilterValue(document.getElementById('searchInput').value);
             let filtered = allClients.filter(client => {
                 let statusMatch = false;
                 if (currentFilter === 'all') statusMatch = true;
@@ -564,21 +1077,60 @@
                 else if (currentFilter === '3') statusMatch = client.diffDays === 3;
                 else if (currentFilter === '4') statusMatch = client.diffDays === 4;
 
+                const clientName = normalizeFilterValue(client.name);
+                const clientLogin = normalizeFilterValue(client.login);
+                const clientWhatsapp = (client.whatsapp || '').toString().trim();
                 const searchMatch =
-                    client.login.toLowerCase().includes(searchTerm) ||
-                    client.whatsapp.includes(searchTerm) ||
-                    client.name.toLowerCase().includes(searchTerm);
+                    !searchTerm ||
+                    clientLogin.includes(searchTerm) ||
+                    clientWhatsapp.includes(searchTerm) ||
+                    clientName.includes(searchTerm);
 
-                const expirationMatch = matchesExpirationRange(client.expiration_date);
+                const expirationMatch = matchesExpirationRange(client.expiration_date, client.diffDays);
 
                 return statusMatch && searchMatch && expirationMatch;
             });
 
             filtered = sortClients(filtered);
-            renderTable(filtered);
+            filteredClients = filtered;
+
+            if (resetPage) {
+                currentPage = 1;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(filteredClients.length / itemsPerPage));
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            renderTable(filteredClients);
         }
 
-        function matchesExpirationRange(expirationDate) {
+        function getExpirationDaysWindow(daysValue) {
+            const parsedDays = Number.parseInt(daysValue, 10);
+            if (!Number.isInteger(parsedDays) || parsedDays < 0) {
+                return null;
+            }
+
+            const offset = Math.max(parsedDays - 1, 0);
+            return {
+                inputDays: parsedDays,
+                minDiff: -offset,
+                maxDiff: offset
+            };
+        }
+
+        function matchesExpirationRange(expirationDate, diffDays) {
+            if (expirationDaysAhead !== '') {
+                const daysWindow = getExpirationDaysWindow(expirationDaysAhead);
+                if (!daysWindow) {
+                    return true;
+                }
+                return Number.isInteger(diffDays)
+                    && diffDays >= daysWindow.minDiff
+                    && diffDays <= daysWindow.maxDiff;
+            }
+
             if (!expirationRangeStart && !expirationRangeEnd) {
                 return true;
             }
@@ -599,26 +1151,166 @@
             return true;
         }
 
-        function applyExpirationRangeFilter() {
-            const start = document.getElementById('expirationStart').value;
-            const end = document.getElementById('expirationEnd').value;
-
+        function validateExpirationRange(start, end, showMessage = true) {
             if (start && end && start > end) {
-                alert('A data inicial não pode ser maior que a data final.');
+                if (showMessage) {
+                    alert('A data inicial não pode ser maior que a data final.');
+                }
+                return false;
+            }
+
+            return true;
+        }
+
+        function validateExpirationDays(daysValue, showMessage = true) {
+            if (!daysValue) {
+                return true;
+            }
+
+            const parsedDays = Number.parseInt(daysValue, 10);
+            if (!Number.isInteger(parsedDays) || parsedDays < 0 || String(parsedDays) !== String(daysValue).trim()) {
+                if (showMessage) {
+                    alert('Informe uma quantidade de dias v\u00e1lida, usando apenas n\u00fameros inteiros iguais ou maiores que zero.');
+                }
+                return false;
+            }
+
+            return true;
+        }
+
+        function setExpirationRange(start, end, daysAhead = '') {
+            expirationRangeStart = start;
+            expirationRangeEnd = end;
+            expirationDaysAhead = daysAhead;
+        }
+
+        function getExpirationRangeInputs() {
+            return {
+                start: document.getElementById('expirationStart').value,
+                end: document.getElementById('expirationEnd').value,
+                daysAhead: document.getElementById('expirationDaysAhead').value.trim()
+            };
+        }
+
+        function syncExpirationRangeInputs(start, end, daysAhead = '') {
+            document.getElementById('expirationStart').value = start || '';
+            document.getElementById('expirationEnd').value = end || '';
+            document.getElementById('expirationDaysAhead').value = daysAhead || '';
+        }
+
+        function persistExpirationRange(start, end, daysAhead = '') {
+            localStorage.setItem(EXPIRATION_RANGE_STORAGE_KEY, JSON.stringify({
+                start: start || '',
+                end: end || '',
+                daysAhead: daysAhead || ''
+            }));
+        }
+
+        function persistExpirationRangeInputs(start, end, daysAhead = '') {
+            localStorage.setItem(EXPIRATION_RANGE_INPUTS_STORAGE_KEY, JSON.stringify({
+                start: start || '',
+                end: end || '',
+                daysAhead: daysAhead || ''
+            }));
+        }
+
+        function restoreExpirationRangeFilter() {
+            const savedRange = localStorage.getItem(EXPIRATION_RANGE_STORAGE_KEY);
+            const savedInputs = localStorage.getItem(EXPIRATION_RANGE_INPUTS_STORAGE_KEY);
+
+            if (savedInputs) {
+                try {
+                    const parsedInputs = JSON.parse(savedInputs);
+                    const inputStart = parsedInputs && typeof parsedInputs.start === 'string' ? parsedInputs.start : '';
+                    const inputEnd = parsedInputs && typeof parsedInputs.end === 'string' ? parsedInputs.end : '';
+                    const inputDaysAhead = parsedInputs && typeof parsedInputs.daysAhead === 'string' ? parsedInputs.daysAhead.trim() : '';
+
+                    syncExpirationRangeInputs(inputStart, inputEnd, inputDaysAhead);
+                } catch (error) {
+                    console.error('Erro ao restaurar campos de vencimento salvos.', error);
+                    localStorage.removeItem(EXPIRATION_RANGE_INPUTS_STORAGE_KEY);
+                }
+            }
+
+            if (!savedRange) {
                 return;
             }
 
-            expirationRangeStart = start;
-            expirationRangeEnd = end;
+            try {
+                const parsedRange = JSON.parse(savedRange);
+                const start = parsedRange && typeof parsedRange.start === 'string' ? parsedRange.start : '';
+                const end = parsedRange && typeof parsedRange.end === 'string' ? parsedRange.end : '';
+                const daysAhead = parsedRange && typeof parsedRange.daysAhead === 'string' ? parsedRange.daysAhead.trim() : '';
+
+                if (!validateExpirationRange(start, end, false) || !validateExpirationDays(daysAhead, false)) {
+                    localStorage.removeItem(EXPIRATION_RANGE_STORAGE_KEY);
+                    return;
+                }
+
+                if (daysAhead) {
+                    setExpirationRange('', '', daysAhead);
+                    syncExpirationRangeInputs('', '', daysAhead);
+                    persistExpirationRangeInputs('', '', daysAhead);
+                    return;
+                }
+
+                setExpirationRange(start, end, '');
+                syncExpirationRangeInputs(start, end, '');
+                persistExpirationRangeInputs(start, end, '');
+            } catch (error) {
+                console.error('Erro ao restaurar filtro de vencimento salvo.', error);
+                localStorage.removeItem(EXPIRATION_RANGE_STORAGE_KEY);
+            }
+        }
+
+        function saveExpirationRangeFilter() {
+            const { start, end, daysAhead } = getExpirationRangeInputs();
+            if (!validateExpirationRange(start, end)) {
+                return;
+            }
+            if (!validateExpirationDays(daysAhead)) {
+                return;
+            }
+
+            if (start || end) {
+                setExpirationRange(start, end, '');
+                syncExpirationRangeInputs(start, end, '');
+                persistExpirationRange(start, end, '');
+                persistExpirationRangeInputs(start, end, '');
+                applyFilters();
+                updateBatchRangeHint();
+                return;
+            }
+
+            if (daysAhead) {
+                setExpirationRange('', '', daysAhead);
+                syncExpirationRangeInputs('', '', daysAhead);
+                persistExpirationRange('', '', daysAhead);
+                persistExpirationRangeInputs('', '', daysAhead);
+                applyFilters();
+                updateBatchRangeHint();
+                return;
+            }
+
+            setExpirationRange(start, end, '');
+            syncExpirationRangeInputs(start, end, '');
+            persistExpirationRange(start, end, '');
+            persistExpirationRangeInputs(start, end, '');
             applyFilters();
+            updateBatchRangeHint();
+        }
+
+        function applyExpirationRangeFilter() {
+            saveExpirationRangeFilter();
         }
 
         function clearExpirationRangeFilter() {
-            expirationRangeStart = '';
-            expirationRangeEnd = '';
-            document.getElementById('expirationStart').value = '';
-            document.getElementById('expirationEnd').value = '';
+            setExpirationRange('', '', '');
+            syncExpirationRangeInputs('', '', '');
+            localStorage.removeItem(EXPIRATION_RANGE_STORAGE_KEY);
+            localStorage.removeItem(EXPIRATION_RANGE_INPUTS_STORAGE_KEY);
             applyFilters();
+            updateBatchRangeHint();
         }
 
         function toggleSort(key) {
@@ -628,7 +1320,7 @@
                 sortState.key = key;
                 sortState.direction = 'asc';
             }
-            applyFilters();
+            applyFilters(false);
         }
 
         function sortClients(clients) {
@@ -660,9 +1352,18 @@
         function renderTable(clients) {
             const list = document.getElementById('clientsList');
             if (clients.length === 0) {
-                list.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);">Nenhum cliente encontrado com estes filtros.</div>`;
+                list.innerHTML = `<div class="table-empty-state">Nenhum cliente encontrado com estes filtros.</div>`;
                 return;
             }
+
+            const totalItems = clients.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+            const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+            const startIndex = (safePage - 1) * itemsPerPage;
+            const paginatedClients = clients.slice(startIndex, startIndex + itemsPerPage);
+            const startItem = startIndex + 1;
+            const endItem = Math.min(startIndex + itemsPerPage, totalItems);
+            currentPage = safePage;
 
             let html = `
                 <table class="clients-table">
@@ -689,7 +1390,7 @@
                     <tbody>
             `;
 
-            html += clients.map(client => {
+            html += paginatedClients.map(client => {
                 let statusColor = 'var(--success)';
                 let statusText = `${client.diffDays} dias`;
                 if (client.diffDays < 0) { statusColor = 'var(--danger)'; statusText = 'Vencido'; }
@@ -700,15 +1401,15 @@
 
                 return `
                 <tr>
-                    <td>
-                        <div style="font-weight: bold; color: var(--text-dark);">${client.name}</div>
+                    <td data-label="Cliente" class="client-name-cell">
+                        <div class="client-name-main">${client.name}</div>
                         ${notesHtml}
                     </td>
-                    <td>${client.login}</td>
-                    <td>${client.whatsapp}</td>
-                    <td>${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
-                    <td><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
-                    <td>
+                    <td data-label="Login">${client.login}</td>
+                    <td data-label="WhatsApp">${client.whatsapp}</td>
+                    <td data-label="Vencimento">${new Date(client.expiration_date).toLocaleDateString('pt-BR')}</td>
+                    <td data-label="Status"><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
+                    <td data-label="Ações" class="client-actions-cell">
                         <div class="action-buttons">
                             <button class="btn btn-secondary btn-sm" title="Enviar Cobrança Agora" onclick="sendManualReminder(${client.id})">📨</button>
                             <button class="btn btn-secondary btn-sm" title="Detalhes" onclick='openDetailsModal(${JSON.stringify(client)})'>👁️</button>
@@ -719,7 +1420,91 @@
                 </tr>`;
             }).join('');
             html += `</tbody></table>`;
+            html += renderResultsFooter(startItem, endItem, totalItems, totalPages);
             list.innerHTML = html;
+        }
+
+        function renderResultsFooter(startItem, endItem, totalItems, totalPages) {
+            const pageButtons = getPaginationItems(totalPages, currentPage).map(item => {
+                if (item === 'ellipsis') {
+                    return `<span class="pagination-ellipsis">…</span>`;
+                }
+
+                return `
+                    <button
+                        type="button"
+                        class="pagination-page ${item === currentPage ? 'active' : ''}"
+                        onclick="goToPage(${item})"
+                        aria-label="Ir para página ${item}"
+                        aria-current="${item === currentPage ? 'page' : 'false'}"
+                    >
+                        ${item}
+                    </button>
+                `;
+            }).join('');
+
+            return `
+                <div class="results-footer">
+                    <div class="page-size-control">
+                        <label for="itemsPerPage">Exibir</label>
+                        <select id="itemsPerPage" onchange="setItemsPerPage(this.value)">
+                            ${PAGE_SIZE_OPTIONS.map(option => `
+                                <option value="${option}" ${option === itemsPerPage ? 'selected' : ''}>${option}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div class="pagination" aria-label="Paginação da lista de clientes">
+                        <button type="button" class="pagination-btn" onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''} aria-label="Primeira página">«</button>
+                        <button type="button" class="pagination-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} aria-label="Página anterior">‹</button>
+                        ${pageButtons}
+                        <button type="button" class="pagination-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} aria-label="Próxima página">›</button>
+                        <button type="button" class="pagination-btn" onclick="goToPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''} aria-label="Última página">»</button>
+                    </div>
+                    <div class="results-summary">${startItem} a ${endItem} de ${totalItems}</div>
+                </div>
+            `;
+        }
+
+        function getPaginationItems(totalPages, activePage) {
+            if (totalPages <= 7) {
+                return Array.from({ length: totalPages }, (_, index) => index + 1);
+            }
+
+            const pages = new Set([1, totalPages, activePage - 1, activePage, activePage + 1]);
+            if (activePage <= 3) {
+                pages.add(2);
+                pages.add(3);
+            }
+            if (activePage >= totalPages - 2) {
+                pages.add(totalPages - 1);
+                pages.add(totalPages - 2);
+            }
+
+            const sortedPages = Array.from(pages)
+                .filter(page => page >= 1 && page <= totalPages)
+                .sort((a, b) => a - b);
+
+            const result = [];
+            sortedPages.forEach((page, index) => {
+                if (index > 0 && page - sortedPages[index - 1] > 1) {
+                    result.push('ellipsis');
+                }
+                result.push(page);
+            });
+
+            return result;
+        }
+
+        function goToPage(page) {
+            const totalPages = Math.max(1, Math.ceil(filteredClients.length / itemsPerPage));
+            currentPage = Math.min(Math.max(page, 1), totalPages);
+            renderTable(filteredClients);
+        }
+
+        function setItemsPerPage(value) {
+            itemsPerPage = Number(value) || 20;
+            currentPage = 1;
+            renderTable(filteredClients);
         }
 
         // --- FUNÇÕES DE MODAL (CRUD) ---
@@ -940,8 +1725,9 @@
         // --- ENVIO EM MASSA (EXECUÇÃO MANUAL DA ROTINA) ---
 
         // 1. Abre o modal para escolher o filtro
-        function runBatchProcess() {
-            updateBatchFilterWithMessages();
+        async function runBatchProcess() {
+            await updateBatchFilterWithMessages();
+            updateBatchRangeHint();
             document.getElementById('batchModal').style.display = 'flex';
         }
 
@@ -953,6 +1739,17 @@
         // 3. Executa o envio com o filtro selecionado
         async function executeBatchProcess() {
             const filterType = document.getElementById('batchFilter').value;
+            const query = new URLSearchParams({ filter_type: filterType });
+
+            if (expirationDaysAhead !== '') {
+                query.set('days_ahead', expirationDaysAhead);
+            } else if (expirationRangeStart) {
+                query.set('date_from', expirationRangeStart);
+            }
+
+            if (expirationDaysAhead === '' && expirationRangeEnd) {
+                query.set('date_to', expirationRangeEnd);
+            }
 
             closeBatchModal();
             showNotification("Iniciando envio em massa...", "info");
@@ -960,7 +1757,7 @@
             try {
                 // Enviamos o filtro via Query Parameter para o backend
                 // Ex: /clients/process-now?filter_type=3
-                const response = await apiFetch(`/clients/process-now?filter_type=${filterType}`, { method: 'POST' });
+                const response = await apiFetch(`/clients/process-now?${query.toString()}`, { method: 'POST' });
                 const result = await response.json();
 
                 if (response.ok) {
@@ -974,10 +1771,49 @@
             }
         }
 
+        function updateBatchRangeHint() {
+            const hint = document.getElementById('batchRangeHint');
+            if (!hint) return;
+
+            if (expirationDaysAhead !== '') {
+                const daysWindow = getExpirationDaysWindow(expirationDaysAhead);
+                if (!daysWindow) {
+                    hint.style.display = 'none';
+                    hint.textContent = '';
+                    return;
+                }
+
+                if (daysWindow.inputDays <= 1) {
+                    hint.textContent = 'O envio em massa ficar\u00e1 restrito aos clientes que vencem hoje.';
+                } else {
+                    hint.textContent = `O envio em massa ficar\u00e1 restrito aos clientes vencidos h\u00e1 at\u00e9 ${daysWindow.maxDiff} dia${daysWindow.maxDiff === 1 ? '' : 's'} e aos que vencem nos pr\u00f3ximos ${daysWindow.maxDiff} dia${daysWindow.maxDiff === 1 ? '' : 's'}.`;
+                }
+                hint.style.display = 'block';
+                return;
+            }
+
+            if (!expirationRangeStart && !expirationRangeEnd) {
+                hint.style.display = 'none';
+                hint.textContent = '';
+                return;
+            }
+
+            const startLabel = expirationRangeStart
+                ? new Date(`${expirationRangeStart}T00:00:00`).toLocaleDateString('pt-BR')
+                : 'o início';
+            const endLabel = expirationRangeEnd
+                ? new Date(`${expirationRangeEnd}T00:00:00`).toLocaleDateString('pt-BR')
+                : 'o fim';
+
+            hint.textContent = `O envio em massa ficará restrito aos clientes com vencimento entre ${startLabel} e ${endLabel}.`;
+            hint.style.display = 'block';
+        }
+
         // Adiciona opções de mensagens personalizadas ao select de Critério de Envio
         async function updateBatchFilterWithMessages() {
             const batchFilter = document.getElementById('batchFilter');
             if (!batchFilter) return;
+            const currentValue = batchFilter.value;
             // Salva as opções padrão
             const defaultOptions = [
                 { value: 'default', text: '⚡ Padrão (Respeitar configuração de cada cliente)' },
@@ -996,29 +1832,29 @@
                 option.textContent = opt.text;
                 batchFilter.appendChild(option);
             });
-            // Busca mensagens do backend
+
+            // Adiciona mensagens personalizadas configuradas em /messages.html
             try {
-                const token = localStorage.getItem('token');
-                const response = await fetch('http://127.0.0.1:8000/api/messages', {
-                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
-                });
+                const response = await apiFetch('/users/me');
                 if (response.ok) {
-                    const messages = await response.json();
-                    // Adiciona apenas mensagens não padrão (is_default === false)
-                    messages.filter(msg => !msg.is_default).forEach(msg => {
+                    const user = await response.json();
+                    const customMessages = Array.isArray(user.reminder_scenarios)
+                        ? user.reminder_scenarios.filter(msg => msg && typeof msg === 'object' && String(msg.template || '').trim())
+                        : [];
+
+                    customMessages.forEach(msg => {
                         const option = document.createElement('option');
-                        option.value = 'msg_' + msg.id;
-                        option.textContent = `💬 ${msg.type ? capitalizeFirstLetter(msg.type) : 'Mensagem'}: ${msg.content.substring(0, 30)}...`;
+                        option.value = `custom:${msg.id}`;
+                        option.textContent = `💬 Mensagem personalizada: ${msg.name || 'Sem nome'}`;
                         batchFilter.appendChild(option);
                     });
                 }
             } catch (e) {
-                // Silencioso
+                console.error('Falha ao carregar mensagens personalizadas para envio em massa.', e);
             }
-        }
-        // Função utilitária para capitalizar
-        function capitalizeFirstLetter(string) {
-            return string.charAt(0).toUpperCase() + string.slice(1);
+
+            const availableValues = Array.from(batchFilter.options).map(option => option.value);
+            batchFilter.value = availableValues.includes(currentValue) ? currentValue : 'default';
         }
     </script>
 </body>

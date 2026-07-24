@@ -4,13 +4,12 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import logging
-import os
-from dotenv import load_dotenv
 
 # Imports do projeto
 from database import get_db
 from auth import get_current_user
 from models import User
+from core.config import get_evolution_api_key, get_evolution_api_url
 from whatsapp_utils import (
     generate_instance_name,
     evolution_delete_instance,
@@ -18,10 +17,6 @@ from whatsapp_utils import (
     get_instance_state_and_qr,
     send_whatsapp_notification,
 )
-
-load_dotenv()
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 
 # Configura o logger para ser mais útil
 logging.basicConfig(level=logging.INFO)
@@ -76,7 +71,7 @@ async def connect_whatsapp(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
-    if not EVOLUTION_API_URL or not EVOLUTION_API_KEY:
+    if not get_evolution_api_url() or not get_evolution_api_key():
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API Evolution não configurada no servidor.")
 
     # 1. Limpeza de instância anterior (se existir)
@@ -191,4 +186,3 @@ async def test_whatsapp_notification_route(
         return {"success": True, "message": f"Mensagem de teste enviada para {target_number}."}
 
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha no envio. Verifique o console do servidor e se o número é válido.")
-

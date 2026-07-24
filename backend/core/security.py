@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 import httpx
 from uuid import uuid4
+import bcrypt
 from jose import jwt
-from passlib.context import CryptContext
 import os
-from types import SimpleNamespace
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,20 +19,11 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-try:
-    import bcrypt as _bcrypt
-    if not hasattr(_bcrypt, "__about__"):
-        _bcrypt.__about__ = SimpleNamespace(__version__=getattr(_bcrypt, "__version__", "0"))
-except Exception:
-    pass
-
 # Configurações de Segurança
 # Em produção, certifique-se de ter SECRET_KEY no seu arquivo .env
 SECRET_KEY = os.getenv("SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 PLAN_DURATION_DAYS = {
     "monthly": 30,
@@ -55,6 +45,29 @@ PLAN_LABEL_HINTS = {
     "semestral": "semiannual",
     "anual": "yearly",
 }
+
+
+_SENSITIVE_KEYS = {"api_key", "webhook_secret", "apikey", "secret", "password", "token", "email"}
+
+
+def _mask_sensitive(value):
+    """Retorna uma copia do payload com chaves sensiveis mascaradas para log seguro.
+
+    Evita registrar segredos (api_key, webhook_secret) e reduz exposicao de PII,
+    conforme politica de privacidade (nunca logar segredos em texto puro).
+    """
+    if isinstance(value, dict):
+        masked = {}
+        for key, item in value.items():
+            key_text = str(key).strip().lower()
+            if any(marker in key_text for marker in _SENSITIVE_KEYS) and item:
+                masked[key] = "***REDACTED***"
+            else:
+                masked[key] = _mask_sensitive(item)
+        return masked
+    if isinstance(value, list):
+        return [_mask_sensitive(item) for item in value]
+    return value
 
 
 def _normalize_payment_settings(settings):
@@ -133,10 +146,9 @@ def get_plan_price(user):
 
 def build_checkout_payload(user, order_nsu: Optional[str] = None):
     settings = _normalize_payment_settings(getattr(user, "payment_api_settings", None))
-    
-    # DEBUG: Mostrar todas as settings
-    print(f"\n[CHECKOUT-DEBUG] Settings completo:")
-    print(json.dumps(settings, indent=2, default=str))
+
+    # Log seguro: nunca registrar api_key / webhook_secret em texto puro.
+    logger.debug("[CHECKOUT] Settings (mascarado): %s", _mask_sensitive(settings))
     
     handle = (settings.get("handle") or "").strip()
     api_base_url = (settings.get("api_base_url") or "").strip().rstrip("/")
@@ -145,10 +157,6 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
     redirect_url = (settings.get("redirect_url") or "").strip()
     amount = get_plan_price(user)
     
-    print(f"[CHECKOUT-DEBUG] webhook_url extraido: '{webhook_url}'")
-    print(f"[CHECKOUT-DEBUG] webhook_url vazio? {not webhook_url}")
-    print(f"[CHECKOUT-DEBUG] webhook_url length: {len(webhook_url)}")
-
     if not handle:
         raise HTTPException(status_code=400, detail="Configure o Handle / Conta antes de gerar o checkout.")
     if not api_base_url:
@@ -196,19 +204,11 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
 
     endpoint = links_endpoint if links_endpoint.startswith("/") else f"/{links_endpoint}"
     url = f"{api_base_url}{endpoint}"
-    
-    # LOG DETALHADO DO PAYLOAD ENVIADO
-    print("\n" + "="*80)
-    print("[CHECKOUT] ENVIANDO PAYLOAD PARA O GATEWAY")
-    print("="*80)
-    print(f"[CHECKOUT] URL: {url}")
-    print(f"[CHECKOUT] PAYLOAD ENVIADO:")
-    print(json.dumps(request_body, indent=2, default=str))
-    print("[CHECKOUT] webhook_url incluido?", "webhook_url" in request_body and bool(request_body.get("webhook_url")))
-    if webhook_url:
-        print(f"[CHECKOUT] webhook_url valor: {webhook_url}")
-    print("="*80 + "\n")
-    
+
+    # Log seguro: PII (e-mail do cliente) mascarada e sem segredos.
+    logger.debug("[CHECKOUT] Enviando payload para %s (payload mascarado: %s)",
+                 url, _mask_sensitive(request_body))
+
     return url, request_body, amount_cents, order_nsu
 
 
@@ -318,13 +318,8 @@ def sync_user_payment_from_gateway(user, db: Session):
         "reference": order_nsu,
     }
     
-    print("\n" + "="*80)
-    print("[PAYMENT-CHECK] VERIFICANDO STATUS DE PAGAMENTO")
-    print("="*80)
-    print(f"[PAYMENT-CHECK] URL: {url}")
-    print(f"[PAYMENT-CHECK] order_nsu: {order_nsu}")
-    print(f"[PAYMENT-CHECK] invoice_slug: {invoice_slug}")
-    print("="*80)
+    logger.debug("[PAYMENT-CHECK] Verificando pagamento em %s (order_nsu=%s, invoice_slug=%s)",
+                 url, order_nsu, invoice_slug)
 
     response = None
     data = {}
@@ -332,9 +327,8 @@ def sync_user_payment_from_gateway(user, db: Session):
         for method in ("POST", "GET"):
             try:
                 if method == "POST":
-                    print(f"\n[PAYMENT-CHECK] Tentativa {_attempt + 1}/3 - Metodo POST")
-                    print(f"[PAYMENT-CHECK] PAYLOAD:")
-                    print(json.dumps(request_body, indent=2, default=str))
+                    logger.debug("[PAYMENT-CHECK] Tentativa %s/3 - POST (payload mascarado: %s)",
+                                 _attempt + 1, _mask_sensitive(request_body))
                     response = httpx.post(
                         url,
                         json=request_body,
@@ -342,28 +336,18 @@ def sync_user_payment_from_gateway(user, db: Session):
                         timeout=15.0,
                     )
                 else:
-                    print(f"\n[PAYMENT-CHECK] Tentativa {_attempt + 1}/3 - Metodo GET")
-                    print(f"[PAYMENT-CHECK] PARAMS:")
-                    print(json.dumps(request_body, indent=2, default=str))
+                    logger.debug("[PAYMENT-CHECK] Tentativa %s/3 - GET (params mascarados: %s)",
+                                 _attempt + 1, _mask_sensitive(request_body))
                     response = httpx.get(url, params=request_body, timeout=15.0)
-                
-                # LOG DA RESPOSTA
-                print(f"[PAYMENT-CHECK] STATUS: {response.status_code}")
-                print(f"[PAYMENT-CHECK] RESPONSE TEXT:")
-                print(response.text)
-                try:
-                    resp_json = response.json()
-                    print(f"[PAYMENT-CHECK] RESPONSE JSON:")
-                    print(json.dumps(resp_json, indent=2, default=str))
-                except:
-                    pass
-                    
+
+                logger.debug("[PAYMENT-CHECK] Status HTTP: %s", response.status_code)
+
             except httpx.HTTPError as e:
-                print(f"[PAYMENT-CHECK] ERRO na tentativa {_attempt + 1}/3: {str(e)}")
+                logger.warning("[PAYMENT-CHECK] Erro na tentativa %s/3: %s", _attempt + 1, str(e))
                 continue
 
             if response.status_code >= 400:
-                print(f"[PAYMENT-CHECK] Status code >= 400, pulando...")
+                logger.debug("[PAYMENT-CHECK] Status code >= 400, pulando...")
                 continue
 
             try:
@@ -372,40 +356,31 @@ def sync_user_payment_from_gateway(user, db: Session):
                 data = {"raw_response": response.text}
 
             status_value, is_positive, has_negative = _extract_payment_markers(data)
-            print(f"[PAYMENT-CHECK] Status extraido: {status_value}")
-            print(f"[PAYMENT-CHECK] Positivo (pago): {is_positive}")
-            print(f"[PAYMENT-CHECK] Negativo (nao pago): {has_negative}")
-            
+            logger.debug("[PAYMENT-CHECK] status=%s positivo=%s negativo=%s",
+                         status_value, is_positive, has_negative)
+
             if has_negative:
-                print(f"[PAYMENT-CHECK] Pagamento recusado/negado")
                 continue
             if is_positive:
-                print(f"[PAYMENT-CHECK] PAGAMENTO CONFIRMADO!")
                 break
             if response.status_code == 200 and not status_value:
-                print(f"[PAYMENT-CHECK] Status 200 OK")
                 break
         else:
             continue
         break
     else:
-        print("[PAYMENT-CHECK] Todas as tentativas falharam")
-        print("="*80 + "\n")
+        logger.info("[PAYMENT-CHECK] Todas as tentativas falharam")
         return False
 
-    print("[PAYMENT-CHECK] Processando resultado...")
-    
     _, is_positive, has_negative = _extract_payment_markers(data)
     if has_negative:
-        print("[PAYMENT-CHECK] Pagamento negado/recusado")
-        print("="*80 + "\n")
+        logger.info("[PAYMENT-CHECK] Pagamento negado/recusado")
         return False
     if not is_positive:
-        print("[PAYMENT-CHECK] Pagamento nao confirmado")
-        print("="*80 + "\n")
+        logger.info("[PAYMENT-CHECK] Pagamento nao confirmado")
         return False
 
-    print("[PAYMENT-CHECK] RENOVANDO USUARIO...")
+    logger.info("[PAYMENT-CHECK] Renovando usuario %s...", user.id)
     trial_days = get_plan_duration_days(user)
     now = datetime.utcnow()
     base_start = user.trial_expires_at if user.trial_expires_at and user.trial_expires_at > now else now
@@ -418,40 +393,32 @@ def sync_user_payment_from_gateway(user, db: Session):
     user.renewal_order_created_at = None
     db.commit()
     db.refresh(user)
-    print("[PAYMENT-CHECK] USUARIO RENOVADO COM SUCESSO!")
-    print(f"[PAYMENT-CHECK] Nova expiracao: {user.trial_expires_at}")
-    print("="*80 + "\n")
+    logger.info("[PAYMENT-CHECK] Usuario %s renovado. Nova expiracao: %s", user.id, user.trial_expires_at)
     return True
 
 
 def create_checkout_link_for_user(user, db: Optional[Session] = None):
-    print("\n" + "="*80)
-    print(f"[CREATE-CHECKOUT] Gerando checkout para usuario: {user.id} ({user.email})")
-    print("="*80)
-    
+    logger.info("[CREATE-CHECKOUT] Gerando checkout para usuario %s", user.id)
+
     order_nsu = ensure_renewal_order_nsu(user, db=db)
-    print(f"[CREATE-CHECKOUT] order_nsu gerado: {order_nsu}")
-    
+    logger.debug("[CREATE-CHECKOUT] order_nsu gerado: %s", order_nsu)
+
     url, request_body, _, _ = build_checkout_payload(user, order_nsu=order_nsu)
 
     try:
-        print(f"\n[CREATE-CHECKOUT] Enviando POST ao gateway...")
         response = httpx.post(
             url,
             json=request_body,
             headers={"Content-Type": "application/json"},
             timeout=15.0,
         )
-        print(f"[CREATE-CHECKOUT] Status da resposta: {response.status_code}")
+        logger.debug("[CREATE-CHECKOUT] Status da resposta: %s", response.status_code)
     except httpx.HTTPError as exc:
-        print(f"[CREATE-CHECKOUT] ERRO ao conectar ao gateway: {str(exc)}")
-        print("="*80 + "\n")
+        logger.error("[CREATE-CHECKOUT] Erro ao conectar ao gateway: %s", str(exc))
         raise HTTPException(status_code=502, detail=f"Falha ao comunicar com o gateway: {exc}")
 
     if response.status_code >= 400:
-        print(f"[CREATE-CHECKOUT] ERRO: Gateway retornou {response.status_code}")
-        print(f"[CREATE-CHECKOUT] Resposta: {response.text[:500]}")
-        print("="*80 + "\n")
+        logger.error("[CREATE-CHECKOUT] Gateway retornou %s", response.status_code)
         raise HTTPException(
             status_code=502,
             detail=f"Gateway retornou erro ao gerar checkout: {response.text}"
@@ -478,9 +445,7 @@ def create_checkout_link_for_user(user, db: Optional[Session] = None):
         )
 
     if not checkout_url:
-        print(f"[CREATE-CHECKOUT] ERRO: Nenhuma URL de checkout na resposta")
-        print(f"[CREATE-CHECKOUT] Response: {json.dumps(gateway_data, indent=2, default=str)[:500]}")
-        print("="*80 + "\n")
+        logger.error("[CREATE-CHECKOUT] Nenhuma URL de checkout na resposta do gateway")
         raise HTTPException(status_code=502, detail="O gateway nao retornou uma URL de checkout valida.")
 
     checkout_slug = _deep_find_first_string(
@@ -492,22 +457,38 @@ def create_checkout_link_for_user(user, db: Optional[Session] = None):
         db.commit()
         db.refresh(user)
 
-    print(f"[CREATE-CHECKOUT] SUCCESS! URL: {checkout_url[:80]}...")
-    print(f"[CREATE-CHECKOUT] order_nsu: {order_nsu}")
-    print(f"[CREATE-CHECKOUT] invoice_slug: {checkout_slug}")
-    print("="*80 + "\n")
+    logger.info("[CREATE-CHECKOUT] Checkout gerado (order_nsu=%s, invoice_slug=%s)", order_nsu, checkout_slug)
 
     return checkout_url, gateway_data
 
 
 def verify_password(plain_password, hashed_password):
     """Verifica se a senha em texto plano corresponde ao hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    plain_password_bytes = _normalize_password_bytes(plain_password)
+    hashed_password_bytes = _normalize_password_bytes(hashed_password, allow_empty=True)
+    if not hashed_password_bytes:
+        return False
+    return bcrypt.checkpw(plain_password_bytes, hashed_password_bytes)
 
 
 def get_password_hash(password):
     """Gera o hash da senha."""
-    return pwd_context.hash(password)
+    password_bytes = _normalize_password_bytes(password)
+    return bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("utf-8")
+
+
+def _normalize_password_bytes(value, allow_empty=False):
+    if value is None:
+        return b"" if allow_empty else b""
+    if isinstance(value, bytes):
+        normalized = value
+    elif isinstance(value, bytearray):
+        normalized = bytes(value)
+    elif isinstance(value, str):
+        normalized = value.encode("utf-8")
+    else:
+        normalized = str(value).encode("utf-8")
+    return normalized[:72]
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):

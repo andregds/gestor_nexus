@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importar Clientes | NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+    <script>
+        const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+            ? 'http://localhost:8000'
+            : window.location.origin;
+    </script>
+    <style>
+        .import-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 1rem;
+        }
+        .dropzone {
+            border: 1px dashed #94a3b8;
+            border-radius: 10px;
+            background: #f8fafc;
+            padding: 1rem;
+        }
+        .dropzone.is-dragover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .dropzone input[type="file"] {
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+        .helper-box {
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            padding: 0.9rem 1rem;
+            font-size: 0.92rem;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.75rem;
+        }
+        .summary-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.9rem 1rem;
+        }
+        .summary-card strong {
+            display: block;
+            font-size: 1.4rem;
+            color: #0f172a;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .status-ok {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-warn {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .preview-table td, .preview-table th {
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .preview-table td.notes-cell {
+            max-width: 260px;
+            white-space: normal;
+        }
+        .muted-block {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        @media (max-width: 992px) {
+            .import-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 768px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .preview-table td.notes-cell {
+                max-width: 180px;
+            }
+        }
+        @media (max-width: 576px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+            .helper-box {
+                padding: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar-mobile" style="display:none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header"><div class="brand-logo">NEXUS<span>MONITOR</span></div></div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-permission-key="dashboard"><span class="sidebar-icon">📊</span> Dashboard</a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu"><span class="sidebar-icon">👥</span> Clientes</button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">👥</span> Clientes</a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink active" data-feature-key="clients"><span class="sidebar-icon">📂</span> Importar / Padronizar</a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">💾</span> Backup / Exportar</a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas</a>
+                    </div>
+                </div>
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu"><span class="sidebar-icon">📦</span> Produtos</button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🛒</span> Produtos/Serviços</a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🏷️</span> Categorias</a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">📄</span> Planos</a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🧩</span> Recursos</a>
+                        <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">💳</span> API de Pagamentos</a>
+                    </div>
+                </div>
+                <a href="whatsapp.html" class="sidebar-link" data-permission-key="integrations"><span class="sidebar-icon">📱</span> Integração WhatsApp</a>
+                <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram"><span class="sidebar-icon">✈️</span> Integração Telegram</a>
+                <a href="dashboard.html#settings" class="sidebar-link" data-permission-key="settings"><span class="sidebar-icon">⚙️</span> Configurações</a>
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller"><span class="sidebar-icon">💼</span> Revendedores</a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button type="button" onclick="logout()" style="background:none; border:none; color:#ef4444; font-size:0.8rem; cursor:pointer; margin-top:5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light mb-3">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info"><i class="fas fa-align-left"></i></button>
+                    <div id="userInfo" class="user-info-container"><span id="userName"></span><span class="user-role"></span></div>
+                </div>
+            </nav>
+
+            <div class="container-fluid py-3">
+                <div class="page-header mb-3">
+                    <div class="page-title">
+                        <h2>Importar / Padronizar Clientes</h2>
+                        <p>Converta planilhas em cadastros válidos, detecte duplicidades e publique em lote.</p>
+                    </div>
+                </div>
+
+                <div class="summary-grid mb-3">
+                    <div class="summary-card"><span class="text-muted">Linhas lidas</span><strong id="summaryTotal">0</strong></div>
+                    <div class="summary-card"><span class="text-muted">Prontas para importar</span><strong id="summaryReady">0</strong></div>
+                    <div class="summary-card"><span class="text-muted">Duplicadas</span><strong id="summaryDuplicates">0</strong></div>
+                    <div class="summary-card"><span class="text-muted">Com erro</span><strong id="summaryErrors">0</strong></div>
+                </div>
+
+                <div class="import-grid">
+                    <section class="card">
+                        <h3 class="mb-3">Fonte dos dados</h3>
+
+                        <div class="dropzone mb-3" id="dropzone">
+                            <label for="csvFile" class="form-label fw-semibold">Arquivo CSV</label>
+                            <input type="file" id="csvFile" class="form-control" accept=".csv,text/csv">
+                            <p class="muted-block mt-2 mb-0">Aceita CSV com separador <strong>;</strong>, <strong>,</strong> ou <strong>tab</strong>.</p>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="rawInput">Ou cole os dados manualmente</label>
+                            <textarea id="rawInput" class="form-control" rows="10" placeholder="nome;login;servidor;whatsapp;vencimento&#10;Maria;maria01;Servidor 1;5599999999999;30/07/2026"></textarea>
+                        </div>
+
+                        <div class="helper-box mb-3">
+                            <div class="fw-semibold mb-2">Cabeçalhos reconhecidos automaticamente</div>
+                            <div>Nome, Login, Servidor, WhatsApp, Vencimento, Observações, M3U8, Canal, Dias aviso.</div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label for="defaultReminderDays">Dias para aviso</label>
+                                <input type="number" id="defaultReminderDays" class="form-control" min="0" value="3">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="defaultChannel">Canal padrão</label>
+                                <select id="defaultChannel" class="form-control">
+                                    <option value="whatsapp">WhatsApp</option>
+                                    <option value="telegram">Telegram</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="defaultNotifyDowntime" checked>
+                            <label class="form-check-label" for="defaultNotifyDowntime">Habilitar alerta de queda por padrão</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="defaultReminderEnabled" checked>
+                            <label class="form-check-label" for="defaultReminderEnabled">Habilitar cobrança automática por padrão</label>
+                        </div>
+                        <div class="form-check mb-4">
+                            <input class="form-check-input" type="checkbox" id="defaultNotifyAfterExpiration" checked>
+                            <label class="form-check-label" for="defaultNotifyAfterExpiration">Continuar avisando após vencimento</label>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-secondary" id="btnTemplate">Baixar modelo</button>
+                            <button type="button" class="btn btn-secondary" id="btnPreview">Gerar prévia</button>
+                            <button type="button" class="btn btn-primary" id="btnImport" disabled>Importar clientes válidos</button>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                            <div>
+                                <h3 class="mb-1">Prévia padronizada</h3>
+                                <p class="muted-block mb-0">Linhas inválidas ficam bloqueadas e os campos extras entram como metadados do cliente.</p>
+                            </div>
+                            <div class="helper-box">
+                                <div><strong>Obrigatório:</strong> nome, login, WhatsApp e vencimento. <strong>Servidor:</strong> opcional.</div>
+                                <div><strong>Data:</strong> aceita DD/MM/AAAA ou AAAA-MM-DD.</div>
+                            </div>
+                        </div>
+
+                        <div id="emptyState" class="helper-box">
+                            Gere a prévia para validar a planilha antes de importar.
+                        </div>
+
+                        <div class="table-responsive" id="previewWrapper" style="display:none;">
+                            <table class="table table-hover preview-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Status</th>
+                                        <th>Nome</th>
+                                        <th>Login</th>
+                                        <th>Servidor</th>
+                                        <th>WhatsApp</th>
+                                        <th>Vencimento</th>
+                                        <th>Notas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="previewTableBody"></tbody>
+                            </table>
+                        </div>
+
+                        <div id="importResult" class="mt-3" style="display:none;"></div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/crud-helpers.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script>
+        const HEADER_ALIASES = {
+            name: ['name', 'nome', 'cliente', 'client'],
+            login: ['login', 'usuario', 'usuário', 'username', 'user'],
+            server_name: ['server_name', 'servidor', 'server', 'painel', 'servidor_opcional'],
+            whatsapp: ['whatsapp', 'telefone', 'celular', 'phone', 'numero', 'número'],
+            expiration_date: ['expiration_date', 'vencimento', 'validade', 'data_vencimento', 'expiracao', 'expiração'],
+            notes: ['notes', 'observacoes', 'observações', 'obs', 'anotacoes', 'anotações'],
+            m3u8_url: ['m3u8_url', 'm3u8', 'playlist', 'url_m3u8'],
+            notification_channel: ['notification_channel', 'canal', 'canal_notificacao', 'canal_notificação'],
+            reminder_days_before: ['reminder_days_before', 'dias_aviso', 'dias_antes', 'aviso', 'lembrete'],
+            notify_downtime: ['notify_downtime', 'alerta_queda', 'queda'],
+            reminder_enabled: ['reminder_enabled', 'cobranca_automatica', 'cobrança_automática', 'cobranca'],
+            notify_after_expiration: ['notify_after_expiration', 'avisar_vencidos', 'avisar_apos_vencer', 'avisar_apos_vencer']
+        };
+
+        let previewRows = [];
+        let existingClients = [];
+        let importInProgress = false;
+        let droppedFile = null;
+
+        function normalizeHeader(value) {
+            return String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function normalizeText(value) {
+            return String(value || '').trim();
+        }
+
+        function normalizePhone(value) {
+            return String(value || '').replace(/\D/g, '');
+        }
+
+        function parseBoolean(value, fallback) {
+            if (value === undefined || value === null || value === '') return fallback;
+            const normalized = normalizeHeader(value);
+            if (['1', 'true', 'sim', 'yes', 'ativo', 'enabled'].includes(normalized)) return true;
+            if (['0', 'false', 'nao', 'não', 'no', 'inativo', 'disabled'].includes(normalized)) return false;
+            return fallback;
+        }
+
+        function parseDate(value) {
+            const raw = normalizeText(value);
+            if (!raw) return '';
+
+            if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+            const dateParts = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+            if (dateParts) {
+                const day = dateParts[1].padStart(2, '0');
+                const month = dateParts[2].padStart(2, '0');
+                const year = dateParts[3].length === 2 ? `20${dateParts[3]}` : dateParts[3];
+                return `${year}-${month}-${day}`;
+            }
+
+            if (/^\d{5}$/.test(raw)) {
+                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                excelEpoch.setUTCDate(excelEpoch.getUTCDate() + Number(raw));
+                return excelEpoch.toISOString().slice(0, 10);
+            }
+
+            const parsed = new Date(raw);
+            if (!Number.isNaN(parsed.getTime())) {
+                return parsed.toISOString().slice(0, 10);
+            }
+
+            return '';
+        }
+
+        function formatDisplayDate(value) {
+            if (!value) return '-';
+            const parts = value.split('-');
+            if (parts.length !== 3) return value;
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function detectSeparator(text) {
+            const firstLine = String(text || '').split(/\r?\n/).find((line) => line.trim());
+            if (!firstLine) return ';';
+            const candidates = [';', ',', '\t'];
+            return candidates
+                .map((separator) => ({ separator, count: firstLine.split(separator).length }))
+                .sort((a, b) => b.count - a.count)[0].separator;
+        }
+
+        function splitCsvLine(line, separator) {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let index = 0; index < line.length; index += 1) {
+                const char = line[index];
+                const next = line[index + 1];
+
+                if (char === '"') {
+                    if (inQuotes && next === '"') {
+                        current += '"';
+                        index += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === separator && !inQuotes) {
+                    values.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+
+            values.push(current.trim());
+            return values;
+        }
+
+        function parseCsv(text) {
+            const separator = detectSeparator(text);
+            const lines = String(text || '')
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+
+            if (lines.length < 2) {
+                return [];
+            }
+
+            const rawHeaders = splitCsvLine(lines[0], separator);
+            const normalizedHeaders = rawHeaders.map(normalizeHeader);
+
+            return lines.slice(1).map((line, index) => {
+                const columns = splitCsvLine(line, separator);
+                const row = { __line: index + 2 };
+                normalizedHeaders.forEach((header, headerIndex) => {
+                    row[header || `coluna_${headerIndex + 1}`] = columns[headerIndex] || '';
+                });
+                return row;
+            });
+        }
+
+        function findMappedKey(headers, canonicalKey) {
+            const aliases = HEADER_ALIASES[canonicalKey] || [];
+            return headers.find((header) => aliases.includes(header)) || '';
+        }
+
+        function buildImportPayload(rawRow, duplicateKeysInBatch) {
+            const headers = Object.keys(rawRow).filter((key) => !key.startsWith('__'));
+            const mappedKeys = {};
+
+            Object.keys(HEADER_ALIASES).forEach((canonicalKey) => {
+                mappedKeys[canonicalKey] = findMappedKey(headers, canonicalKey);
+            });
+
+            const payload = {
+                name: normalizeText(rawRow[mappedKeys.name]),
+                login: normalizeText(rawRow[mappedKeys.login]),
+                server_name: normalizeText(rawRow[mappedKeys.server_name]) || null,
+                whatsapp: normalizePhone(rawRow[mappedKeys.whatsapp]),
+                expiration_date: parseDate(rawRow[mappedKeys.expiration_date]),
+                notes: normalizeText(rawRow[mappedKeys.notes]),
+                m3u8_url: normalizeText(rawRow[mappedKeys.m3u8_url]),
+                notification_channel: normalizeText(rawRow[mappedKeys.notification_channel]) || document.getElementById('defaultChannel').value,
+                reminder_days_before: String(normalizeText(rawRow[mappedKeys.reminder_days_before]) || document.getElementById('defaultReminderDays').value || '3'),
+                notify_downtime: parseBoolean(rawRow[mappedKeys.notify_downtime], document.getElementById('defaultNotifyDowntime').checked),
+                reminder_enabled: parseBoolean(rawRow[mappedKeys.reminder_enabled], document.getElementById('defaultReminderEnabled').checked),
+                notify_after_expiration: parseBoolean(rawRow[mappedKeys.notify_after_expiration], document.getElementById('defaultNotifyAfterExpiration').checked)
+            };
+
+            const customFields = {};
+            headers.forEach((header) => {
+                const isMapped = Object.values(mappedKeys).includes(header);
+                const value = normalizeText(rawRow[header]);
+                if (!isMapped && value) {
+                    customFields[header] = value;
+                }
+            });
+            if (Object.keys(customFields).length) {
+                payload.custom_fields = customFields;
+            }
+
+            const errors = [];
+            if (!payload.name) errors.push('Nome ausente');
+            if (!payload.login) errors.push('Login ausente');
+            if (!payload.whatsapp) errors.push('WhatsApp ausente');
+            if (!payload.expiration_date) errors.push('Vencimento inválido');
+
+            const existingDuplicate = existingClients.find((client) =>
+                normalizeText(client.login).toLowerCase() === payload.login.toLowerCase() ||
+                normalizePhone(client.whatsapp) === payload.whatsapp
+            );
+
+            const batchKey = `${payload.login.toLowerCase()}::${payload.whatsapp}`;
+            const duplicateInBatch = duplicateKeysInBatch.has(batchKey);
+
+            if (!errors.length && !duplicateInBatch) {
+                duplicateKeysInBatch.add(batchKey);
+            }
+
+            let status = 'ready';
+            let statusLabel = 'Pronto';
+
+            if (errors.length) {
+                status = 'error';
+                statusLabel = errors.join(' • ');
+            } else if (existingDuplicate) {
+                status = 'duplicate';
+                statusLabel = `Já existe: ${existingDuplicate.name || existingDuplicate.login}`;
+            } else if (duplicateInBatch) {
+                status = 'duplicate';
+                statusLabel = 'Duplicado na própria planilha';
+            }
+
+            return {
+                line: rawRow.__line,
+                payload,
+                status,
+                statusLabel
+            };
+        }
+
+        function updateSummary(rows) {
+            const total = rows.length;
+            const ready = rows.filter((row) => row.status === 'ready').length;
+            const duplicates = rows.filter((row) => row.status === 'duplicate').length;
+            const errors = rows.filter((row) => row.status === 'error').length;
+
+            document.getElementById('summaryTotal').textContent = total;
+            document.getElementById('summaryReady').textContent = ready;
+            document.getElementById('summaryDuplicates').textContent = duplicates;
+            document.getElementById('summaryErrors').textContent = errors;
+            document.getElementById('btnImport').disabled = ready === 0 || importInProgress;
+        }
+
+        function statusClass(status) {
+            if (status === 'ready') return 'status-badge status-ok';
+            if (status === 'duplicate') return 'status-badge status-warn';
+            return 'status-badge status-error';
+        }
+
+        function renderPreview(rows) {
+            const emptyState = document.getElementById('emptyState');
+            const wrapper = document.getElementById('previewWrapper');
+            const tbody = document.getElementById('previewTableBody');
+
+            if (!rows.length) {
+                emptyState.style.display = '';
+                wrapper.style.display = 'none';
+                tbody.innerHTML = '';
+                updateSummary([]);
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            wrapper.style.display = '';
+            tbody.innerHTML = rows.map((row) => `
+                <tr>
+                    <td>${row.line}</td>
+                    <td><span class="${statusClass(row.status)}">${escapeHtml(row.statusLabel)}</span></td>
+                    <td>${escapeHtml(row.payload.name || '-')}</td>
+                    <td>${escapeHtml(row.payload.login || '-')}</td>
+                    <td>${escapeHtml(row.payload.server_name || '-')}</td>
+                    <td>${escapeHtml(row.payload.whatsapp || '-')}</td>
+                    <td>${escapeHtml(formatDisplayDate(row.payload.expiration_date))}</td>
+                    <td class="notes-cell">${escapeHtml(row.payload.notes || '-')}</td>
+                </tr>
+            `).join('');
+
+            updateSummary(rows);
+        }
+
+        async function loadExistingClients() {
+            const response = await apiFetch('/clients/');
+            if (!response.ok) throw new Error('Falha ao carregar clientes já cadastrados.');
+            existingClients = await response.json();
+        }
+
+        async function buildPreview() {
+            const resultBox = document.getElementById('importResult');
+            resultBox.style.display = 'none';
+            resultBox.innerHTML = '';
+
+            const pasted = document.getElementById('rawInput').value.trim();
+            const fileInput = document.getElementById('csvFile');
+            let sourceText = pasted;
+
+            if (!sourceText && droppedFile) {
+                sourceText = await droppedFile.text();
+            }
+
+            if (!sourceText && fileInput.files.length) {
+                sourceText = await fileInput.files[0].text();
+            }
+
+            if (!sourceText) {
+                notify('Cole os dados ou selecione um CSV antes de gerar a prévia.', 'warning');
+                return;
+            }
+
+            await loadExistingClients();
+            const parsedRows = parseCsv(sourceText);
+
+            if (!parsedRows.length) {
+                previewRows = [];
+                renderPreview(previewRows);
+                notify('Não foi possível identificar linhas válidas na planilha.', 'warning');
+                return;
+            }
+
+            const batchKeys = new Set();
+            previewRows = parsedRows.map((row) => buildImportPayload(row, batchKeys));
+            renderPreview(previewRows);
+        }
+
+        async function importClients() {
+            if (importInProgress) return;
+
+            const rowsToImport = previewRows.filter((row) => row.status === 'ready');
+            if (!rowsToImport.length) {
+                notify('Não há clientes prontos para importar.', 'warning');
+                return;
+            }
+
+            importInProgress = true;
+            document.getElementById('btnImport').disabled = true;
+
+            let created = 0;
+            const failures = [];
+            const importedLines = new Set();
+
+            for (const row of rowsToImport) {
+                try {
+                    const response = await apiFetch('/clients/', {
+                        method: 'POST',
+                        body: JSON.stringify(row.payload)
+                    });
+
+                    if (!response.ok) {
+                        let message = `Erro ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            message = errorData.detail || message;
+                        } catch (error) {
+                            // Mantém o fallback quando a API não retornar JSON.
+                        }
+                        failures.push(`Linha ${row.line}: ${message}`);
+                    } else {
+                        created += 1;
+                        importedLines.add(row.line);
+                    }
+                } catch (error) {
+                    failures.push(`Linha ${row.line}: ${error.message || 'Falha ao importar'}`);
+                }
+            }
+
+            importInProgress = false;
+            previewRows = previewRows.map((row) => importedLines.has(row.line)
+                ? Object.assign({}, row, { status: 'duplicate', statusLabel: 'Importado nesta execução' })
+                : row);
+            renderPreview(previewRows);
+            await loadExistingClients();
+
+            const resultBox = document.getElementById('importResult');
+            resultBox.style.display = '';
+
+            if (!failures.length) {
+                resultBox.className = 'alert alert-success mt-3';
+                resultBox.innerHTML = `<strong>Importação concluída.</strong> ${created} cliente(s) criado(s) com sucesso.`;
+                notify(`Importação concluída: ${created} cliente(s) criado(s).`, 'success');
+                return;
+            }
+
+            resultBox.className = 'alert alert-warning mt-3';
+            resultBox.innerHTML = `
+                <strong>Importação parcial.</strong> ${created} cliente(s) criado(s).
+                <div class="mt-2">${failures.map((failure) => `<div>${escapeHtml(failure)}</div>`).join('')}</div>
+            `;
+            notify(`Importação parcial: ${created} cliente(s) criado(s) e ${failures.length} falha(s).`, 'warning');
+        }
+
+        function downloadTemplate() {
+            const template = [
+                'nome;login;servidor_opcional;whatsapp;vencimento;observacoes;m3u8;canal;dias_aviso',
+                'Maria Silva;maria01;Servidor 1;5599999999999;30/07/2026;Cliente premium;https://exemplo.com/lista.m3u8;whatsapp;3'
+            ].join('\n');
+
+            const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'modelo-importacao-clientes.csv';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function bindDragAndDrop() {
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('csvFile');
+
+            ['dragenter', 'dragover'].forEach((eventName) => {
+                dropzone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    dropzone.classList.add('is-dragover');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach((eventName) => {
+                dropzone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    dropzone.classList.remove('is-dragover');
+                });
+            });
+
+            dropzone.addEventListener('drop', (event) => {
+                const files = event.dataTransfer ? event.dataTransfer.files : null;
+                if (files && files.length) {
+                    droppedFile = files[0];
+                }
+            });
+
+            fileInput.addEventListener('change', () => {
+                droppedFile = null;
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            bindDragAndDrop();
+            document.getElementById('btnTemplate').addEventListener('click', downloadTemplate);
+            document.getElementById('btnPreview').addEventListener('click', () => {
+                buildPreview().catch((error) => {
+                    notify(error.message || 'Falha ao gerar prévia.', 'error');
+                });
+            });
+            document.getElementById('btnImport').addEventListener('click', () => {
+                importClients().catch((error) => {
+                    importInProgress = false;
+                    updateSummary(previewRows);
+                    notify(error.message || 'Falha ao importar clientes.', 'error');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

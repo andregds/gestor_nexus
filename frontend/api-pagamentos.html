@@ -12,6 +12,28 @@
             ? 'http://localhost:8000'
             : window.location.origin);
     </script>
+    <style>
+        .payment-actions,
+        .payment-modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 768px) {
+            .payment-actions,
+            .payment-modal-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .payment-actions .btn,
+            .payment-modal-actions .btn {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="navbar-mobile" style="display: none;">
@@ -118,7 +140,7 @@
                     <label>Observações</label>
                     <textarea id="notes" rows="4" placeholder="Anote regras do seu banco, taxas, contas e qualquer detalhe interno."></textarea>
                 </div>
-                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:1.5rem;">
+                <div class="payment-actions" style="margin-top:1.5rem;">
                     <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal()">Teste de conexão</button>
                     <button type="button" class="btn btn-warning" onclick="syncPayment()" style="background-color:#f59e0b;">Sincronizar pagamento</button>
                     <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings()">Restaurar padrão</button>
@@ -143,7 +165,7 @@
                 <input type="number" id="testProductValue" min="1.00" step="0.01" placeholder="Ex: 10.00" value="10.00">
             </div>
             <div class="form-group" id="connectionTestResult" style="display:none; padding:12px; border-radius:8px; background:#0f172a; color:#e2e8f0; white-space:pre-wrap;"></div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:1.25rem;">
+            <div class="payment-modal-actions" style="margin-top:1.25rem;">
                 <button type="button" class="btn btn-secondary" onclick="closeConnectionTestModal()">Cancelar</button>
                 <button type="button" class="btn btn-secondary" onclick="runConnectionTest(false)">Testar conexão</button>
                 <button type="button" class="btn btn-primary" onclick="runConnectionTest(true)">Teste completo</button>
@@ -153,6 +175,7 @@
     </div>
 
     <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/main.js"></script>
     <script>
         const DEFAULT_PAYMENT_SETTINGS = {
             gateway_name: 'InfinitePay Checkout',

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin | Nexus Monitor</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script>
+        const API_URL = (window.location.protocol === 'file:' || window.location.origin === 'null' || !window.location.hostname)
+            ? 'http://localhost:8000'
+            : (['localhost', '127.0.0.1'].includes(window.location.hostname)
+            ? 'http://localhost:8000'
+            : window.location.origin);
+    </script>
+    <style>
+        .admin-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.5rem; }
+        .admin-header h2, .admin-header p { margin: 0; }
+        .admin-header p { color: var(--text-muted); font-size: .85rem; }
+        .user-selector-card, .flags-panel, #userProfileBar {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+        }
+        .user-selector-card {
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .user-selector-card > div { flex: 1; min-width: 220px; }
+        .user-selector-card label {
+            display: block;
+            font-weight: 600;
+            font-size: .82rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: .35rem;
+        }
+        .user-selector-card select, .user-selector-card input[type="text"] {
+            width: 100%;
+            padding: .55rem .75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 7px;
+            font-size: .9rem;
+            background: #f8fafc;
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: .75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .role-badge.super_admin { background: #fef9c3; color: #92400e; }
+        .role-badge.reseller { background: #e0f2fe; color: #0369a1; }
+        .role-badge.user { background: #f0fdf4; color: #15803d; }
+        .flags-panel { overflow: hidden; margin-bottom: 1.25rem; }
+        .flags-panel-header {
+            background: var(--primary);
+            color: #fff;
+            padding: .85rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .flags-panel-header h3, .flags-panel-header p { margin: 0; }
+        .flags-panel-header p { font-size: .78rem; opacity: .7; }
+        .flags-panel-body { padding: 1.25rem; }
+        .flag-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .85rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: .6rem;
+            background: #fafcff;
+        }
+        .flag-item:last-child { margin-bottom: 0; }
+        .flag-item-info { display: flex; align-items: center; gap: .75rem; }
+        .flag-item-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: #e0f2fe;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+        .flag-item-text strong { display: block; font-size: .9rem; }
+        .flag-item-text span { font-size: .78rem; color: var(--text-muted); }
+        .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: #cbd5e1;
+            border-radius: 24px;
+            cursor: pointer;
+            transition: background .25s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            top: 3px;
+            left: 3px;
+            transition: transform .25s;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        }
+        .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+        .toggle-switch input:disabled + .toggle-slider { opacity: .4; cursor: not-allowed; }
+        #toastBar {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+            pointer-events: none;
+        }
+        .toast-msg {
+            background: var(--primary);
+            color: #fff;
+            padding: .65rem 1.1rem;
+            border-radius: 8px;
+            font-size: .85rem;
+            box-shadow: 0 4px 14px rgba(0,0,0,.2);
+        }
+        .toast-msg.success { background: var(--success); }
+        .toast-msg.error { background: var(--danger); }
+        .save-bar {
+            display: flex;
+            gap: .75rem;
+            justify-content: flex-end;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border-color);
+            background: #f8fafc;
+        }
+        .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); }
+        .empty-state span { font-size: 2.5rem; display: block; margin-bottom: .5rem; }
+        .reseller-note {
+            background: #fffbeb;
+            border: 1px solid #fbbf24;
+            border-radius: 8px;
+            padding: .75rem 1rem;
+            margin: 1rem 1.25rem 0;
+            font-size: .83rem;
+            color: #92400e;
+        }
+        @media (max-width: 900px) {
+            #userProfileBar {
+                align-items: flex-start !important;
+            }
+            #userProfileBar > span:last-child {
+                margin-left: 0 !important;
+            }
+            .save-bar {
+                flex-wrap: wrap;
+                justify-content: stretch;
+            }
+            .save-bar .btn {
+                flex: 1 1 220px;
+            }
+        }
+        @media (max-width: 640px) {
+            .flags-panel-header { flex-direction: column; align-items: flex-start; }
+            .flag-item { flex-direction: column; align-items: flex-start; gap: .5rem; }
+            .flag-item-info {
+                width: 100%;
+            }
+            #toastBar {
+                left: 1rem;
+                right: 1rem;
+                bottom: 1rem;
+            }
+            .toast-msg {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar-mobile" style="display: none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            </div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard"><span class="sidebar-icon">📊</span> Dashboard</a>
+                <div class="sidebar-group" data-feature-key="clients">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="clientsSubmenu">
+                        <span class="sidebar-icon">👥</span> Clientes
+                    </button>
+                    <div class="sidebar-submenu" id="clientsSubmenu">
+                        <a href="clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">👥</span> Clientes</a>
+                        <a href="import_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">📂</span> Importar / Padronizar</a>
+                        <a href="backup_clients.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">💾</span> Backup / Exportar</a>
+                        <a href="messages.html" class="sidebar-link sidebar-sublink" data-feature-key="clients"><span class="sidebar-icon">✉️</span> Mensagens Pré-Prontas</a>
+                    </div>
+                </div>
+                <div class="sidebar-group" data-feature-key="products">
+                    <button class="sidebar-link sidebar-group-title sidebar-toggle" type="button" aria-expanded="false" aria-controls="productsSubmenu">
+                        <span class="sidebar-icon">📦</span> Produtos
+                    </button>
+                    <div class="sidebar-submenu" id="productsSubmenu">
+                        <a href="produtos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🛒</span> Produtos/Serviços</a>
+                        <a href="categorias.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🏷️</span> Categorias</a>
+                        <a href="planos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">📄</span> Planos</a>
+                        <a href="recursos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">🧩</span> Recursos</a>
+                        <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">💳</span> API de Pagamentos</a>
+                    </div>
+                </div>
+                <a href="whatsapp.html" class="sidebar-link" data-feature-key="whatsapp"><span class="sidebar-icon">📱</span> Integração WhatsApp</a>
+                <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram"><span class="sidebar-icon">✈️</span> Integração Telegram</a>
+                <a href="dashboard.html#settings" class="sidebar-link" data-feature-key="settings"><span class="sidebar-icon">⚙️</span> Configurações</a>
+                <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell"><span class="sidebar-icon">💼</span> Revendedores</a>
+                <a href="admin.html" class="sidebar-link active" data-feature-key="admin"><span class="sidebar-icon">👑</span> Super Admin</a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role" id="userRole">Super Administrador</div>
+                <button onclick="logout()" style="background:none;border:none;color:#ef4444;font-size:.8rem;cursor:pointer;margin-top:5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <section class="content-section">
+                <div class="page-header">
+                    <div class="page-title">
+                        <h2>👑 Super Admin</h2>
+                        <p>Controle de acesso por usuário e padrão herdado para revendedores.</p>
+                    </div>
+                </div>
+
+                <div class="user-selector-card">
+                    <div>
+                        <label for="searchUser">Buscar usuário</label>
+                        <input type="text" id="searchUser" placeholder="Digite o nome ou e-mail..." autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="userSelect">Usuário / Revendedor</label>
+                        <select id="userSelect">
+                            <option value="">— selecione —</option>
+                        </select>
+                    </div>
+                    <div style="flex:0; display:flex; gap:.5rem; padding-bottom:1px;">
+                        <button class="btn btn-secondary" id="btnRefresh">🔄 Atualizar</button>
+                    </div>
+                </div>
+
+                <div id="userProfileBar" style="display:none; padding:1rem 1.25rem; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem; align-items:center;">
+                    <div>
+                        <strong id="profileName" style="font-size:1rem;"></strong>
+                        <span id="profileEmail" style="display:block; font-size:.8rem; color:var(--text-muted);"></span>
+                    </div>
+                    <span id="profileRoleBadge" class="role-badge"></span>
+                    <span style="margin-left:auto; font-size:.8rem; color:var(--text-muted);">ID: <strong id="profileId"></strong></span>
+                </div>
+
+                <div class="flags-panel" id="panelUser" style="display:none;">
+                    <div class="flags-panel-header">
+                        <div>
+                            <h3>🔐 Acesso às Páginas e Menus</h3>
+                            <p>As alterações são aplicadas no próximo carregamento do usuário.</p>
+                        </div>
+                        <div style="display:flex; gap:.5rem; flex-shrink:0;">
+                            <button type="button" class="btn btn-secondary" id="btnEnableAll" style="font-size:.8rem; padding:.35rem .85rem;">✅ Habilitar Tudo</button>
+                            <button type="button" class="btn btn-secondary" id="btnDisableAll" style="font-size:.8rem; padding:.35rem .85rem; background:#ef4444; border-color:#ef4444; color:#fff;">🚫 Desabilitar Tudo</button>
+                        </div>
+                    </div>
+                    <div class="flags-panel-body" id="flagsBody">
+                        <div class="empty-state"><span>⏳</span>Carregando...</div>
+                    </div>
+                    <div class="save-bar">
+                        <button type="button" class="btn btn-primary" id="btnApply">💾 Salvar Permissões do Usuário</button>
+                    </div>
+                </div>
+
+                <div class="flags-panel" id="panelReseller" style="display:none;">
+                    <div class="flags-panel-header" style="background:#0369a1;">
+                        <div>
+                            <h3>👥 Padrão para Filhos do Revendedor</h3>
+                            <p>Define o padrão herdado por novos usuários criados por este revendedor.</p>
+                        </div>
+                        <div style="display:flex; gap:.5rem; flex-shrink:0;">
+                            <button type="button" class="btn btn-secondary" id="btnEnableAllReseller" style="font-size:.8rem; padding:.35rem .85rem;">✅ Habilitar Tudo</button>
+                            <button type="button" class="btn btn-secondary" id="btnDisableAllReseller" style="font-size:.8rem; padding:.35rem .85rem; background:#ef4444; border-color:#ef4444; color:#fff;">🚫 Desabilitar Tudo</button>
+                        </div>
+                    </div>
+                    <div class="reseller-note">
+                        ⚠️ Usuários já existentes mantêm seus próprios overrides individuais.
+                    </div>
+                    <div class="flags-panel-body" id="resellerFlagsBody">
+                        <div class="empty-state"><span>⏳</span>Carregando...</div>
+                    </div>
+                    <div class="save-bar">
+                        <button type="button" class="btn btn-primary" id="btnApplyReseller" style="background:#0369a1; border-color:#0369a1;">💾 Salvar Padrão do Revendedor</button>
+                    </div>
+                </div>
+
+                <div id="emptyState" class="flags-panel">
+                    <div class="empty-state" style="padding:3rem 1rem;">
+                        <span>👆</span>
+                        <strong style="display:block; margin-bottom:.35rem; color:var(--text-main);">Selecione um usuário</strong>
+                        <p style="font-size:.85rem;">Escolha um usuário ou revendedor para gerenciar menus e páginas visíveis.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toastBar"></div>
+
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script>
+    (function () {
+        'use strict';
+
+        const API_BASE = API_URL;
+        const FEATURES = [
+            { key: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'Visão geral com monitoramento em tempo real' },
+            { key: 'clients', icon: '👥', label: 'Clientes', desc: 'Gerenciar clientes, importação e mensagens' },
+            { key: 'products', icon: '📦', label: 'Produtos', desc: 'Produtos, categorias, planos e recursos' },
+            { key: 'whatsapp', icon: '📱', label: 'Integração WhatsApp', desc: 'Configuração e status do WhatsApp' },
+            { key: 'telegram', icon: '✈️', label: 'Integração Telegram', desc: 'Configuração do bot do Telegram' },
+            { key: 'settings', icon: '⚙️', label: 'Configurações', desc: 'Notificações e preferências pessoais' },
+            { key: 'resell', icon: '💼', label: 'Revendedores', desc: 'Gerenciar revendedores e subusuários' },
+            { key: 'admin', icon: '👑', label: 'Admin', desc: 'Console exclusivo do super admin' }
+        ];
+
+        let allUsers = [];
+        let selectedUser = null;
+
+        const searchInput = document.getElementById('searchUser');
+        const userSelect = document.getElementById('userSelect');
+        const profileBar = document.getElementById('userProfileBar');
+        const panelUser = document.getElementById('panelUser');
+        const panelReseller = document.getElementById('panelReseller');
+        const emptyState = document.getElementById('emptyState');
+        const flagsBody = document.getElementById('flagsBody');
+        const resellerBody = document.getElementById('resellerFlagsBody');
+
+        function toast(message, type = 'info') {
+            const bar = document.getElementById('toastBar');
+            const el = document.createElement('div');
+            el.className = `toast-msg ${type}`;
+            el.textContent = message;
+            bar.appendChild(el);
+            setTimeout(() => el.remove(), 3200);
+        }
+
+        function authHeaders() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return {};
+            }
+            return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+        }
+
+        function renderToggles(container, flags, idPrefix, disableAdmin) {
+            container.innerHTML = FEATURES.map((feature) => {
+                const enabled = flags[feature.key] !== false;
+                const locked = disableAdmin && feature.key === 'admin';
+                const inputId = `${idPrefix}_${feature.key}`;
+                return `
+                    <div class="flag-item">
+                        <div class="flag-item-info">
+                            <div class="flag-item-icon">${feature.icon}</div>
+                            <div class="flag-item-text">
+                                <strong>${feature.label}</strong>
+                                <span>${feature.desc}</span>
+                            </div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="${inputId}" data-feature="${feature.key}" ${enabled ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function collectFlags(container) {
+            const result = {};
+            container.querySelectorAll('input[data-feature]').forEach((input) => {
+                result[input.getAttribute('data-feature')] = input.checked;
+            });
+            return result;
+        }
+
+        function populateSelect(users) {
+            userSelect.innerHTML = '<option value="">— selecione —</option>';
+            users.forEach((user) => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = `${user.name} (${user.email}) — ${user.role}`;
+                option.dataset.user = JSON.stringify(user);
+                userSelect.appendChild(option);
+            });
+        }
+
+        function showPanels(user) {
+            emptyState.style.display = 'none';
+            panelUser.style.display = '';
+            profileBar.style.display = 'flex';
+
+            document.getElementById('profileName').textContent = user.name;
+            document.getElementById('profileEmail').textContent = user.email;
+            document.getElementById('profileId').textContent = user.id;
+
+            const badge = document.getElementById('profileRoleBadge');
+            badge.textContent = user.role === 'super_admin' ? 'Super Admin' : user.role === 'reseller' ? 'Revendedor' : 'Usuário';
+            badge.className = `role-badge ${user.role}`;
+
+            renderToggles(flagsBody, user.feature_flags || {}, 'usr', user.role === 'super_admin');
+
+            if (user.role === 'reseller') {
+                panelReseller.style.display = '';
+                renderToggles(resellerBody, user.reseller_feature_flags || {}, 'res', true);
+            } else {
+                panelReseller.style.display = 'none';
+            }
+        }
+
+        function hidePanels() {
+            emptyState.style.display = '';
+            panelUser.style.display = 'none';
+            panelReseller.style.display = 'none';
+            profileBar.style.display = 'none';
+        }
+
+        async function loadUsers() {
+            toast('Carregando usuários...');
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, { headers: authHeaders() });
+                if (response.status === 403) {
+                    toast('Acesso negado. Apenas Super Admin.', 'error');
+                    return;
+                }
+                if (!response.ok) throw new Error(await response.text());
+                allUsers = await response.json();
+                populateSelect(allUsers);
+                hidePanels();
+                toast(`${allUsers.length} usuário(s) carregado(s).`, 'success');
+            } catch (error) {
+                toast(`Erro ao carregar usuários: ${error.message}`, 'error');
+            }
+        }
+
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.toLowerCase().trim();
+            const filtered = query
+                ? allUsers.filter((user) => user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query))
+                : allUsers;
+            populateSelect(filtered);
+            hidePanels();
+        });
+
+        userSelect.addEventListener('change', () => {
+            const option = userSelect.selectedOptions[0];
+            if (!option || !option.value) {
+                hidePanels();
+                return;
+            }
+            selectedUser = JSON.parse(option.dataset.user);
+            showPanels(selectedUser);
+        });
+
+        document.getElementById('btnRefresh').addEventListener('click', loadUsers);
+        document.getElementById('btnEnableAll').addEventListener('click', () => {
+            flagsBody.querySelectorAll('input[data-feature]:not(:disabled)').forEach((input) => { input.checked = true; });
+        });
+        document.getElementById('btnDisableAll').addEventListener('click', () => {
+            flagsBody.querySelectorAll('input[data-feature]:not(:disabled)').forEach((input) => { input.checked = false; });
+        });
+        document.getElementById('btnEnableAllReseller').addEventListener('click', () => {
+            resellerBody.querySelectorAll('input[data-feature]:not(:disabled)').forEach((input) => { input.checked = true; });
+        });
+        document.getElementById('btnDisableAllReseller').addEventListener('click', () => {
+            resellerBody.querySelectorAll('input[data-feature]:not(:disabled)').forEach((input) => { input.checked = false; });
+        });
+
+        document.getElementById('btnApply').addEventListener('click', async (event) => {
+            event.preventDefault();
+            if (!selectedUser) {
+                toast('Selecione um usuário primeiro.', 'error');
+                return;
+            }
+            const flags = collectFlags(flagsBody);
+            if (selectedUser.role === 'super_admin') flags.admin = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/feature-flags/${selectedUser.id}`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ feature_flags: flags })
+                });
+                if (!response.ok) throw new Error(await response.text());
+                const saved = await response.json();
+                const savedFlags = saved.feature_flags || flags;
+
+                const myId = Number(localStorage.getItem('user_id'));
+                if (Number(selectedUser.id) === myId) {
+                    localStorage.setItem('user_feature_flags', JSON.stringify(savedFlags));
+                    if (window.applyFeatureFlags) window.applyFeatureFlags();
+                }
+
+                toast('Permissões salvas com sucesso!', 'success');
+                await loadUsers();
+                const refreshed = allUsers.find((user) => Number(user.id) === Number(selectedUser.id));
+                if (refreshed) {
+                    selectedUser = refreshed;
+                    userSelect.value = String(selectedUser.id);
+                    showPanels(selectedUser);
+                }
+            } catch (error) {
+                toast(`Erro ao salvar: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('btnApplyReseller').addEventListener('click', async (event) => {
+            event.preventDefault();
+            if (!selectedUser || selectedUser.role !== 'reseller') {
+                toast('Somente para revendedores.', 'error');
+                return;
+            }
+            const flags = collectFlags(resellerBody);
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/reseller-feature-flags/${selectedUser.id}`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ reseller_feature_flags: flags })
+                });
+                if (!response.ok) throw new Error(await response.text());
+                toast('Padrão do revendedor salvo!', 'success');
+                await loadUsers();
+                const refreshed = allUsers.find((user) => Number(user.id) === Number(selectedUser.id));
+                if (refreshed) {
+                    selectedUser = refreshed;
+                    userSelect.value = String(selectedUser.id);
+                    showPanels(selectedUser);
+                }
+            } catch (error) {
+                toast(`Erro ao salvar: ${error.message}`, 'error');
+            }
+        });
+
+        async function checkAccess() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/users/me`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!response.ok) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                const me = await response.json();
+                if (me.role !== 'super_admin') {
+                    document.querySelector('.main-content').innerHTML = `
+                        <section class="content-section">
+                            <div style="text-align:center; padding:4rem 1rem;">
+                                <div style="font-size:4rem; margin-bottom:1rem;">🚫</div>
+                                <h2 style="margin-bottom:.5rem;">Acesso Restrito</h2>
+                                <p style="color:var(--text-muted);">Esta área é exclusiva para Super Administradores.</p>
+                                <a href="dashboard.html" class="btn btn-primary" style="margin-top:1.5rem;">← Voltar ao Dashboard</a>
+                            </div>
+                        </section>
+                    `;
+                    return;
+                }
+                document.querySelectorAll('#userName').forEach((element) => { element.textContent = me.name || me.email; });
+                await loadUsers();
+            } catch (error) {
+                window.location.href = 'login.html';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', checkAccess);
+    })();
+    </script>
+</body>
+</html>

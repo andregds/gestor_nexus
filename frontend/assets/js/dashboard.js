@@ -7,10 +7,34 @@
 // ============================
 // CONFIGURAÇÃO GLOBAL
 // ============================
-const API_URL = 'http://localhost:8000';
+const API_URL = (() => {
+    if (window.location.protocol === 'file:') {
+        return 'http://127.0.0.1:8000';
+    }
+
+    function formatRoleLabel(role) {
+        switch (role) {
+            case 'super_admin':
+                return 'Super Administrador';
+            case 'reseller':
+                return 'Revendedor';
+            case 'admin':
+                return 'Administrador';
+            default:
+                return 'Usuário';
+        }
+    }
+
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+        return 'http://127.0.0.1:8000';
+    }
+
+    return window.location.origin;
+})();
 let whatsappPollingInterval = null;
 let pollingAttempts = 0;
 const MAX_POLLING_ATTEMPTS = 40; // 40 tentativas * 3s = 2 minutos
+const DASHBOARD_SECTIONS = new Set(['dashboard', 'whatsapp', 'telegram', 'settings']);
 
 // ============================
 // INICIALIZAÇÃO
@@ -135,6 +159,8 @@ async function apiFetch(path, options = {}) {
  */
 function redirectToLogin() {
     localStorage.removeItem('token');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_feature_flags');
     window.location.href = 'login.html';
 }
 
@@ -147,6 +173,29 @@ function logout() {
     }
 }
 
+function setSidebarOpen(sidebar, overlay, shouldOpen) {
+    if (!sidebar) return;
+    sidebar.classList.toggle('active', shouldOpen);
+    document.body.classList.toggle('sidebar-open', shouldOpen);
+    if (overlay) overlay.classList.toggle('active', shouldOpen);
+}
+
+function ensureSidebarShell() {
+    const sidebar = document.getElementById('sidebar');
+    const dashboardContainer = document.querySelector('.dashboard-container');
+    if (!sidebar || !dashboardContainer) return null;
+
+    let overlay = document.querySelector('.sidebar-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(overlay);
+    }
+
+    return { sidebar, overlay };
+}
+
 /**
  * Carrega as informações do usuário logado e atualiza o nome no cabeçalho.
  */
@@ -155,8 +204,19 @@ async function loadUserInfo() {
         const response = await apiFetch('/users/me');
         if (response.ok) {
             const user = await response.json();
-            const el = document.getElementById('userName');
-            if (el) el.textContent = user.name;
+            const role = user.role || 'user';
+            const roleLabel = formatRoleLabel(role);
+            const name = user.name || 'Usuário';
+
+            localStorage.setItem('user_role', role);
+
+            document.querySelectorAll('#userName').forEach((element) => {
+                element.textContent = name;
+            });
+
+            document.querySelectorAll('.user-role').forEach((element) => {
+                element.textContent = roleLabel;
+            });
         }
     } catch (error) {
         console.error('Erro ao carregar informações do usuário:', error);
@@ -169,39 +229,93 @@ async function loadUserInfo() {
 /**
  * Configura a navegação da barra lateral para alternar entre as seções de conteúdo.
  */
+function getDashboardSectionFromLocation() {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    return DASHBOARD_SECTIONS.has(hash) ? hash : 'dashboard';
+}
+
+function syncDashboardUrl(targetId) {
+    const nextUrl = `${window.location.pathname}${window.location.search}${targetId === 'dashboard' ? '' : `#${targetId}`}`;
+    window.history.replaceState(null, '', nextUrl);
+}
+
+function activateDashboardSection(targetId, sections) {
+    const nextSection = DASHBOARD_SECTIONS.has(targetId) ? targetId : 'dashboard';
+    const sectionList = sections || document.querySelectorAll('.content-section');
+
+    sectionList.forEach((section) => {
+        section.style.display = section.id === `section-${nextSection}` ? 'block' : 'none';
+    });
+
+    if (typeof window.markSidebarActiveLink === 'function') {
+        window.markSidebarActiveLink();
+    }
+}
+
 function setupSidebarNavigation() {
     const links = document.querySelectorAll('.sidebar-link');
     const sections = document.querySelectorAll('.content-section');
-    const sidebar = document.getElementById('sidebar');
+    const shell = ensureSidebarShell();
+    const sidebar = shell ? shell.sidebar : null;
+    const overlay = shell ? shell.overlay : null;
     const btnToggle = document.getElementById('btnToggleSidebar');
+    const btnToggleDesktop = document.getElementById('btnToggleSidebarDesktop');
+    const currentPage = window.location.pathname.split('/').pop() || 'dashboard.html';
 
     links.forEach(link => {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('data-section');
+            const href = link.getAttribute('href') || '';
+            const hrefPage = href.split('#')[0].split('/').pop();
+            const hrefHash = href.includes('#') ? href.split('#')[1] : '';
 
-            // Se o link tiver 'data-section', é uma navegação interna (SPA)
-            if (targetId) {
-                e.preventDefault(); // Impede o recarregamento apenas se for SPA
+            if (targetId || (currentPage === 'dashboard.html' && hrefPage === 'dashboard.html')) {
+                e.preventDefault();
+                const nextSection = targetId || hrefHash || 'dashboard';
+                syncDashboardUrl(nextSection);
+                activateDashboardSection(nextSection, sections);
 
-                links.forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
-
-                sections.forEach(s => {
-                    s.style.display = (s.id === `section-${targetId}`) ? 'block' : 'none';
-                });
-
-                // Fecha a sidebar em telas pequenas após clicar em um link
                 if (window.innerWidth <= 768 && sidebar) {
-                    sidebar.classList.remove('active');
+                    setSidebarOpen(sidebar, overlay, false);
                 }
             }
-            // Se NÃO tiver 'data-section' (ex: Clientes), o navegador segue o href normalmente.
         });
     });
 
-    if (btnToggle && sidebar) {
-        btnToggle.addEventListener('click', () => sidebar.classList.toggle('active'));
+    if (currentPage === 'dashboard.html') {
+        activateDashboardSection(getDashboardSectionFromLocation(), sections);
+        window.addEventListener('hashchange', () => activateDashboardSection(getDashboardSectionFromLocation(), sections));
     }
+
+    if (btnToggle && sidebar) {
+        btnToggle.addEventListener('click', () => {
+            const shouldOpen = !sidebar.classList.contains('active');
+            setSidebarOpen(sidebar, overlay, shouldOpen);
+        });
+    }
+
+    if (btnToggleDesktop && sidebar) {
+        btnToggleDesktop.addEventListener('click', () => {
+            const shouldOpen = !sidebar.classList.contains('active');
+            setSidebarOpen(sidebar, overlay, shouldOpen);
+        });
+    }
+
+    if (overlay && sidebar) {
+        overlay.addEventListener('click', () => setSidebarOpen(sidebar, overlay, false));
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && sidebar) {
+            setSidebarOpen(sidebar, overlay, false);
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768 && sidebar) {
+            setSidebarOpen(sidebar, overlay, false);
+        }
+    });
 }
 
 // ============================

@@ -119,7 +119,9 @@ async def monitor_urls(db: Session):
         urls_to_monitor = db.query(MonitoredURL).filter(MonitoredURL.is_active == True).all()
 
         for url_obj in urls_to_monitor:
-            result = check_dns(url_obj.url)
+            # check_dns usa requests/socket síncronos; rodar isso no event loop
+            # travava a API inteira enquanto o monitor processava os lotes.
+            result = await asyncio.to_thread(check_dns, url_obj.url)
 
             previous_status = url_obj.status
 

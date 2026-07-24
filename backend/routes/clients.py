@@ -3,16 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import asyncio
 
 # --- IMPORTS DE DEPENDÊNCIAS ---
 from core.dependencies import get_db, get_current_user
 from models import User, Client
-from telegram_utils import send_telegram_message
-
-# --- IMPORTAÇÃO DA FUNÇÃO CORRETA DE WHATSAPP ---
-from whatsapp_utils import send_whatsapp_notification
+from reminder_utils import build_client_custom_reminder_message, build_client_reminder_message, send_client_reminder
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -22,7 +19,7 @@ router = APIRouter(prefix="/clients", tags=["Clientes"])
 class ClientCreate(BaseModel):
     name: str
     login: str
-    server_name: str
+    server_name: Optional[str] = None
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None
@@ -56,7 +53,12 @@ class ClientResponse(ClientCreate):
     owner_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+def resolve_days_window(days_ahead: int, today: date) -> tuple[date, date]:
+    offset = max(days_ahead - 1, 0)
+    return today - timedelta(days=offset), today + timedelta(days=offset)
 
 
 # ==========================================
@@ -66,21 +68,53 @@ class ClientResponse(ClientCreate):
 @router.post("/process-now")
 async def process_reminders_now(
         filter_type: Optional[str] = "default",  # Recebe o filtro do Frontend
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        days_ahead: Optional[int] = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
     """
     Executa a verificação de cobrança IMEDIATAMENTE.
-    Suporta filtros: 'default', 'expired', '0', '1', '2', '3'.
+    Suporta filtros: 'default', 'expired', '0', '1', '2', '3' e 'custom:<id>'.
+    Quando houver intervalo de vencimento ou quantidade de dias informada, envia apenas para clientes dentro desse recorte.
+    No filtro por dias, considera os clientes vencidos recentemente e os que vão vencer
+    dentro da mesma janela salva.
     """
-    # Busca todos os clientes do usuário
-    clients = db.query(Client).filter(Client.owner_id == current_user.id).all()
     today = datetime.now().date()
+
+    if days_ahead is not None and days_ahead < 0:
+        raise HTTPException(status_code=400, detail="A quantidade de dias deve ser igual ou maior que zero.")
+
+    if days_ahead is not None:
+        date_from, date_to = resolve_days_window(days_ahead, today)
+
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="A data inicial não pode ser maior que a data final.")
+
+    clients_query = db.query(Client).filter(Client.owner_id == current_user.id)
+    if date_from:
+        clients_query = clients_query.filter(Client.expiration_date >= date_from)
+    if date_to:
+        clients_query = clients_query.filter(Client.expiration_date <= date_to)
+
+    clients = clients_query.all()
     sent_count = 0
 
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
     print(f"📅 Data do Servidor: {today}")
     print(f"🔍 Filtro Selecionado: {filter_type}")
+    if days_ahead is not None:
+        past_days = max(days_ahead - 1, 0)
+        if days_ahead <= 1:
+            print("⏳ Janela dinâmica aplicada: apenas clientes que vencem hoje")
+        else:
+            print(
+                f"⏳ Janela dinâmica aplicada: clientes vencidos há até {past_days} dia(s) "
+                f"e clientes que vencem nos próximos {past_days} dia(s)"
+            )
+    elif date_from or date_to:
+        print(f"🗓️ Intervalo de vencimento aplicado: {date_from or '...'} até {date_to or '...'}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
 
     # Verifica conexão
@@ -91,6 +125,23 @@ async def process_reminders_now(
         print("❌ Erro: Nenhum canal conectado.")
         raise HTTPException(status_code=400, detail="Nenhum canal de notificação conectado.")
 
+    custom_scenario_id = None
+    custom_scenario_name = ""
+    if isinstance(filter_type, str) and filter_type.startswith("custom:"):
+        custom_scenario_id = filter_type.split(":", 1)[1].strip()
+        if not custom_scenario_id:
+            raise HTTPException(status_code=400, detail="Mensagem personalizada inválida.")
+        try:
+            _, custom_scenario, _ = build_client_custom_reminder_message(
+                clients[0] if clients else None,
+                current_user,
+                0,
+                custom_scenario_id,
+            )
+            custom_scenario_name = str(custom_scenario.get("name", "") or "").strip()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     for client in clients:
         if not client.reminder_enabled:
             continue
@@ -100,6 +151,7 @@ async def process_reminders_now(
 
         should_send = False
         msg = ""
+        media = None
 
         # --- LÓGICA DE FILTRAGEM ---
 
@@ -119,7 +171,11 @@ async def process_reminders_now(
                 # print(f"   Ignorado {client.name}: Faltam {days_diff} dias (Filtro pede {target_days})")
                 pass
 
-        # 3. Filtro: Padrão (default) - Respeita a config do cliente
+        # 3. Filtro: Mensagem personalizada
+        elif custom_scenario_id:
+            should_send = True
+
+        # 4. Filtro: Padrão (default) - Respeita a config do cliente
         else:
             try:
                 threshold = int(client.reminder_days_before)
@@ -135,15 +191,13 @@ async def process_reminders_now(
         if should_send:
             print(f"✅ Processando envio para: {client.name} (Vence em {days_diff} dias)")
 
-            if days_diff == 0:
-                msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-            elif days_diff == 1:
-                msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-            elif days_diff > 1:
-                msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-            else:  # Negativo (Vencido)
-                days_overdue = abs(days_diff)
-                msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+            try:
+                if custom_scenario_id:
+                    msg, _, media = build_client_custom_reminder_message(client, current_user, days_diff, custom_scenario_id)
+                else:
+                    msg, _, media = build_client_reminder_message(client, current_user, days_diff)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
 
             # --- ENVIO ---
             channel = client.notification_channel or "whatsapp"
@@ -152,10 +206,12 @@ async def process_reminders_now(
             # Envio WhatsApp
             if channel == "whatsapp" and has_whatsapp:
                 try:
-                    success = await send_whatsapp_notification(
-                        number=client.whatsapp,
-                        message=msg,
-                        instance_name=current_user.whatsapp_instance
+                    success, _, _ = await send_client_reminder(
+                        current_user,
+                        client,
+                        msg,
+                        media=media,
+                        telegram_prefix=f"🔔 *Cobrança Manual em Massa: {client.name}*",
                     )
                     if success:
                         print(f"   -> WhatsApp enviado com sucesso!")
@@ -168,12 +224,13 @@ async def process_reminders_now(
             # Envio Telegram
             elif channel == "telegram" and has_telegram:
                 try:
-                    await send_telegram_message(
-                        token=current_user.telegram_token,
-                        chat_id=current_user.telegram_chat_id,
-                        message=f"🔔 *Cobrança Manual em Massa: {client.name}*\n\n{msg}"
+                    success, _, _ = await send_client_reminder(
+                        current_user,
+                        client,
+                        msg,
+                        media=media,
+                        telegram_prefix=f"🔔 *Cobrança Manual em Massa: {client.name}*",
                     )
-                    success = True
                     print(f"   -> Telegram enviado com sucesso!")
                 except Exception as e:
                     print(f"   -> Erro técnico no Telegram: {e}")
@@ -182,9 +239,27 @@ async def process_reminders_now(
             if success:
                 sent_count += 1
                 await asyncio.sleep(1)  # Delay para evitar bloqueio
-
+ 
     print(f"--- FIM DO PROCESSO: {sent_count} enviados ---\n")
-    return {"message": f"Processo finalizado! {sent_count} mensagens enviadas.", "sent_count": sent_count}
+    message_label = (
+        f" da mensagem personalizada \"{custom_scenario_name}\""
+        if custom_scenario_id and custom_scenario_name
+        else ""
+    )
+    if days_ahead is not None:
+        if days_ahead <= 1:
+            range_label = " entre os clientes que vencem hoje"
+        else:
+            window_days = days_ahead - 1
+            range_label = (
+                f" entre os clientes vencidos há até {window_days} dia{'s' if window_days != 1 else ''} "
+                f"e os que vencem nos próximos {window_days} dia{'s' if window_days != 1 else ''}"
+            )
+    elif date_from or date_to:
+        range_label = " no período de vencimento selecionado"
+    else:
+        range_label = ""
+    return {"message": f"Processo finalizado! {sent_count} mensagens enviadas{message_label}{range_label}.", "sent_count": sent_count}
 
 
 # ==========================================
@@ -266,20 +341,7 @@ async def send_manual_reminder(
 
     today = datetime.now().date()
     days_diff = (client.expiration_date - today).days
-    msg = ""
-
-    # Lógica de mensagens
-    if days_diff == 3:
-        msg = f"Olá {client.name}! 📅 Sua assinatura vence em 3 dias. Evite bloqueios!"
-    elif days_diff == 1:
-        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-    elif days_diff == 0:
-        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-    elif days_diff < 0:
-        msg = f"Olá {client.name}. ❌ Sua assinatura venceu. Entre em contato para reativar."
-    else:
-        formatted_date = client.expiration_date.strftime('%d/%m/%Y')
-        msg = f"Olá {client.name}! 📅 Lembrete: Sua assinatura está ativa e vence dia {formatted_date}."
+    msg, _, media = build_client_reminder_message(client, current_user, days_diff)
 
     # Definição do canal
     channel = client.notification_channel or "whatsapp"
@@ -292,13 +354,17 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
 
         try:
-            success = await send_whatsapp_notification(
-                number=client.whatsapp,
-                message=msg,
-                instance_name=current_user.whatsapp_instance
+            success, _, _ = await send_client_reminder(
+                current_user,
+                client,
+                msg,
+                media=media,
+                telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
             )
             if not success:
                 error_detail = "A Evolution API retornou erro ou falha no envio."
+        except HTTPException:
+            raise
         except Exception as e:
             success = False
             error_detail = str(e)
@@ -309,12 +375,15 @@ async def send_manual_reminder(
             raise HTTPException(status_code=400, detail="Telegram não configurado.")
 
         try:
-            await send_telegram_message(
-                token=current_user.telegram_token,
-                chat_id=current_user.telegram_chat_id,
-                message=f"🔔 *Lembrete Manual: {client.name}*\n\n{msg}"
+            success, _, _ = await send_client_reminder(
+                current_user,
+                client,
+                msg,
+                media=media,
+                telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
             )
-            success = True
+        except HTTPException:
+            raise
         except Exception as e:
             success = False
             error_detail = f"Erro Telegram: {str(e)}"

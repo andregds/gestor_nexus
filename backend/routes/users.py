@@ -14,6 +14,12 @@ from core.dependencies import get_db, get_current_user
 from schemas.user import UserResponse, UserSettingsUpdate, DEFAULT_PAYMENT_API_SETTINGS
 from core.security import get_plan_duration_days
 from models import User
+from reminder_utils import (
+    normalize_custom_reminder_scenarios,
+    normalize_reminder_media,
+    normalize_reminder_templates,
+    set_user_reminder_settings,
+)
 
 # Defaults para evitar None em permisses/feature flags antigos
 DEFAULT_PERMISSIONS = {
@@ -73,6 +79,9 @@ def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = T
     user_flags = _safe_dict(user.feature_flags, DEFAULT_FEATURE_FLAGS)
     reseller_flags = _safe_dict(user.reseller_feature_flags, DEFAULT_RESELLER_FEATURE_FLAGS)
     payment_settings = _safe_dict(user.payment_api_settings, DEFAULT_PAYMENT_API_SETTINGS)
+    payment_settings["reminder_templates"] = normalize_reminder_templates(payment_settings.get("reminder_templates"))
+    payment_settings["reminder_scenarios"] = normalize_custom_reminder_scenarios(payment_settings.get("reminder_scenarios"))
+    payment_settings["reminder_media"] = normalize_reminder_media(payment_settings.get("reminder_media"))
 
     # Super admin no pode perder o console
     if user.role == "super_admin":
@@ -152,6 +161,15 @@ def update_user_settings(
         payment_settings = _safe_dict(user_in_db.payment_api_settings, DEFAULT_PAYMENT_API_SETTINGS)
         payment_settings.update(settings.payment_api_settings)
         user_in_db.payment_api_settings = payment_settings
+        flag_modified(user_in_db, "payment_api_settings")
+
+    if settings.reminder_templates is not None or settings.reminder_scenarios is not None or settings.reminder_media is not None:
+        set_user_reminder_settings(
+            user_in_db,
+            reminder_templates=settings.reminder_templates,
+            reminder_scenarios=settings.reminder_scenarios,
+            reminder_media=settings.reminder_media,
+        )
         flag_modified(user_in_db, "payment_api_settings")
 
     db.commit()

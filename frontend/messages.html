@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens Pré-Prontas | NexusMonitor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+    <script>
+        const API_URL = (['localhost', '127.0.0.1'].includes(window.location.hostname))
+            ? 'http://localhost:8000'
+            : window.location.origin;
+    </script>
+    <style>
+        .messages-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
+            gap: 1rem;
+        }
+        .editor-stack,
+        .side-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+        .template-grid {
+            display: grid;
+            gap: 0.85rem;
+        }
+        .template-card,
+        .helper-card,
+        .preview-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 0.85rem 0.9rem;
+        }
+        .template-card {
+            cursor: pointer;
+        }
+        .template-card > summary {
+            list-style: none;
+            display: block;
+        }
+        .template-card > summary::-webkit-details-marker {
+            display: none;
+        }
+        .template-card > summary h3 {
+            margin-bottom: 0.25rem;
+        }
+        /* thumbnail inside summary (collapsed view) */
+        .template-thumb {
+            width:48px;
+            height:36px;
+            border-radius:6px;
+            background-size:cover;
+            background-position:center;
+            box-shadow:0 0 0 4px rgba(255,255,255,0.6) inset;
+            margin-left:12px;
+            flex:0 0 auto;
+            display:inline-block;
+        }
+        .template-thumb.empty {
+            background-image:none;
+        }
+        .template-card[open] {
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+        .template-card[open] > summary {
+            margin-bottom: 0.75rem;
+        }
+        .template-card h3,
+        .helper-card h3,
+        .preview-card h3 {
+            margin-bottom: 0.25rem;
+            color: #0f172a;
+            font-size: 1rem;
+        }
+        .template-card p,
+        .helper-card p,
+        .preview-card p {
+            color: #64748b;
+            font-size: 0.88rem;
+            margin-bottom: 0.6rem;
+        }
+        .template-card textarea {
+            min-height: 96px;
+            padding: 0.7rem 0.8rem;
+            line-height: 1.45;
+            resize: vertical;
+        }
+        .message-media {
+            margin-top: 0.8rem;
+            padding-top: 0.8rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        .message-media-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .message-media-header .form-label {
+            margin-bottom: 0;
+        }
+        .message-media-preview {
+            margin-top: 0.6rem;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 0.75rem;
+            background: #f8fafc;
+            text-align: center;
+            color: #64748b;
+            font-size: 0.88rem;
+        }
+        .message-media-preview.empty {
+            color: #64748b;
+        }
+        .message-media-preview img {
+            max-width: 100%;
+            max-height: 180px;
+            border-radius: 10px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto 0.5rem auto;
+        }
+        .token-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.85rem;
+        }
+        .token-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            padding: 0.75rem;
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            background: #f8fbff;
+        }
+        .token-label {
+            font-size: 0.85rem;
+            color: #334155;
+            font-weight: 600;
+        }
+        .token-chip {
+            display: inline-flex;
+            width: fit-content;
+            border-radius: 999px;
+            padding: 0.25rem 0.65rem;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .preview-box {
+            white-space: pre-wrap;
+            border-radius: 12px;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 1rem;
+            min-height: 180px;
+            font-size: 0.95rem;
+        }
+        .preview-image {
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 0.85rem;
+            background: #f8fafc;
+            text-align: center;
+        }
+        .preview-image img {
+            max-width: 100%;
+            max-height: 240px;
+            border-radius: 10px;
+            object-fit: contain;
+        }
+        .preview-image.empty {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        .summary-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1rem;
+        }
+        .summary-card strong {
+            display: block;
+            font-size: 1.4rem;
+            color: #0f172a;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .upload-meta {
+            font-size: 0.82rem;
+            color: #64748b;
+            margin-top: 0.5rem;
+        }
+        .scenario-creator {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 0.75rem;
+            align-items: end;
+        }
+        .scenario-card-header {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: space-between;
+            align-items: end;
+            margin-bottom: 0.6rem;
+            flex-wrap: wrap;
+        }
+        .scenario-card-header .form-label,
+        .template-card .form-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #334155;
+        }
+        .custom-scenario-empty {
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 1rem;
+            background: #f8fafc;
+            color: #64748b;
+            text-align: center;
+        }
+        .section-save-actions {
+            margin-top: 1rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+        @media (max-width: 1100px) {
+            .messages-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 576px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+            .scenario-creator {
+                grid-template-columns: 1fr;
+            }
+            .section-save-actions {
+                justify-content: stretch;
+            }
+            .section-save-actions .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar-mobile" style="display:none;">
+        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
+    </div>
+
+    <div class="dashboard-container">
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header"><div class="brand-logo">NEXUS<span>MONITOR</span></div></div>
+            <nav class="sidebar-menu"></nav>
+            <div class="user-profile">
+                <div class="user-info" id="userName">Carregando...</div>
+                <div class="user-role">Administrador</div>
+                <button type="button" onclick="logout()" style="background:none; border:none; color:#ef4444; font-size:0.8rem; cursor:pointer; margin-top:5px;">Sair</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light mb-3">
+                <div class="container-fluid">
+                    <button type="button" id="btnToggleSidebarDesktop" class="btn btn-info"><i class="fas fa-align-left"></i></button>
+                    <div id="userInfo" class="user-info-container"><span id="userName"></span><span class="user-role"></span></div>
+                </div>
+            </nav>
+
+            <div class="container-fluid py-3">
+                <div class="page-header mb-3">
+                    <div class="page-title">
+                        <h2>Mensagens Pré-Prontas</h2>
+                        <p>Edite os textos automáticos de lembrete e anexe uma imagem específica em cada mensagem, se quiser.</p>
+                    </div>
+                </div>
+
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <span class="text-muted">Canal com mídia</span>
+                        <strong>WhatsApp</strong>
+                    </div>
+                    <div class="summary-card">
+                        <span class="text-muted">Mensagens editáveis</span>
+                        <strong id="summaryScenarioCount">5</strong>
+                    </div>
+                </div>
+
+                <form id="messagesForm" class="messages-layout">
+                    <div class="editor-stack">
+                        <section class="helper-card">
+                            <h3>Variáveis disponíveis</h3>
+                            <p>Use os campos abaixo dentro das mensagens. Eles serão trocados automaticamente pelos dados reais do cliente no momento do envio.</p>
+                            <div class="token-list">
+                                <div class="token-item"><span class="token-label">Nome do cliente</span><span class="token-chip">{nome_cliente}</span></div>
+                                <div class="token-item"><span class="token-label">Data de vencimento</span><span class="token-chip">{data_vencimento}</span></div>
+                                <div class="token-item"><span class="token-label">Dias restantes</span><span class="token-chip">{dias_restantes}</span></div>
+                                <div class="token-item"><span class="token-label">Dias em atraso</span><span class="token-chip">{dias_atraso}</span></div>
+                                <div class="token-item"><span class="token-label">Login do cliente</span><span class="token-chip">{login_cliente}</span></div>
+                                <div class="token-item"><span class="token-label">Nome do servidor</span><span class="token-chip">{nome_servidor}</span></div>
+                                <div class="token-item"><span class="token-label">WhatsApp do cliente</span><span class="token-chip">{whatsapp_cliente}</span></div>
+                                <div class="token-item"><span class="token-label">Seu nome</span><span class="token-chip">{nome_responsavel}</span></div>
+                            </div>
+                        </section>
+
+                        <section class="template-grid">
+                            <details class="template-card system-template-card" data-template-key="upcoming">
+                                <summary>
+                                    <h3>Antes do vencimento</h3>
+                                    <p>Usada quando faltam 2 ou mais dias dentro da janela configurada para o cliente.</p>
+                                    <div class="template-thumb" id="template-thumb-upcoming"></div>
+                                </summary>
+                                <textarea id="template-upcoming" class="form-control" rows="4"></textarea>
+                                <div class="message-media">
+                                    <div class="message-media-header">
+                                        <label class="form-label" for="template-media-upcoming">Imagem opcional</label>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="remove-media" data-template-key="upcoming">Remover imagem</button>
+                                    </div>
+                                    <input type="file" id="template-media-upcoming" class="form-control" accept="image/*" data-media-input data-scope="template" data-template-key="upcoming">
+                                    <div class="message-media-preview empty" id="template-media-preview-upcoming">Nenhuma imagem configurada.</div>
+                                </div>
+                            </details>
+
+                            <details class="template-card system-template-card" data-template-key="tomorrow">
+                                <summary>
+                                    <h3>Vence amanhã</h3>
+                                    <p>Usada automaticamente quando falta 1 dia para o vencimento.</p>
+                                    <div class="template-thumb" id="template-thumb-tomorrow"></div>
+                                </summary>
+                                <textarea id="template-tomorrow" class="form-control" rows="4"></textarea>
+                                <div class="message-media">
+                                    <div class="message-media-header">
+                                        <label class="form-label" for="template-media-tomorrow">Imagem opcional</label>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="remove-media" data-template-key="tomorrow">Remover imagem</button>
+                                    </div>
+                                    <input type="file" id="template-media-tomorrow" class="form-control" accept="image/*" data-media-input data-scope="template" data-template-key="tomorrow">
+                                    <div class="message-media-preview empty" id="template-media-preview-tomorrow">Nenhuma imagem configurada.</div>
+                                </div>
+                            </details>
+
+                            <details class="template-card system-template-card" data-template-key="today">
+                                <summary>
+                                    <h3>Vence hoje</h3>
+                                    <p>Usada no próprio dia do vencimento.</p>
+                                    <div class="template-thumb" id="template-thumb-today"></div>
+                                </summary>
+                                <textarea id="template-today" class="form-control" rows="4"></textarea>
+                                <div class="message-media">
+                                    <div class="message-media-header">
+                                        <label class="form-label" for="template-media-today">Imagem opcional</label>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="remove-media" data-template-key="today">Remover imagem</button>
+                                    </div>
+                                    <input type="file" id="template-media-today" class="form-control" accept="image/*" data-media-input data-scope="template" data-template-key="today">
+                                    <div class="message-media-preview empty" id="template-media-preview-today">Nenhuma imagem configurada.</div>
+                                </div>
+                            </details>
+
+                            <details class="template-card system-template-card" data-template-key="overdue">
+                                <summary>
+                                    <h3>Assinatura vencida</h3>
+                                    <p>Usada quando o cliente já está vencido e a opção de continuar avisando está ativa.</p>
+                                    <div class="template-thumb" id="template-thumb-overdue"></div>
+                                </summary>
+                                <textarea id="template-overdue" class="form-control" rows="4"></textarea>
+                                <div class="message-media">
+                                    <div class="message-media-header">
+                                        <label class="form-label" for="template-media-overdue">Imagem opcional</label>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="remove-media" data-template-key="overdue">Remover imagem</button>
+                                    </div>
+                                    <input type="file" id="template-media-overdue" class="form-control" accept="image/*" data-media-input data-scope="template" data-template-key="overdue">
+                                    <div class="message-media-preview empty" id="template-media-preview-overdue">Nenhuma imagem configurada.</div>
+                                </div>
+                            </details>
+
+                            <details class="template-card system-template-card" data-template-key="fallback">
+                                <summary>
+                                    <h3>Mensagem padrão</h3>
+                                    <p>Fallback para lembretes manuais fora da regra principal.</p>
+                                    <div class="template-thumb" id="template-thumb-fallback"></div>
+                                </summary>
+                                <textarea id="template-fallback" class="form-control" rows="4"></textarea>
+                                <div class="message-media">
+                                    <div class="message-media-header">
+                                        <label class="form-label" for="template-media-fallback">Imagem opcional</label>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="remove-media" data-template-key="fallback">Remover imagem</button>
+                                    </div>
+                                    <input type="file" id="template-media-fallback" class="form-control" accept="image/*" data-media-input data-scope="template" data-template-key="fallback">
+                                    <div class="message-media-preview empty" id="template-media-preview-fallback">Nenhuma imagem configurada.</div>
+                                </div>
+                            </details>
+                        </section>
+
+                        <section>
+                            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                <div>
+                                    <h3 class="mb-0">Mensagens personalizadas</h3>
+                                    <p class="text-muted mb-0">Essas mensagens extras ficam salvas para edição sempre que precisar.</p>
+                                </div>
+                            </div>
+                            <div id="customScenarioList" class="template-grid">
+                                <div class="custom-scenario-empty">Nenhuma mensagem personalizada criada até o momento.</div>
+                            </div>
+                            <div class="section-save-actions">
+                                <button type="submit" class="btn btn-primary" data-save-messages>
+                                    Salvar mensagens personalizadas
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="helper-card">
+                            <h3>Criar nova mensagem</h3>
+                            <p>Adicione mensagens extras com um nome próprio para organizar textos fora das mensagens automáticas padrão.</p>
+                            <div class="scenario-creator">
+                                <div>
+                                    <label for="newScenarioName" class="form-label">Nome da mensagem</label>
+                                    <input type="text" id="newScenarioName" class="form-control" maxlength="80" placeholder="Ex.: Renovação com desconto">
+                                </div>
+                                <button type="button" class="btn btn-outline-primary" id="btnAddScenario">Adicionar mensagem</button>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div class="side-stack">
+                        <section class="preview-card">
+                            <h3>Prévia do texto</h3>
+                            <p>Troque a mensagem para revisar o texto final antes de salvar.</p>
+                            <div class="mb-3">
+                                <label for="previewScenario" class="form-label">Mensagem</label>
+                                <select id="previewScenario" class="form-select">
+                                    <option value="upcoming">Antes do vencimento</option>
+                                    <option value="tomorrow">Vence amanhã</option>
+                                    <option value="today">Vence hoje</option>
+                                    <option value="overdue">Assinatura vencida</option>
+                                    <option value="fallback">Mensagem padrão</option>
+                                </select>
+                            </div>
+                            <div id="messagePreview" class="preview-box"></div>
+                        </section>
+
+                        <section class="helper-card">
+                            <h3>Boas práticas</h3>
+                            <p class="mb-2">1. Use mensagens curtas, claras e acionáveis.</p>
+                            <p class="mb-2">2. Cada texto pode ter sua própria imagem.</p>
+                            <p class="mb-0">3. Prefira imagens leves para o envio sair com mais rapidez.</p>
+                        </section>
+
+                        <div id="messagesResult" style="display:none;"></div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="btnSaveMessages" data-save-messages>Salvar mensagens</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebar.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script src="assets/js/crud-helpers.js"></script>
+    <script src="assets/js/messages.js?v=1.3"></script>
+</body>
+</html>

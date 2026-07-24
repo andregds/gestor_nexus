@@ -1,6 +1,8 @@
 # backend/main.py
+import os
 import time
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,27 +13,57 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core.lifespan import lifespan_manager
 from database import Base, engine, SessionLocal
 from models import User, Client
-from routes import auth, users, urls, whatsapp, clients
+from routes import admin, auth, categories, clients, plans, products, urls, users, whatsapp
 
 # Utilitários de envio
-from telegram_utils import send_telegram_message
-from whatsapp_utils import send_whatsapp_notification
+from reminder_utils import build_client_reminder_message, send_client_reminder
 
 # Cria as tabelas no banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
+
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """Ciclo de vida da aplicacao.
+
+    Inicia o scheduler de cobrancas aqui (e nao no import do modulo) para evitar
+    execucao duplicada quando o Uvicorn roda com reload/multiplos workers, o que
+    causaria envio duplicado de lembretes. Delega o restante ao lifespan_manager
+    (monitoramento de URLs).
+    """
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_and_send_reminders, "interval", minutes=1)
+    scheduler.start()
+    app.state.scheduler = scheduler
+    print("[startup] Scheduler de cobrancas iniciado.")
+    try:
+        async with lifespan_manager(app):
+            yield
+    finally:
+        scheduler.shutdown(wait=False)
+        print("[shutdown] Scheduler de cobrancas encerrado.")
+
 
 app = FastAPI(
     title="Monitor DNS API",
     description="API para monitoramento de URLs com notificações WhatsApp.",
     version="2.0.0",
-    lifespan=lifespan_manager,
+    lifespan=app_lifespan,
 )
 
 # Configuração CORS
+# allow_credentials=False: a autenticação usa Bearer token (OAuth2), nao cookies.
+# A combinacao allow_origins=["*"] + allow_credentials=True e invalida pela spec
+# CORS e rejeitada pelos navegadores (achado OWASP). Para habilitar credenciais,
+# defina origens explicitas via variavel de ambiente.
+_cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "*").strip()
+_allow_origins = ["*"] if _cors_origins_env in ("", "*") else [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+_allow_credentials = _allow_origins != ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -39,9 +71,14 @@ app.add_middleware(
 # Inclui os routers
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(users.payment_webhook_router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)
+app.include_router(categories.router)
+app.include_router(plans.router)
+app.include_router(products.router)
+app.include_router(admin.router)
 
 
 # ==========================================
@@ -105,54 +142,34 @@ def check_and_send_reminders():
                     days_alert_threshold = 3
 
                 msg = ""
+                media = None
 
                 # --- NOVA LÓGICA DINÂMICA ---
 
-                # 1. Lógica de Vencimento Próximo (Intervalo de 0 até X dias configurados)
-                # Ex: Se configurou 5, entra aqui se faltar 5, 4, 3, 2, 1 ou 0 dias.
                 if 0 <= days_diff <= days_alert_threshold:
-                    if days_diff == 0:
-                        msg = f"Olá {client.name}! 🚨 Sua assinatura vence HOJE. Renove agora para continuar assistindo."
-                    elif days_diff == 1:
-                        msg = f"Olá {client.name}! ⏰ Sua assinatura vence AMANHÃ. Já realizou a renovação?"
-                    else:
-                        msg = f"Olá {client.name}! 📅 Sua assinatura vence em {days_diff} dias. Evite bloqueios!"
-
-                # 2. Lógica de Vencido (Qualquer dia negativo)
-                # Envia se estiver vencido há 1 ou mais dias, desde que a opção esteja ativa
+                    msg, _, media = build_client_reminder_message(client, user, days_diff)
                 elif days_diff < 0 and client.notify_after_expiration:
-                    days_overdue = abs(days_diff) # Converte -1 para 1, -5 para 5, etc.
-                    msg = f"Olá {client.name}. ❌ Sua assinatura venceu há {days_overdue} dias. Entre em contato para reativar."
+                    msg, _, media = build_client_reminder_message(client, user, days_diff)
 
                 # Se encontrou uma regra válida, envia
                 if msg:
                     print(f"         🚀 ENVIANDO MENSAGEM para {client.name} (Motivo: {days_diff} dias)")
-                    channel = client.notification_channel or "whatsapp"
-
-                    # --- ENVIO VIA WHATSAPP ---
-                    if channel == "whatsapp" and has_whatsapp:
-                        if client.whatsapp:
-                            try:
-                                asyncio.run(send_whatsapp_notification(
-                                    number=client.whatsapp,
-                                    message=msg,
-                                    instance_name=user.whatsapp_instance
-                                ))
-                                print(f"            ✅ WhatsApp enviado com sucesso!")
-                            except Exception as e:
-                                print(f"            ❌ Erro ao enviar WhatsApp: {e}")
-
-                    # --- ENVIO VIA TELEGRAM ---
-                    elif channel == "telegram" and has_telegram:
-                        try:
-                            asyncio.run(send_telegram_message(
-                                token=user.telegram_token,
-                                chat_id=user.telegram_chat_id,
-                                message=f"🔔 *Lembrete Cliente: {client.name}*\n\n{msg}"
-                            ))
-                            print(f"            ✅ Telegram enviado com sucesso!")
-                        except Exception as e:
-                            print(f"            ❌ Erro ao enviar Telegram: {e}")
+                    try:
+                        success, channel, error_detail = asyncio.run(
+                            send_client_reminder(
+                                user,
+                                client,
+                                msg,
+                                media=media,
+                                telegram_prefix=f"🔔 *Lembrete Cliente: {client.name}*",
+                            )
+                        )
+                        if success:
+                            print(f"            ✅ {channel.title()} enviado com sucesso!")
+                        else:
+                            print(f"            ❌ Falha ao enviar via {channel}: {error_detail}")
+                    except Exception as e:
+                        print(f"            ❌ Erro ao enviar lembrete: {e}")
 
                     time.sleep(2)  # Delay para evitar spam
 
@@ -160,12 +177,6 @@ def check_and_send_reminders():
         print(f"❌ Erro Crítico no Scheduler: {e}")
     finally:
         db.close()
-
-
-# Inicializa o Scheduler em segundo plano
-scheduler = BackgroundScheduler()
-scheduler.add_job(check_and_send_reminders, 'interval', minutes=1)
-scheduler.start()
 
 
 @app.get("/", tags=["Geral"])

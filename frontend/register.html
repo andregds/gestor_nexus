@@ -44,7 +44,19 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        function resolveApiBase() {
+            if (window.location.protocol === 'file:') {
+                return 'http://127.0.0.1:8000';
+            }
+
+            if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                return 'http://127.0.0.1:8000';
+            }
+
+            return window.location.origin;
+        }
+
+        const API_URL = resolveApiBase();
 
         async function handleRegister(event) {
             event.preventDefault();

@@ -39,7 +39,19 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        function resolveApiBase() {
+            if (window.location.protocol === 'file:') {
+                return 'http://127.0.0.1:8000';
+            }
+
+            if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+                return 'http://127.0.0.1:8000';
+            }
+
+            return window.location.origin;
+        }
+
+        const API_URL = resolveApiBase();
 
         async function handleLogin(event) {
             event.preventDefault();
@@ -47,23 +59,33 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const msgDiv = document.getElementById('message');
+            const submitButton = event.submitter || document.querySelector('#loginForm button[type="submit"]');
+            let timeoutId;
 
             msgDiv.textContent = 'Autenticando...';
             msgDiv.style.color = '#64748b'; // Cor neutra
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'Autenticando...';
+            }
 
             try {
                 // O padrão OAuth2 do FastAPI espera dados como form-urlencoded
                 const formData = new URLSearchParams();
                 formData.append('username', email); // O backend espera o campo 'username'
                 formData.append('password', password);
+                const controller = new AbortController();
+                timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
                 const response = await fetch(`${API_URL}/token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -82,8 +104,18 @@
                 }
             } catch (error) {
                 console.error(error);
-                msgDiv.textContent = 'Erro de conexão com o servidor.';
+                msgDiv.textContent = error.name === 'AbortError'
+                    ? 'A API demorou para responder. Reinicie o backend e tente novamente.'
+                    : 'Erro de conexão com o servidor.';
                 msgDiv.style.color = 'var(--danger)';
+            } finally {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Entrar';
+                }
             }
         }
     </script>

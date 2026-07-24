@@ -7,7 +7,7 @@ from datetime import date
 class ClientBase(BaseModel):
     name: str
     login: str
-    server_name: str
+    server_name: Optional[str] = None
     whatsapp: str
     expiration_date: date
     notes: Optional[str] = None
