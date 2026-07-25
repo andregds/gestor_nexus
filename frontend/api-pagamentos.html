@@ -21,6 +21,72 @@
             flex-wrap: wrap;
         }
 
+        .gateway-panel {
+            height: 100%;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .gateway-panel-toggle {
+            width: 100%;
+            border: none;
+            background: transparent;
+            padding: 1rem;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .gateway-panel-toggle-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.8rem 0.95rem;
+            border-radius: 10px;
+            border: 1px solid transparent;
+        }
+
+        .gateway-panel-toggle-icon {
+            flex-shrink: 0;
+            font-size: 1rem;
+            font-weight: 800;
+            transition: transform 0.25s ease;
+        }
+
+        .gateway-panel.is-open .gateway-panel-toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .gateway-panel-content {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.3s ease, opacity 0.25s ease, padding-top 0.25s ease;
+            padding: 0 1rem;
+        }
+
+        .gateway-panel.is-open .gateway-panel-content {
+            opacity: 1;
+            padding-bottom: 1rem;
+        }
+
+        .payment-test-modal-card {
+            max-width: 520px;
+            width: 100%;
+            margin: 0;
+            position: relative;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .payment-test-result {
+            max-height: 280px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
         @media (max-width: 768px) {
             .payment-actions,
             .payment-modal-actions {
@@ -101,60 +167,165 @@
             </div>
 
             <div class="card">
-                <h3 style="margin-bottom: 1rem; color: var(--primary);">Configurar integração</h3>
-                <div class="form-group">
-                    <label>Nome da integração</label>
-                    <input type="text" id="gatewayName" placeholder="Ex: InfinitePay Checkout">
-                </div>
-                <div class="form-group">
-                    <label>Banco / Operadora</label>
-                    <input type="text" id="bankName" placeholder="Ex: InfinitePay, Banco Inter, PagBank">
-                </div>
-                <div class="form-group">
-                    <label>Handle / Conta</label>
-                    <input type="text" id="handle" placeholder="nome-da-minha-loja">
-                </div>
-                <div class="form-group">
-                    <label>URL Base da API</label>
-                    <input type="text" id="apiBaseUrl" placeholder="https://api.checkout.infinitepay.io">
-                </div>
-                <div class="form-group">
-                    <label>Endpoint de criação de link</label>
-                    <input type="text" id="linksEndpoint" placeholder="/links">
-                </div>
-                <div class="form-group">
-                    <label>Endpoint de consulta</label>
-                    <input type="text" id="paymentCheckEndpoint" placeholder="/payment_check">
-                </div>
-                <div class="form-group">
-                    <label>Webhook URL</label>
-                    <input type="text" id="webhookUrl" placeholder="https://seu-dominio.com/v1/webhooks/infinitepay">
-                    <small style="color:var(--text-muted); display:block; margin-top:6px;">Em local, a rota pública de webhook já existe no backend; em produção, use a URL do domínio real.</small>
-                </div>
-                <div class="form-group">
-                    <label>Redirect URL</label>
-                    <input type="text" id="redirectUrl" placeholder="https://seu-dominio.com/pedido/confirmado">
-                </div>
-                <div class="form-group">
-                    <label>Observações</label>
-                    <textarea id="notes" rows="4" placeholder="Anote regras do seu banco, taxas, contas e qualquer detalhe interno."></textarea>
-                </div>
-                <div class="payment-actions" style="margin-top:1.5rem;">
-                    <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal()">Teste de conexão</button>
-                    <button type="button" class="btn btn-warning" onclick="syncPayment()" style="background-color:#f59e0b;">Sincronizar pagamento</button>
-                    <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings()">Restaurar padrão</button>
-                    <button type="button" class="btn btn-secondary" onclick="loadPaymentSettings()">Recarregar</button>
-                    <button type="button" class="btn btn-primary" onclick="savePaymentSettings()">Salvar</button>
+                <div style="max-width: 1120px;">
+                    <div style="margin-bottom: 1rem;">
+                        <h3 style="margin-bottom: 0.35rem; color: var(--primary);">Configurar integração</h3>
+                        <p style="margin: 0; color: var(--text-muted);">Use somente o espaço necessário e mantenha os gateways organizados lado a lado.</p>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-xl-6">
+                            <div class="gateway-panel" id="infinitepayPanel">
+                                <button type="button" class="gateway-panel-toggle" onclick="toggleGatewayPanel('infinitepayPanel')" aria-expanded="false" aria-controls="infinitepayPanelContent">
+                                    <div class="gateway-panel-toggle-inner" style="background:rgba(37, 99, 235, 0.10); border-color:rgba(37, 99, 235, 0.22);">
+                                        <div>
+                                            <h4 style="margin:0 0 0.2rem; color:#1d4ed8; font-size:1.15rem; font-weight:800; letter-spacing:0.01em;">InfinitePay</h4>
+                                            <small style="color:#1e3a8a;">Configuração usada hoje nos testes e na geração de checkout da InfinitePay.</small>
+                                        </div>
+                                        <span class="gateway-panel-toggle-icon" style="color:#1d4ed8;">▾</span>
+                                    </div>
+                                </button>
+                                <div class="gateway-panel-content" id="infinitepayPanelContent">
+                                <div class="row g-3">
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Nome da integração</label>
+                                            <input type="text" id="gatewayName" placeholder="Ex: InfinitePay Checkout">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Banco / Operadora</label>
+                                            <input type="text" id="bankName" placeholder="Ex: InfinitePay, Banco Inter, PagBank">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-5">
+                                        <div class="form-group mb-0">
+                                            <label>Handle / Conta</label>
+                                            <input type="text" id="handle" placeholder="nome-da-minha-loja">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-7">
+                                        <div class="form-group mb-0">
+                                            <label>URL Base da API</label>
+                                            <input type="text" id="apiBaseUrl" placeholder="https://api.checkout.infinitepay.io">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Endpoint de criação</label>
+                                            <input type="text" id="linksEndpoint" placeholder="/links">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Endpoint de consulta</label>
+                                            <input type="text" id="paymentCheckEndpoint" placeholder="/payment_check">
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div style="padding: 0.7rem 0.85rem; border-radius: 10px; border: 1px solid #e2e8f0; background: rgba(59, 130, 246, 0.06);">
+                                            <strong style="display:block; margin-bottom:0.2rem; color:var(--primary);">Webhook</strong>
+                                            <small style="color:var(--text-muted);">Em local, a rota pública já existe no backend; em produção, use a URL do domínio real.</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Webhook URL</label>
+                                            <input type="text" id="webhookUrl" placeholder="https://seu-dominio.com/v1/webhooks/infinitepay">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Redirect URL</label>
+                                            <input type="text" id="redirectUrl" placeholder="https://seu-dominio.com/pedido/confirmado">
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-group mb-0">
+                                            <label>Observações</label>
+                                            <textarea id="notes" rows="3" placeholder="Anote regras, taxas e detalhes internos."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="payment-actions" style="margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                                    <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal()">Teste de conexão</button>
+                                    <button type="button" class="btn btn-warning" onclick="syncPayment()" style="background-color:#f59e0b;">Sincronizar pagamento</button>
+                                    <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings('infinitepay')">Restaurar padrão</button>
+                                    <button type="button" class="btn btn-secondary" onclick="loadPaymentSettings('infinitepay')">Recarregar</button>
+                                    <button type="button" class="btn btn-primary" data-save-gateway="infinitepay" onclick="savePaymentSettings('infinitepay')">Salvar</button>
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-6">
+                            <div class="gateway-panel" id="pagBankPanel">
+                                <button type="button" class="gateway-panel-toggle" onclick="toggleGatewayPanel('pagBankPanel')" aria-expanded="false" aria-controls="pagBankPanelContent">
+                                    <div class="gateway-panel-toggle-inner" style="background:rgba(14, 165, 233, 0.10); border-color:rgba(14, 165, 233, 0.24);">
+                                        <div>
+                                            <h4 style="margin:0 0 0.2rem; color:#0369a1; font-size:1.15rem; font-weight:800; letter-spacing:0.01em;">PagBank Checkout</h4>
+                                            <small style="color:#0c4a6e;">Venda direta PF com Token. URL da API e endpoint de pedidos ficam definidos automaticamente pelo ambiente.</small>
+                                        </div>
+                                        <span class="gateway-panel-toggle-icon" style="color:#0369a1;">▾</span>
+                                    </div>
+                                </button>
+                                <div class="gateway-panel-content" id="pagBankPanelContent">
+                                <div class="row g-3">
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Ambiente</label>
+                                            <select id="pagbankEnvironment">
+                                                <option value="production">Produção</option>
+                                                <option value="sandbox">Sandbox</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-group mb-0">
+                                            <label>Token</label>
+                                            <input type="text" id="pagbankAccessToken" placeholder="Cole aqui o token da conta PagBank">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="form-group mb-0">
+                                            <label>Webhook URL</label>
+                                            <input type="text" id="pagbankWebhookUrl" placeholder="https://seu-dominio.com/webhooks/pagbank">
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div style="height:100%; padding:0.85rem 0.95rem; border-radius:10px; border:1px solid #e2e8f0; background:rgba(14, 165, 233, 0.05);">
+                                            <strong style="display:block; margin-bottom:0.2rem; color:#0369a1;">Configuração automática</strong>
+                                            <small style="color:var(--text-muted);">O sistema usa o endpoint <code>/orders</code> e escolhe a URL base correta conforme o ambiente selecionado.</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div style="padding:0.9rem 1rem; border-radius:10px; border:1px solid rgba(14, 165, 233, 0.22); background:rgba(14, 165, 233, 0.08);">
+                                            <strong style="display:block; margin-bottom:0.35rem; color:#075985;">Como configurar esta conta</strong>
+                                            <small style="display:block; color:#0f172a; line-height:1.55;">
+                                                Cada usuário deve usar o <strong>próprio token PagBank</strong>. Para <strong>produção</strong>, selecione <strong>Produção</strong>, cole o token da conta PagBank que vai receber as cobranças e informe uma URL pública com <strong>HTTPS</strong>, por exemplo <code>https://gestornexus.com.br/v1/webhooks/pagbank</code>. Para <strong>testes</strong>, selecione <strong>Sandbox</strong> e use o token do ambiente de teste. O token de outra conta não serve para receber na conta atual.
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="payment-actions" style="margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                                    <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal('pagbank')">Teste de conexão</button>
+                                    <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings('pagbank')">Restaurar padrão</button>
+                                    <button type="button" class="btn btn-secondary" onclick="loadPaymentSettings('pagbank')">Recarregar</button>
+                                    <button type="button" class="btn btn-primary" data-save-gateway="pagbank" onclick="savePaymentSettings('pagbank')">Salvar</button>
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
 
     <div id="connectionTestModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:2000; align-items:center; justify-content:center; padding:20px;">
-        <div class="card" style="max-width:520px; width:100%; margin:0; position:relative;">
+        <div class="card payment-test-modal-card">
             <button type="button" onclick="closeConnectionTestModal()" style="position:absolute; top:14px; right:14px; border:none; background:none; font-size:1.2rem; cursor:pointer;">✖</button>
-            <h3 style="margin-bottom:1rem; color:var(--primary);">Teste de conexão</h3>
-            <p style="margin-bottom:1rem; color:var(--text-muted);">Preencha com um produto fictício e um valor para validar a comunicação com o gateway.</p>
+            <h3 id="connectionTestTitle" style="margin-bottom:1rem; color:var(--primary);">Teste de conexão</h3>
+            <p id="connectionTestDescription" style="margin-bottom:1rem; color:var(--text-muted);">Preencha com um produto fictício e um valor para validar a comunicação com o gateway.</p>
             <div class="form-group">
                 <label>Nome do produto fictício</label>
                 <input type="text" id="testProductName" placeholder="Ex: Produto Teste Nexus">
@@ -163,12 +334,32 @@
                 <label>Valor</label>
                 <input type="number" id="testProductValue" min="1.00" step="0.01" placeholder="Ex: 10.00" value="10.00">
             </div>
-            <div class="form-group" id="connectionTestResult" style="display:none; padding:12px; border-radius:8px; background:#0f172a; color:#e2e8f0; white-space:pre-wrap;"></div>
+            <div id="pagbankTestFields" style="display:none;">
+                <div class="form-group">
+                    <label>E-mail do comprador</label>
+                    <input type="email" id="pagbankTestBuyerEmail" placeholder="Use um e-mail diferente da conta PagBank">
+                </div>
+                <div class="form-group">
+                    <label>CPF do comprador</label>
+                    <input type="text" id="pagbankTestCpf" placeholder="Ex: 12345678901">
+                </div>
+                <div style="display:grid; grid-template-columns:120px 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label>DDD</label>
+                        <input type="text" id="pagbankTestPhoneArea" placeholder="11">
+                    </div>
+                    <div class="form-group">
+                        <label>Telefone</label>
+                        <input type="text" id="pagbankTestPhoneNumber" placeholder="999999999">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group payment-test-result" id="connectionTestResult" style="display:none; padding:12px; border-radius:8px; background:#0f172a; color:#e2e8f0; white-space:pre-wrap;"></div>
             <div class="payment-modal-actions" style="margin-top:1.25rem;">
                 <button type="button" class="btn btn-secondary" onclick="closeConnectionTestModal()">Cancelar</button>
                 <button type="button" class="btn btn-secondary" onclick="runConnectionTest(false)">Testar conexão</button>
-                <button type="button" class="btn btn-primary" onclick="runConnectionTest(true)">Teste completo</button>
-                <button type="button" class="btn btn-success" onclick="generateRealCheckout()" style="background-color:#10b981;">Gerar checkout real</button>
+                <button type="button" class="btn btn-primary" id="fullConnectionTestButton" onclick="runConnectionTest(true)">Teste completo</button>
+                <button type="button" class="btn btn-success" id="realCheckoutButton" onclick="generateRealCheckout()" style="background-color:#10b981;">Gerar checkout real</button>
             </div>
         </div>
     </div>
@@ -185,8 +376,34 @@
             payment_check_endpoint: '/payment_check',
             webhook_url: '',
             redirect_url: '',
-            notes: ''
+            notes: '',
+            pagbank_environment: 'production',
+            pagbank_access_token: '',
+            pagbank_webhook_url: '',
         };
+
+        const GATEWAY_FIELDS = {
+            infinitepay: {
+                gateway_name: 'gatewayName',
+                bank_name: 'bankName',
+                handle: 'handle',
+                api_base_url: 'apiBaseUrl',
+                links_endpoint: 'linksEndpoint',
+                payment_check_endpoint: 'paymentCheckEndpoint',
+                webhook_url: 'webhookUrl',
+                redirect_url: 'redirectUrl',
+                notes: 'notes'
+            },
+            pagbank: {
+                pagbank_environment: 'pagbankEnvironment',
+                pagbank_access_token: 'pagbankAccessToken',
+                pagbank_webhook_url: 'pagbankWebhookUrl',
+            }
+        };
+
+        let currentPaymentSettings = normalizePaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+        let currentAccountEmail = '';
+        let currentConnectionTestGateway = 'infinitepay';
 
         function apiFetch(path, options = {}) {
             const token = localStorage.getItem('token');
@@ -201,8 +418,8 @@
                 .finally(() => clearTimeout(timeoutId));
         }
 
-        function showNotification(message, type = 'info') {
-            const container = document.getElementById('notificationContainer') || (() => {
+        function getNotificationContainer() {
+            return document.getElementById('notificationContainer') || (() => {
                 const div = document.createElement('div');
                 div.id = 'notificationContainer';
                 div.style.position = 'fixed';
@@ -215,6 +432,10 @@
                 document.body.appendChild(div);
                 return div;
             })();
+        }
+
+        function createNotification(message, type = 'info') {
+            const container = getNotificationContainer();
 
             const note = document.createElement('div');
             note.className = `notification ${type}`;
@@ -226,7 +447,29 @@
             note.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)';
             note.style.background = type === 'success' ? '#16a34a' : (type === 'error' ? '#dc2626' : '#2563eb');
             container.appendChild(note);
+            return note;
+        }
+
+        function showNotification(message, type = 'info') {
+            const note = createNotification(message, type);
             setTimeout(() => note.remove(), 4000);
+        }
+
+        function showPersistentNotification(message, type = 'info') {
+            return createNotification(message, type);
+        }
+
+        function setSaveButtonLoading(gatewayKey, isLoading) {
+            const selector = gatewayKey
+                ? `button[data-save-gateway="${gatewayKey}"]`
+                : 'button[data-save-gateway]';
+            document.querySelectorAll(selector).forEach((button) => {
+                if (!button.dataset.defaultLabel) {
+                    button.dataset.defaultLabel = button.textContent.trim();
+                }
+                button.disabled = isLoading;
+                button.textContent = isLoading ? 'Salvando...' : button.dataset.defaultLabel;
+            });
         }
 
         function logout() {
@@ -242,19 +485,57 @@
             return Object.assign({}, DEFAULT_PAYMENT_SETTINGS, saved || {});
         }
 
-        function fillPaymentSettings(settings) {
-            document.getElementById('gatewayName').value = settings.gateway_name || '';
-            document.getElementById('bankName').value = settings.bank_name || '';
-            document.getElementById('handle').value = settings.handle || '';
-            document.getElementById('apiBaseUrl').value = settings.api_base_url || '';
-            document.getElementById('linksEndpoint').value = settings.links_endpoint || '';
-            document.getElementById('paymentCheckEndpoint').value = settings.payment_check_endpoint || '';
-            document.getElementById('webhookUrl').value = settings.webhook_url || '';
-            document.getElementById('redirectUrl').value = settings.redirect_url || '';
-            document.getElementById('notes').value = settings.notes || '';
+        function setGatewayPanelState(panel, shouldOpen) {
+            if (!panel) {
+                return;
+            }
+
+            const content = panel.querySelector('.gateway-panel-content');
+            const toggle = panel.querySelector('.gateway-panel-toggle');
+            if (!content || !toggle) {
+                return;
+            }
+
+            panel.classList.toggle('is-open', shouldOpen);
+            toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+            content.style.maxHeight = shouldOpen ? `${content.scrollHeight}px` : '0px';
         }
 
-        function loadPaymentSettings() {
+        function toggleGatewayPanel(panelId) {
+            const panel = document.getElementById(panelId);
+            if (!panel) {
+                return;
+            }
+            setGatewayPanelState(panel, !panel.classList.contains('is-open'));
+        }
+
+        function refreshGatewayPanels() {
+            document.querySelectorAll('.gateway-panel').forEach((panel) => {
+                setGatewayPanelState(panel, panel.classList.contains('is-open'));
+            });
+        }
+
+        function fillGatewaySettings(settings, gatewayKey) {
+            const fieldMap = GATEWAY_FIELDS[gatewayKey];
+            Object.entries(fieldMap).forEach(([settingKey, elementId]) => {
+                const field = document.getElementById(elementId);
+                if (field) {
+                    field.value = settings[settingKey] || '';
+                }
+            });
+        }
+
+        function fillPaymentSettings(settings, gatewayKey = null) {
+            if (!gatewayKey || gatewayKey === 'infinitepay') {
+                fillGatewaySettings(settings, 'infinitepay');
+            }
+            if (!gatewayKey || gatewayKey === 'pagbank') {
+                fillGatewaySettings(settings, 'pagbank');
+            }
+            requestAnimationFrame(refreshGatewayPanels);
+        }
+
+        function loadPaymentSettings(gatewayKey = null) {
             console.log('Iniciando carregamento de configurações...');
             apiFetch('/users/me')
                 .then((response) => {
@@ -272,38 +553,49 @@
                     if (!user) return;
                     console.log('Usuário carregado:', user.name);
                     document.getElementById('userName').textContent = user.name || 'Usuário';
-                    fillPaymentSettings(normalizePaymentSettings(user.payment_api_settings));
+                    currentAccountEmail = String(user.email || '').trim().toLowerCase();
+                    currentPaymentSettings = normalizePaymentSettings(user.payment_api_settings);
+                    fillPaymentSettings(currentPaymentSettings, gatewayKey);
                     console.log('Configurações preenchidas');
                 })
                 .catch((error) => {
                     console.error('Erro ao carregar:', error);
                     showNotification('Não foi possível carregar a configuração salva.', 'error');
-                    fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+                    currentAccountEmail = '';
+                    currentPaymentSettings = normalizePaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+                    fillPaymentSettings(currentPaymentSettings, gatewayKey);
                 });
         }
 
-        function readFormPaymentSettings() {
-            return normalizePaymentSettings({
-                gateway_name: document.getElementById('gatewayName').value.trim(),
-                bank_name: document.getElementById('bankName').value.trim(),
-                handle: document.getElementById('handle').value.trim(),
-                api_base_url: document.getElementById('apiBaseUrl').value.trim(),
-                links_endpoint: document.getElementById('linksEndpoint').value.trim(),
-                payment_check_endpoint: document.getElementById('paymentCheckEndpoint').value.trim(),
-                webhook_url: document.getElementById('webhookUrl').value.trim(),
-                redirect_url: document.getElementById('redirectUrl').value.trim(),
-                notes: document.getElementById('notes').value.trim()
-            });
+        function readGatewayFormPaymentSettings(gatewayKey) {
+            const fieldMap = GATEWAY_FIELDS[gatewayKey];
+            return Object.entries(fieldMap).reduce((result, [settingKey, elementId]) => {
+                const field = document.getElementById(elementId);
+                result[settingKey] = field ? field.value.trim() : '';
+                return result;
+            }, {});
         }
 
-        async function verifySavedSettings(expected) {
+        function readFormPaymentSettings() {
+            return normalizePaymentSettings(Object.assign(
+                {},
+                readGatewayFormPaymentSettings('infinitepay'),
+                readGatewayFormPaymentSettings('pagbank')
+            ));
+        }
+
+        function mergePaymentSettings(baseSettings, updatedSettings) {
+            return normalizePaymentSettings(Object.assign({}, baseSettings || {}, updatedSettings || {}));
+        }
+
+        async function verifySavedSettings(expected, gatewayKey = null) {
             const response = await apiFetch('/users/me');
             if (!response.ok) {
                 throw new Error('Não foi possível validar o salvamento.');
             }
             const user = await response.json();
             const saved = normalizePaymentSettings(user.payment_api_settings);
-            const keys = Object.keys(expected);
+            const keys = gatewayKey ? Object.keys(GATEWAY_FIELDS[gatewayKey]) : Object.keys(expected);
             const mismatches = keys.filter((key) => {
                 if (typeof expected[key] === 'boolean') {
                     return Boolean(saved[key]) !== Boolean(expected[key]);
@@ -313,16 +605,24 @@
             return { user, mismatches };
         }
 
-        function resetPaymentSettings() {
-            fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS);
+        function resetPaymentSettings(gatewayKey = null) {
+            fillPaymentSettings(DEFAULT_PAYMENT_SETTINGS, gatewayKey);
         }
 
-        function openConnectionTestModal() {
+        function openConnectionTestModal(gatewayKey = 'infinitepay') {
+            currentConnectionTestGateway = gatewayKey;
             document.getElementById('connectionTestModal').style.display = 'flex';
             document.getElementById('connectionTestResult').style.display = 'none';
             document.getElementById('connectionTestResult').textContent = '';
             document.getElementById('testProductName').value = document.getElementById('testProductName').value || 'Produto Teste Nexus';
             document.getElementById('testProductValue').value = document.getElementById('testProductValue').value || '10.00';
+            document.getElementById('connectionTestTitle').textContent = gatewayKey === 'pagbank' ? 'Teste de conexão do PagBank' : 'Teste de conexão';
+            document.getElementById('connectionTestDescription').textContent = gatewayKey === 'pagbank'
+                ? 'Informe um produto fictício, valor, e-mail do comprador, CPF e telefone. O e-mail do comprador deve ser diferente do e-mail da conta PagBank.'
+                : 'Preencha com um produto fictício e um valor para validar a comunicação com o gateway.';
+            document.getElementById('pagbankTestFields').style.display = gatewayKey === 'pagbank' ? 'block' : 'none';
+            document.getElementById('fullConnectionTestButton').style.display = gatewayKey === 'pagbank' ? 'none' : '';
+            document.getElementById('realCheckoutButton').style.display = gatewayKey === 'pagbank' ? 'none' : '';
         }
 
         function closeConnectionTestModal() {
@@ -351,12 +651,46 @@
             resultBox.textContent = fullTest ? 'Executando teste completo...' : 'Testando conexão...';
 
             try {
-                const response = await apiFetch(fullTest ? '/users/me/payment/test-complete' : '/users/me/payment/test-connection', {
+                const body = {
+                    product_name: productName,
+                    amount: value
+                };
+                let endpoint = fullTest ? '/users/me/payment/test-complete' : '/users/me/payment/test-connection';
+
+                if (currentConnectionTestGateway === 'pagbank') {
+                    const buyerEmail = document.getElementById('pagbankTestBuyerEmail').value.trim();
+                    const taxId = document.getElementById('pagbankTestCpf').value.trim();
+                    const phoneArea = document.getElementById('pagbankTestPhoneArea').value.trim();
+                    const phoneNumber = document.getElementById('pagbankTestPhoneNumber').value.trim();
+
+                    if (!buyerEmail) {
+                        showNotification('Informe um e-mail do comprador para testar o PagBank.', 'error');
+                        return;
+                    }
+                    if (currentAccountEmail && buyerEmail.toLowerCase() === currentAccountEmail) {
+                        showNotification('Use no teste um e-mail diferente do e-mail da conta PagBank.', 'error');
+                        return;
+                    }
+                    if (!taxId) {
+                        showNotification('Informe o CPF para testar o PagBank.', 'error');
+                        return;
+                    }
+                    if (!phoneArea || !phoneNumber) {
+                        showNotification('Informe DDD e telefone para testar o PagBank.', 'error');
+                        return;
+                    }
+
+                    endpoint = '/users/me/payment/pagbank/test-connection';
+                    body.buyer_email = buyerEmail;
+                    body.tax_id = taxId;
+                    body.phone_area = phoneArea;
+                    body.phone_number = phoneNumber;
+                    resultBox.textContent = 'Testando conexão com o PagBank...';
+                }
+
+                const response = await apiFetch(endpoint, {
                     method: 'POST',
-                    body: JSON.stringify({
-                        product_name: productName,
-                        amount: value
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 const data = await response.json();
@@ -373,6 +707,17 @@
                     `Webhook recebido: ${data.webhook_received ? 'sim' : 'não'}`,
                     `Pagamento confirmado: ${data.payment_confirmed ? 'sim' : 'não'}`,
                 ];
+                if (data.order) {
+                    lines.push(`Pedido salvo: ${data.order.id || 'n/d'}`);
+                    lines.push(`Reference ID: ${data.order.reference_id || 'n/d'}`);
+                    lines.push(`Status do gateway: ${data.order.status || 'n/d'}`);
+                    if (data.order.payment_link) {
+                        lines.push(`Link de pagamento: ${data.order.payment_link}`);
+                    }
+                    if (data.order.qr_code_text) {
+                        lines.push(`Pix copia e cola: ${data.order.qr_code_text}`);
+                    }
+                }
                 if (checkoutText) {
                     lines.push('');
                     lines.push('Resposta da cobrança:');
@@ -476,8 +821,12 @@
             }
         }
 
-        function savePaymentSettings() {
-            const data = readFormPaymentSettings();
+        function savePaymentSettings(gatewayKey = null) {
+            const data = gatewayKey
+                ? mergePaymentSettings(currentPaymentSettings, readGatewayFormPaymentSettings(gatewayKey))
+                : readFormPaymentSettings();
+            const loadingNote = showPersistentNotification('Salvando configuração...', 'info');
+            setSaveButtonLoading(gatewayKey, true);
 
             apiFetch('/users/me/settings', {
                 method: 'PATCH',
@@ -497,8 +846,9 @@
             })
             .then((user) => {
                 if (!user) return;
-                fillPaymentSettings(normalizePaymentSettings(user.payment_api_settings));
-                return verifySavedSettings(data);
+                currentPaymentSettings = normalizePaymentSettings(user.payment_api_settings);
+                fillPaymentSettings(currentPaymentSettings, gatewayKey);
+                return verifySavedSettings(data, gatewayKey);
             })
             .then((result) => {
                 if (!result) return;
@@ -511,10 +861,18 @@
             })
             .catch((error) => {
                 showNotification(error.message || 'Erro ao salvar configuração.', 'error');
+            })
+            .finally(() => {
+                loadingNote.remove();
+                setSaveButtonLoading(gatewayKey, false);
             });
         }
 
-        document.addEventListener('DOMContentLoaded', loadPaymentSettings);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPaymentSettings();
+            refreshGatewayPanels();
+        });
+        window.addEventListener('resize', refreshGatewayPanels);
     </script>
 </body>
 </html>

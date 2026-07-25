@@ -1,5 +1,7 @@
 # backend/models.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON, Float
+from datetime import datetime
+
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Date, DateTime, JSON, Float, Text
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -81,6 +83,9 @@ class User(Base):
         "webhook_secret": "",
         "environment": "production",
         "enabled": False,
+        "pagbank_environment": "production",
+        "pagbank_access_token": "",
+        "pagbank_webhook_url": "",
     })
 
     # Plano selecionado / período de teste / renovação
@@ -175,6 +180,46 @@ class Client(Base):
 
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="clients")
+
+
+class PaymentOrder(Base):
+    __tablename__ = "payment_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    gateway = Column(String(50), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reference_id = Column(String(255), nullable=False, index=True)
+    gateway_order_id = Column(String(255), nullable=True, index=True)
+    status = Column(String(50), nullable=True, index=True)
+    amount_cents = Column(Integer, nullable=False, default=0)
+    customer_name = Column(String(255), nullable=True)
+    customer_email = Column(String(255), nullable=True)
+    customer_tax_id = Column(String(20), nullable=True)
+    payment_link = Column(String(1200), nullable=True)
+    qr_code_text = Column(Text, nullable=True)
+    qr_code_image_url = Column(String(1200), nullable=True)
+    request_payload = Column(JSON, nullable=True)
+    response_payload = Column(JSON, nullable=True)
+    error_message = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class PaymentWebhookEvent(Base):
+    __tablename__ = "payment_webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    gateway = Column(String(50), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    reference_id = Column(String(255), nullable=True, index=True)
+    gateway_order_id = Column(String(255), nullable=True, index=True)
+    event_type = Column(String(100), nullable=True)
+    status = Column(String(50), nullable=True, index=True)
+    payload = Column(JSON, nullable=True)
+    processed = Column(Boolean, default=False, nullable=False)
+    error_message = Column(String(500), nullable=True)
+    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime, nullable=True)
 
 
 class Category(Base):

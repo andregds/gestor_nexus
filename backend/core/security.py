@@ -144,7 +144,12 @@ def get_plan_price(user):
     return PLAN_DEFAULT_PRICES.get(_resolve_plan_key(user), 0.0)
 
 
-def build_checkout_payload(user, order_nsu: Optional[str] = None):
+def build_checkout_payload(
+    user,
+    order_nsu: Optional[str] = None,
+    amount: Optional[float] = None,
+    item_description: Optional[str] = None,
+):
     settings = _normalize_payment_settings(getattr(user, "payment_api_settings", None))
 
     # Log seguro: nunca registrar api_key / webhook_secret em texto puro.
@@ -155,8 +160,14 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
     links_endpoint = (settings.get("links_endpoint") or "/links").strip()
     webhook_url = (settings.get("webhook_url") or "").strip()
     redirect_url = (settings.get("redirect_url") or "").strip()
-    amount = get_plan_price(user)
-    
+    if amount is None:
+        amount = get_plan_price(user)
+    else:
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Informe um valor válido para gerar o checkout.")
+
     if not handle:
         raise HTTPException(status_code=400, detail="Configure o Handle / Conta antes de gerar o checkout.")
     if not api_base_url:
@@ -167,6 +178,7 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
     plan_key = _resolve_plan_key(user)
     amount_cents = int(round(amount * 100))
     order_nsu = order_nsu or get_renewal_order_nsu(user) or f"PLAN-{user.id}-{plan_key}"
+    description = (item_description or "").strip() or user.selected_plan_label or f"Plano {plan_key}"
     request_body = {
         "handle": handle,
         "order_nsu": order_nsu,
@@ -174,7 +186,7 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
             "user_id": user.id,
             "user_email": user.email,
             "selected_plan": getattr(user, "selected_plan", None),
-            "selected_plan_label": user.selected_plan_label,
+            "selected_plan_label": description,
             "selected_plan_price": amount,
             "order_nsu": order_nsu,
         },
@@ -185,7 +197,7 @@ def build_checkout_payload(user, order_nsu: Optional[str] = None):
         "user_id": user.id,
         "items": [
             {
-                "description": user.selected_plan_label or f"Plano {plan_key}",
+                "description": description,
                 "quantity": 1,
                 "price": amount_cents,
             }
@@ -397,13 +409,23 @@ def sync_user_payment_from_gateway(user, db: Session):
     return True
 
 
-def create_checkout_link_for_user(user, db: Optional[Session] = None):
+def create_checkout_link_for_user(
+    user,
+    db: Optional[Session] = None,
+    amount: Optional[float] = None,
+    item_description: Optional[str] = None,
+):
     logger.info("[CREATE-CHECKOUT] Gerando checkout para usuario %s", user.id)
 
     order_nsu = ensure_renewal_order_nsu(user, db=db)
     logger.debug("[CREATE-CHECKOUT] order_nsu gerado: %s", order_nsu)
 
-    url, request_body, _, _ = build_checkout_payload(user, order_nsu=order_nsu)
+    url, request_body, _, _ = build_checkout_payload(
+        user,
+        order_nsu=order_nsu,
+        amount=amount,
+        item_description=item_description,
+    )
 
     try:
         response = httpx.post(

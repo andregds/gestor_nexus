@@ -43,6 +43,9 @@ DEFAULT_PAYMENT_API_SETTINGS = {
     "webhook_secret": "",
     "environment": "production",
     "enabled": False,
+    "pagbank_environment": "production",
+    "pagbank_access_token": "",
+    "pagbank_webhook_url": "",
 }
 
 

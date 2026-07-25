@@ -4,16 +4,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, object_session
 from sqlalchemy import event
 from sqlalchemy.orm.attributes import flag_modified
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Dict, List, Optional
 import json
 
 # Imports do projeto
 from core.dependencies import get_db, get_current_user
 from schemas.user import UserResponse, UserSettingsUpdate, DEFAULT_PAYMENT_API_SETTINGS
+from core.pagbank_orders import (
+    build_pagbank_pf_payload,
+    clean_digits,
+    create_pagbank_order,
+    extract_pagbank_order_summary,
+)
 from core.security import get_plan_duration_days
-from models import User
+from models import PaymentOrder, PaymentWebhookEvent, User
 from reminder_utils import (
     normalize_custom_reminder_scenarios,
     normalize_reminder_media,
@@ -209,6 +215,76 @@ class PaymentTestConnectionRequest(BaseModel):
     amount: float
 
 
+class PagBankPhoneRequest(BaseModel):
+    country: str = "55"
+    area: str
+    number: str
+    type: str = "MOBILE"
+
+    @field_validator("country", "area", "number", mode="before")
+    @classmethod
+    def _digits_only(cls, value):
+        digits = clean_digits(value)
+        if not digits:
+            raise ValueError("Informe apenas números válidos.")
+        return digits
+
+    @field_validator("type")
+    @classmethod
+    def _normalize_type(cls, value):
+        normalized = str(value or "MOBILE").strip().upper()
+        if normalized not in {"MOBILE", "HOME", "WORK"}:
+            raise ValueError("Tipo de telefone inválido.")
+        return normalized
+
+
+class PagBankCustomerPfRequest(BaseModel):
+    name: str
+    email: EmailStr
+    tax_id: str
+    phones: List[PagBankPhoneRequest] = Field(min_length=1)
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_tax_id(cls, value):
+        digits = clean_digits(value)
+        if len(digits) != 11:
+            raise ValueError("Para Pessoa Física, informe um CPF com 11 dígitos.")
+        return digits
+
+
+class PagBankOrderItemRequest(BaseModel):
+    reference_id: str
+    name: str
+    quantity: int = Field(ge=1)
+    unit_amount: int = Field(ge=1, description="Valor unitário em centavos.")
+
+
+class PagBankPfOrderRequest(BaseModel):
+    reference_id: Optional[str] = None
+    customer: PagBankCustomerPfRequest
+    items: List[PagBankOrderItemRequest] = Field(min_length=1)
+    notification_urls: Optional[List[str]] = None
+    qr_code_expiration_minutes: int = Field(default=30, ge=1, le=1440)
+
+
+class PagBankTestConnectionRequest(BaseModel):
+    product_name: str
+    amount: float
+    buyer_email: EmailStr
+    tax_id: str
+    phone_area: str
+    phone_number: str
+
+    @field_validator("tax_id", "phone_area", "phone_number", mode="before")
+    @classmethod
+    def _digits_only(cls, value):
+        digits = clean_digits(value)
+        if not digits:
+            raise ValueError("Informe apenas números válidos.")
+        return digits
+
+
 class InfinitePayWebhookPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     invoice_slug: Optional[str] = None
@@ -280,6 +356,94 @@ def _build_infinitepay_payload(current_user: User, settings: dict, payload: Paym
 
     url = f"{api_base_url}{links_endpoint if links_endpoint.startswith('/') else '/' + links_endpoint}"
     return url, request_body, amount_cents
+
+
+def _extract_pagbank_reference_id(payload: Dict[str, Any]) -> Optional[str]:
+    candidates = [
+        payload.get("reference_id"),
+        payload.get("referenceId"),
+    ]
+    order = payload.get("order")
+    if isinstance(order, dict):
+        candidates.extend([
+            order.get("reference_id"),
+            order.get("referenceId"),
+        ])
+    for qr_code in payload.get("qr_codes", []) if isinstance(payload.get("qr_codes"), list) else []:
+        if isinstance(qr_code, dict):
+            candidates.extend([
+                qr_code.get("reference_id"),
+                qr_code.get("referenceId"),
+            ])
+    for candidate in candidates:
+        if candidate:
+            return str(candidate).strip()
+    return None
+
+
+def _extract_pagbank_status(payload: Dict[str, Any]) -> Optional[str]:
+    candidates = [
+        payload.get("status"),
+        payload.get("event"),
+        payload.get("notification_type"),
+    ]
+    for qr_code in payload.get("qr_codes", []) if isinstance(payload.get("qr_codes"), list) else []:
+        if isinstance(qr_code, dict):
+            candidates.append(qr_code.get("status"))
+    for candidate in candidates:
+        if candidate:
+            return str(candidate).strip()
+    return None
+
+
+def _extract_pagbank_order_id(payload: Dict[str, Any]) -> Optional[str]:
+    candidates = [
+        payload.get("id"),
+        payload.get("order_id"),
+        payload.get("orderId"),
+    ]
+    order = payload.get("order")
+    if isinstance(order, dict):
+        candidates.extend([order.get("id"), order.get("order_id"), order.get("orderId")])
+    for candidate in candidates:
+        if candidate:
+            return str(candidate).strip()
+    return None
+
+
+def _save_pagbank_order_record(
+    *,
+    db: Session,
+    owner_id: int,
+    request_payload: Dict[str, Any],
+    response_payload: Optional[Dict[str, Any]] = None,
+    summary: Optional[Dict[str, Any]] = None,
+    error_message: Optional[str] = None,
+) -> PaymentOrder:
+    customer = request_payload.get("customer") if isinstance(request_payload.get("customer"), dict) else {}
+    qr_codes = request_payload.get("qr_codes") if isinstance(request_payload.get("qr_codes"), list) else []
+    amount_info = qr_codes[0].get("amount") if qr_codes and isinstance(qr_codes[0], dict) and isinstance(qr_codes[0].get("amount"), dict) else {}
+    order = PaymentOrder(
+        gateway="pagbank",
+        owner_id=owner_id,
+        reference_id=str(request_payload.get("reference_id") or ""),
+        gateway_order_id=(summary or {}).get("gateway_order_id"),
+        status=(summary or {}).get("status") or ("error" if error_message else "created"),
+        amount_cents=int(amount_info.get("value") or 0),
+        customer_name=customer.get("name"),
+        customer_email=customer.get("email"),
+        customer_tax_id=customer.get("tax_id"),
+        payment_link=(summary or {}).get("payment_link"),
+        qr_code_text=(summary or {}).get("qr_code_text"),
+        qr_code_image_url=(summary or {}).get("qr_code_png"),
+        request_payload=request_payload,
+        response_payload=response_payload,
+        error_message=error_message,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
 
 
 def _extract_user_id_from_order(order_nsu: str) -> Optional[int]:
@@ -580,6 +744,234 @@ def receive_infinitepay_webhook(
         }
 
 
+@payment_webhook_router.post("/pagbank")
+def receive_pagbank_webhook(
+        webhook_data: dict,
+        db: Session = Depends(get_db)
+):
+    reference_id = _extract_pagbank_reference_id(webhook_data)
+    gateway_order_id = _extract_pagbank_order_id(webhook_data)
+    matched_order = None
+
+    if reference_id:
+        matched_order = db.query(PaymentOrder).filter(
+            PaymentOrder.gateway == "pagbank",
+            PaymentOrder.reference_id == reference_id
+        ).order_by(PaymentOrder.id.desc()).first()
+
+    if not matched_order and gateway_order_id:
+        matched_order = db.query(PaymentOrder).filter(
+            PaymentOrder.gateway == "pagbank",
+            PaymentOrder.gateway_order_id == gateway_order_id
+        ).order_by(PaymentOrder.id.desc()).first()
+
+    webhook_event = PaymentWebhookEvent(
+        gateway="pagbank",
+        owner_id=matched_order.owner_id if matched_order else None,
+        reference_id=reference_id,
+        gateway_order_id=gateway_order_id,
+        event_type=str(webhook_data.get("event") or webhook_data.get("notification_type") or "pagbank_webhook"),
+        status=_extract_pagbank_status(webhook_data),
+        payload=webhook_data,
+        processed=True,
+        processed_at=datetime.utcnow(),
+    )
+    db.add(webhook_event)
+    db.commit()
+    db.refresh(webhook_event)
+
+    return {
+        "success": True,
+        "message": "Webhook do PagBank recebido.",
+        "webhook_event_id": webhook_event.id,
+        "matched_order_id": matched_order.id if matched_order else None,
+        "reference_id": reference_id,
+    }
+
+
+@router.post("/me/payment/pagbank/orders/pf")
+async def create_pagbank_pf_order(
+        payload: PagBankPfOrderRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    settings = _normalize_payment_settings(user_db.payment_api_settings)
+
+    try:
+        request_payload = build_pagbank_pf_payload(
+            user_id=user_db.id,
+            settings=settings,
+            reference_id=payload.reference_id,
+            customer=payload.customer.model_dump(),
+            items=[item.model_dump() for item in payload.items],
+            notification_urls=payload.notification_urls,
+            qr_code_expiration_minutes=payload.qr_code_expiration_minutes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        status_code, response_data, raw_body = await create_pagbank_order(settings, request_payload)
+    except ValueError as exc:
+        _save_pagbank_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        _save_pagbank_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if status_code not in {200, 201}:
+        error_message = "PagBank retornou erro ao criar o pedido."
+        if isinstance(response_data, dict):
+            detail = response_data.get("error_messages") or response_data.get("message") or response_data.get("error")
+            if detail:
+                error_message = f"{error_message} {detail}"
+        elif raw_body:
+            error_message = f"{error_message} {raw_body}"
+
+        _save_pagbank_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+            error_message=error_message,
+        )
+        raise HTTPException(status_code=502, detail=error_message)
+
+    summary = extract_pagbank_order_summary(response_data if isinstance(response_data, dict) else {"raw_response": raw_body})
+    order_record = _save_pagbank_order_record(
+        db=db,
+        owner_id=user_db.id,
+        request_payload=request_payload,
+        response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        summary=summary,
+    )
+
+    return {
+        "success": True,
+        "message": "Pedido PagBank criado com sucesso.",
+        "status_code": status_code,
+        "order": {
+            "id": order_record.id,
+            "reference_id": order_record.reference_id,
+            "gateway_order_id": order_record.gateway_order_id,
+            "status": order_record.status,
+            "amount_cents": order_record.amount_cents,
+            "payment_link": order_record.payment_link,
+            "qr_code_text": order_record.qr_code_text,
+            "qr_code_image_url": order_record.qr_code_image_url,
+        },
+        "gateway_response": response_data,
+    }
+
+
+@router.post("/me/payment/pagbank/test-connection")
+async def test_pagbank_connection(
+        payload: PagBankTestConnectionRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    settings = _normalize_payment_settings(user_db.payment_api_settings)
+    merchant_email = str(user_db.email or "").strip().lower()
+    buyer_email = str(payload.buyer_email or "").strip().lower()
+
+    if buyer_email == merchant_email:
+        raise HTTPException(
+            status_code=400,
+            detail="O e-mail do comprador deve ser diferente do e-mail da conta PagBank."
+        )
+
+    try:
+        request_payload = build_pagbank_pf_payload(
+            user_id=user_db.id,
+            settings=settings,
+            reference_id=None,
+            customer={
+                "name": user_db.name,
+                "email": buyer_email,
+                "tax_id": payload.tax_id,
+                "phones": [
+                    {
+                        "country": "55",
+                        "area": payload.phone_area,
+                        "number": payload.phone_number,
+                        "type": "MOBILE",
+                    }
+                ],
+            },
+            items=[
+                {
+                    "reference_id": f"PAGBANK-TEST-{user_db.id}",
+                    "name": payload.product_name.strip(),
+                    "quantity": 1,
+                    "unit_amount": int(round(payload.amount * 100)),
+                }
+            ],
+            notification_urls=None,
+            qr_code_expiration_minutes=30,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        status_code, response_data, raw_body = await create_pagbank_order(settings, request_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if status_code not in {200, 201}:
+        detail = response_data.get("error_messages") if isinstance(response_data, dict) else None
+        if not detail:
+            detail = response_data.get("message") if isinstance(response_data, dict) else raw_body
+        raise HTTPException(status_code=502, detail=f"PagBank retornou erro ao testar a conexão. {detail}")
+
+    summary = extract_pagbank_order_summary(response_data if isinstance(response_data, dict) else {"raw_response": raw_body})
+    order_record = _save_pagbank_order_record(
+        db=db,
+        owner_id=user_db.id,
+        request_payload=request_payload,
+        response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        summary=summary,
+    )
+
+    return {
+        "message": "Conexão PagBank validada com sucesso!",
+        "success": True,
+        "checkout_created": True,
+        "webhook_received": False,
+        "payment_confirmed": False,
+        "gateway_response": response_data,
+        "order": {
+            "id": order_record.id,
+            "reference_id": order_record.reference_id,
+            "gateway_order_id": order_record.gateway_order_id,
+            "status": order_record.status,
+            "payment_link": order_record.payment_link,
+            "qr_code_text": order_record.qr_code_text,
+            "qr_code_image_url": order_record.qr_code_image_url,
+            "amount_cents": order_record.amount_cents,
+        },
+    }
+
+
 @router.post("/me/payment/test-connection")
 async def test_payment_connection(
         payload: PaymentTestConnectionRequest,
@@ -592,7 +984,7 @@ async def test_payment_connection(
 
     settings = _normalize_payment_settings(user_db.payment_api_settings)
 
-    url, request_body, amount_cents = _build_infinitepay_payload(current_user, settings, payload)
+    url, request_body, amount_cents = _build_infinitepay_payload(user_db, settings, payload)
 
     if not request_body["handle"]:
         raise HTTPException(status_code=400, detail="Preencha o Handle / Conta antes de testar.")
@@ -648,7 +1040,7 @@ async def test_payment_complete(
         settings = _normalize_payment_settings(user_db.payment_api_settings)
         
         try:
-            url, request_body, amount_cents = _build_infinitepay_payload(current_user, settings, payload)
+            url, request_body, amount_cents = _build_infinitepay_payload(user_db, settings, payload)
         except Exception as e:
             print(f"[CHECKOUT-ERROR] Erro ao construir payload: {str(e)}")
             raise HTTPException(status_code=400, detail=f"Erro ao construir payload: {str(e)}")
@@ -726,7 +1118,7 @@ async def test_payment_complete(
                 transaction_nsu=f"TEST-TX-{current_user.id}",
                 order_nsu=request_body["order_nsu"],
                 receipt_url="https://checkout.infinitepay.io/receipt/teste",
-                customer_email=current_user.email,
+                customer_email=user_db.email,
                 status="approved",
             )
             webhook_result = _process_infinitepay_webhook(webhook_payload, db)
@@ -762,11 +1154,26 @@ def create_real_checkout(
     O usuario sera redirecionado para o gateway para fazer o pagamento.
     """
     try:
-        print(f"\n[CREATE-REAL-CHECKOUT] Gerando checkout real para usuario {current_user.id}")
+        user_db = db.query(User).filter(User.id == current_user.id).first()
+        if not user_db:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+        print(f"\n[CREATE-REAL-CHECKOUT] Gerando checkout real para usuario {user_db.id}")
+
+        product_name = payload.product_name.strip()
+        if not product_name:
+            raise HTTPException(status_code=400, detail="Informe o nome do produto para gerar o checkout.")
+        if payload.amount < 1:
+            raise HTTPException(status_code=400, detail="O valor mínimo para gerar o checkout é R$ 1,00.")
         
         from core.security import create_checkout_link_for_user
         
-        checkout_url, gateway_response = create_checkout_link_for_user(current_user, db)
+        checkout_url, gateway_response = create_checkout_link_for_user(
+            user_db,
+            db,
+            amount=payload.amount,
+            item_description=product_name,
+        )
         
         print(f"[CREATE-REAL-CHECKOUT] Checkout gerado: {checkout_url[:80]}...")
         
@@ -794,9 +1201,13 @@ def sync_payment(
     Util para renovacoes que nao chegaram via webhook.
     """
     try:
-        print(f"\n[SYNC-PAYMENT] Sincronizando pagamento para usuario {current_user.id}")
+        user_db = db.query(User).filter(User.id == current_user.id).first()
+        if not user_db:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+        print(f"\n[SYNC-PAYMENT] Sincronizando pagamento para usuario {user_db.id}")
         
-        if not current_user.renewal_order_nsu and not current_user.renewal_invoice_slug:
+        if not user_db.renewal_order_nsu and not user_db.renewal_invoice_slug:
             return {
                 "success": False,
                 "message": "Nenhuma renovacao pendente",
@@ -805,15 +1216,15 @@ def sync_payment(
         
         from core.security import sync_user_payment_from_gateway
         
-        result = sync_user_payment_from_gateway(current_user, db)
+        result = sync_user_payment_from_gateway(user_db, db)
         
         if result:
             return {
                 "success": True,
                 "message": "Pagamento sincronizado e usuario renovado!",
-                "user_id": current_user.id,
-                "is_active": current_user.is_active,
-                "trial_expires_at": str(current_user.trial_expires_at),
+                "user_id": user_db.id,
+                "is_active": user_db.is_active,
+                "trial_expires_at": str(user_db.trial_expires_at),
             }
         else:
             return {
