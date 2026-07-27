@@ -86,6 +86,14 @@ class User(Base):
         "pagbank_environment": "production",
         "pagbank_access_token": "",
         "pagbank_webhook_url": "",
+        "mercadopago_checkout_mode": "production",
+        "mercadopago_access_token": "",
+        "mercadopago_public_key": "",
+        "mercadopago_webhook_url": "",
+        "mercadopago_success_url": "",
+        "mercadopago_pending_url": "",
+        "mercadopago_failure_url": "",
+        "mercadopago_statement_descriptor": "",
     })
 
     # Plano selecionado / período de teste / renovação

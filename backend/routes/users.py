@@ -1,6 +1,6 @@
 # backend/routes/users.py
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, object_session
 from sqlalchemy import event
 from sqlalchemy.orm.attributes import flag_modified
@@ -17,6 +17,12 @@ from core.pagbank_orders import (
     clean_digits,
     create_pagbank_order,
     extract_pagbank_order_summary,
+)
+from core.mercadopago_orders import (
+    build_mercadopago_external_reference,
+    build_mercadopago_preference_payload,
+    create_mercadopago_preference,
+    extract_mercadopago_preference_summary,
 )
 from core.security import get_plan_duration_days
 from models import PaymentOrder, PaymentWebhookEvent, User
@@ -285,6 +291,19 @@ class PagBankTestConnectionRequest(BaseModel):
         return digits
 
 
+class MercadoPagoWebhookPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    action: Optional[str] = None
+    type: Optional[str] = None
+    topic: Optional[str] = None
+    id: Optional[str] = None
+    live_mode: Optional[bool] = None
+    date_created: Optional[str] = None
+    user_id: Optional[str] = None
+    api_version: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
 class InfinitePayWebhookPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     invoice_slug: Optional[str] = None
@@ -446,6 +465,36 @@ def _save_pagbank_order_record(
     return order
 
 
+def _save_mercadopago_order_record(
+    *,
+    db: Session,
+    owner_id: int,
+    request_payload: Dict[str, Any],
+    response_payload: Optional[Dict[str, Any]] = None,
+    summary: Optional[Dict[str, Any]] = None,
+    error_message: Optional[str] = None,
+) -> PaymentOrder:
+    payer = request_payload.get("payer") if isinstance(request_payload.get("payer"), dict) else {}
+    order = PaymentOrder(
+        gateway="mercadopago",
+        owner_id=owner_id,
+        reference_id=str(request_payload.get("external_reference") or ""),
+        gateway_order_id=(summary or {}).get("gateway_order_id"),
+        status=(summary or {}).get("status") or ("error" if error_message else "created"),
+        amount_cents=int(round(float(((request_payload.get("items") or [{}])[0] or {}).get("unit_price") or 0) * 100)),
+        customer_name=" ".join([str(payer.get("name") or "").strip(), str(payer.get("surname") or "").strip()]).strip() or None,
+        customer_email=payer.get("email"),
+        payment_link=(summary or {}).get("payment_link"),
+        request_payload=request_payload,
+        response_payload=response_payload,
+        error_message=error_message,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
 def _extract_user_id_from_order(order_nsu: str) -> Optional[int]:
     if not order_nsu:
         return None
@@ -583,6 +632,35 @@ def _find_user_for_webhook(db: Session, payload: dict) -> Optional[User]:
             return user_db
 
     print(f"[WEBHOOK] ERRO: Nenhum usuario encontrado. Payload: {payload}")
+    return None
+
+
+def _extract_mercadopago_notification_id(payload: Dict[str, Any], query_params: Dict[str, Any]) -> Optional[str]:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    candidates = [
+        query_params.get("id"),
+        query_params.get("data.id"),
+        payload.get("id"),
+        data.get("id"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            return str(candidate).strip()
+    return None
+
+
+def _extract_mercadopago_reference_id(payload: Dict[str, Any], query_params: Dict[str, Any]) -> Optional[str]:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    candidates = [
+        query_params.get("external_reference"),
+        payload.get("external_reference"),
+        data.get("external_reference"),
+        metadata.get("external_reference"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            return str(candidate).strip()
     return None
 
 
@@ -789,6 +867,69 @@ def receive_pagbank_webhook(
     }
 
 
+@payment_webhook_router.api_route("/mercadopago", methods=["GET", "POST"])
+async def receive_mercadopago_webhook(
+        request: Request,
+        db: Session = Depends(get_db)
+):
+    query_params = dict(request.query_params)
+    webhook_data: Dict[str, Any] = {}
+
+    if request.method == "POST":
+        try:
+            webhook_data = await request.json()
+        except Exception:
+            webhook_data = {}
+
+    resource_id = _extract_mercadopago_notification_id(webhook_data, query_params)
+    reference_id = _extract_mercadopago_reference_id(webhook_data, query_params)
+    event_type = str(
+        query_params.get("type")
+        or query_params.get("topic")
+        or webhook_data.get("type")
+        or webhook_data.get("topic")
+        or webhook_data.get("action")
+        or "mercadopago_webhook"
+    ).strip()
+    status_value = str(
+        webhook_data.get("action")
+        or webhook_data.get("status")
+        or query_params.get("action")
+        or ""
+    ).strip()
+
+    matched_order = None
+    if reference_id:
+        matched_order = db.query(PaymentOrder).filter(
+            PaymentOrder.gateway == "mercadopago",
+            PaymentOrder.reference_id == reference_id
+        ).order_by(PaymentOrder.id.desc()).first()
+
+    webhook_event = PaymentWebhookEvent(
+        gateway="mercadopago",
+        owner_id=matched_order.owner_id if matched_order else None,
+        reference_id=reference_id,
+        gateway_order_id=resource_id,
+        event_type=event_type,
+        status=status_value or None,
+        payload={"query": query_params, "body": webhook_data},
+        processed=True,
+        processed_at=datetime.utcnow(),
+    )
+    db.add(webhook_event)
+    db.commit()
+    db.refresh(webhook_event)
+
+    return {
+        "success": True,
+        "message": "Webhook do Mercado Pago recebido.",
+        "webhook_event_id": webhook_event.id,
+        "matched_order_id": matched_order.id if matched_order else None,
+        "reference_id": reference_id,
+        "resource_id": resource_id,
+    }
+
+
 @router.post("/me/payment/pagbank/orders/pf")
 async def create_pagbank_pf_order(
         payload: PagBankPfOrderRequest,
@@ -967,6 +1108,91 @@ async def test_pagbank_connection(
             "payment_link": order_record.payment_link,
             "qr_code_text": order_record.qr_code_text,
             "qr_code_image_url": order_record.qr_code_image_url,
+            "amount_cents": order_record.amount_cents,
+        },
+    }
+
+
+@router.post("/me/payment/mercadopago/test-connection")
+async def test_mercadopago_connection(
+        payload: PaymentTestConnectionRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    settings = _normalize_payment_settings(user_db.payment_api_settings)
+
+    try:
+        request_payload = build_mercadopago_preference_payload(
+            user=user_db,
+            settings=settings,
+            product_name=payload.product_name.strip(),
+            amount=payload.amount,
+            external_reference=build_mercadopago_external_reference(user_db.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        status_code, response_data, raw_body = await create_mercadopago_preference(settings, request_payload)
+    except ValueError as exc:
+        _save_mercadopago_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        _save_mercadopago_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if status_code not in {200, 201}:
+        detail = response_data.get("message") if isinstance(response_data, dict) else raw_body
+        error_message = f"Mercado Pago retornou erro ao testar a conexão. {detail}"
+        _save_mercadopago_order_record(
+            db=db,
+            owner_id=user_db.id,
+            request_payload=request_payload,
+            response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+            error_message=error_message,
+        )
+        raise HTTPException(status_code=502, detail=error_message)
+
+    summary = extract_mercadopago_preference_summary(
+        response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        settings=settings,
+    )
+    order_record = _save_mercadopago_order_record(
+        db=db,
+        owner_id=user_db.id,
+        request_payload=request_payload,
+        response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        summary=summary,
+    )
+
+    return {
+        "message": "Conexão Mercado Pago validada com sucesso!",
+        "success": True,
+        "checkout_created": True,
+        "webhook_received": False,
+        "payment_confirmed": False,
+        "gateway_response": response_data,
+        "order": {
+            "id": order_record.id,
+            "reference_id": order_record.reference_id,
+            "gateway_order_id": order_record.gateway_order_id,
+            "status": order_record.status,
+            "payment_link": order_record.payment_link,
+            "sandbox_payment_link": summary.get("sandbox_init_point"),
             "amount_cents": order_record.amount_cents,
         },
     }
@@ -1189,6 +1415,77 @@ def create_real_checkout(
     except Exception as e:
         print(f"[CREATE-REAL-CHECKOUT] Erro: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Erro ao criar checkout: {str(e)}")
+
+
+@router.post("/me/payment/mercadopago/create-checkout")
+async def create_mercadopago_checkout(
+        payload: PaymentTestConnectionRequest,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    user_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    product_name = payload.product_name.strip()
+    if not product_name:
+        raise HTTPException(status_code=400, detail="Informe o nome do produto para gerar o checkout.")
+    if payload.amount < 1:
+        raise HTTPException(status_code=400, detail="O valor mínimo para gerar o checkout é R$ 1,00.")
+
+    settings = _normalize_payment_settings(user_db.payment_api_settings)
+    try:
+        request_payload = build_mercadopago_preference_payload(
+            user=user_db,
+            settings=settings,
+            product_name=product_name,
+            amount=payload.amount,
+            external_reference=build_mercadopago_external_reference(user_db.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        status_code, response_data, raw_body = await create_mercadopago_preference(settings, request_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if status_code not in {200, 201}:
+        detail = response_data.get("message") if isinstance(response_data, dict) else raw_body
+        raise HTTPException(status_code=502, detail=f"Mercado Pago retornou erro ao criar o checkout. {detail}")
+
+    summary = extract_mercadopago_preference_summary(
+        response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        settings=settings,
+    )
+    order_record = _save_mercadopago_order_record(
+        db=db,
+        owner_id=user_db.id,
+        request_payload=request_payload,
+        response_payload=response_data if isinstance(response_data, dict) else {"raw_response": raw_body},
+        summary=summary,
+    )
+
+    checkout_url = summary.get("payment_link") or summary.get("init_point") or summary.get("sandbox_init_point")
+    if not checkout_url:
+        raise HTTPException(status_code=502, detail="O Mercado Pago não retornou uma URL de checkout válida.")
+
+    return {
+        "success": True,
+        "checkout_url": checkout_url,
+        "url": checkout_url,
+        "sandbox_checkout_url": summary.get("sandbox_init_point"),
+        "gateway_response": response_data,
+        "order": {
+            "id": order_record.id,
+            "reference_id": order_record.reference_id,
+            "gateway_order_id": order_record.gateway_order_id,
+            "status": order_record.status,
+            "payment_link": order_record.payment_link,
+        },
+    }
 
 
 @router.post("/me/payment/sync")

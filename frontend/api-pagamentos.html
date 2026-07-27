@@ -314,6 +314,91 @@
                                 </div>
                                 </div>
                             </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="gateway-panel" id="mercadoPagoPanel">
+                                    <button type="button" class="gateway-panel-toggle" onclick="toggleGatewayPanel('mercadoPagoPanel')" aria-expanded="false" aria-controls="mercadoPagoPanelContent">
+                                        <div class="gateway-panel-toggle-inner" style="background:rgba(2, 132, 199, 0.10); border-color:rgba(2, 132, 199, 0.24);">
+                                            <div>
+                                                <h4 style="margin:0 0 0.2rem; color:#0284c7; font-size:1.15rem; font-weight:800; letter-spacing:0.01em;">Mercado Pago</h4>
+                                                <small style="color:#075985;">Checkout Pro com criação de preference, retorno de checkout e webhook por conta.</small>
+                                            </div>
+                                            <span class="gateway-panel-toggle-icon" style="color:#0284c7;">▾</span>
+                                        </div>
+                                    </button>
+                                    <div class="gateway-panel-content" id="mercadoPagoPanelContent">
+                                    <div class="row g-3">
+                                        <div class="col-12 col-md-4">
+                                            <div class="form-group mb-0">
+                                                <label>Modo do checkout</label>
+                                                <select id="mercadopagoCheckoutMode">
+                                                    <option value="production">Produção</option>
+                                                    <option value="sandbox">Sandbox</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-8">
+                                            <div class="form-group mb-0">
+                                                <label>Identificação do pagamento</label>
+                                                <input type="text" id="mercadopagoStatementDescriptor" placeholder="Ex: NexusMonitor">
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>Access Token</label>
+                                                <input type="text" id="mercadopagoAccessToken" placeholder="Cole aqui o Access Token do Mercado Pago">
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>Public Key</label>
+                                                <input type="text" id="mercadopagoPublicKey" placeholder="Opcional para referência visual">
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div style="padding:0.9rem 1rem; border-radius:10px; border:1px solid rgba(2, 132, 199, 0.22); background:rgba(2, 132, 199, 0.08);">
+                                                <strong style="display:block; margin-bottom:0.35rem; color:#075985;">Como configurar esta conta</strong>
+                                                <small style="display:block; color:#0f172a; line-height:1.55;">
+                                                    Cada usuário deve usar o <strong>próprio Access Token</strong> do Mercado Pago. O modo
+                                                    <strong>Sandbox</strong> abre o <code>sandbox_init_point</code> retornado pela preference;
+                                                    <strong>Produção</strong> usa o <code>init_point</code>. Configure também a URL pública do webhook
+                                                    em <code>/v1/webhooks/mercadopago</code>.
+                                                </small>
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>Webhook URL</label>
+                                                <input type="text" id="mercadopagoWebhookUrl" placeholder="https://seu-dominio.com/v1/webhooks/mercadopago">
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>URL de sucesso</label>
+                                                <input type="text" id="mercadopagoSuccessUrl" placeholder="https://seu-dominio.com/pagamento/sucesso">
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>URL pendente</label>
+                                                <input type="text" id="mercadopagoPendingUrl" placeholder="https://seu-dominio.com/pagamento/pendente">
+                                            </div>
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <div class="form-group mb-0">
+                                                <label>URL de falha</label>
+                                                <input type="text" id="mercadopagoFailureUrl" placeholder="https://seu-dominio.com/pagamento/falha">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="payment-actions" style="margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                                        <button type="button" class="btn btn-secondary" onclick="openConnectionTestModal('mercadopago')">Teste de conexão</button>
+                                        <button type="button" class="btn btn-secondary" onclick="resetPaymentSettings('mercadopago')">Restaurar padrão</button>
+                                        <button type="button" class="btn btn-secondary" onclick="loadPaymentSettings('mercadopago')">Recarregar</button>
+                                        <button type="button" class="btn btn-primary" data-save-gateway="mercadopago" onclick="savePaymentSettings('mercadopago')">Salvar</button>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -380,6 +465,14 @@
             pagbank_environment: 'production',
             pagbank_access_token: '',
             pagbank_webhook_url: '',
+            mercadopago_checkout_mode: 'production',
+            mercadopago_access_token: '',
+            mercadopago_public_key: '',
+            mercadopago_webhook_url: '',
+            mercadopago_success_url: '',
+            mercadopago_pending_url: '',
+            mercadopago_failure_url: '',
+            mercadopago_statement_descriptor: '',
         };
 
         const GATEWAY_FIELDS = {
@@ -398,6 +491,16 @@
                 pagbank_environment: 'pagbankEnvironment',
                 pagbank_access_token: 'pagbankAccessToken',
                 pagbank_webhook_url: 'pagbankWebhookUrl',
+            },
+            mercadopago: {
+                mercadopago_checkout_mode: 'mercadopagoCheckoutMode',
+                mercadopago_access_token: 'mercadopagoAccessToken',
+                mercadopago_public_key: 'mercadopagoPublicKey',
+                mercadopago_webhook_url: 'mercadopagoWebhookUrl',
+                mercadopago_success_url: 'mercadopagoSuccessUrl',
+                mercadopago_pending_url: 'mercadopagoPendingUrl',
+                mercadopago_failure_url: 'mercadopagoFailureUrl',
+                mercadopago_statement_descriptor: 'mercadopagoStatementDescriptor',
             }
         };
 
@@ -532,6 +635,9 @@
             if (!gatewayKey || gatewayKey === 'pagbank') {
                 fillGatewaySettings(settings, 'pagbank');
             }
+            if (!gatewayKey || gatewayKey === 'mercadopago') {
+                fillGatewaySettings(settings, 'mercadopago');
+            }
             requestAnimationFrame(refreshGatewayPanels);
         }
 
@@ -580,7 +686,8 @@
             return normalizePaymentSettings(Object.assign(
                 {},
                 readGatewayFormPaymentSettings('infinitepay'),
-                readGatewayFormPaymentSettings('pagbank')
+                readGatewayFormPaymentSettings('pagbank'),
+                readGatewayFormPaymentSettings('mercadopago')
             ));
         }
 
@@ -616,12 +723,16 @@
             document.getElementById('connectionTestResult').textContent = '';
             document.getElementById('testProductName').value = document.getElementById('testProductName').value || 'Produto Teste Nexus';
             document.getElementById('testProductValue').value = document.getElementById('testProductValue').value || '10.00';
-            document.getElementById('connectionTestTitle').textContent = gatewayKey === 'pagbank' ? 'Teste de conexão do PagBank' : 'Teste de conexão';
+            document.getElementById('connectionTestTitle').textContent = gatewayKey === 'pagbank'
+                ? 'Teste de conexão do PagBank'
+                : (gatewayKey === 'mercadopago' ? 'Teste de conexão do Mercado Pago' : 'Teste de conexão');
             document.getElementById('connectionTestDescription').textContent = gatewayKey === 'pagbank'
                 ? 'Informe um produto fictício, valor, e-mail do comprador, CPF e telefone. O e-mail do comprador deve ser diferente do e-mail da conta PagBank.'
-                : 'Preencha com um produto fictício e um valor para validar a comunicação com o gateway.';
+                : (gatewayKey === 'mercadopago'
+                    ? 'Preencha um produto fictício e um valor para criar uma preference de Checkout Pro no Mercado Pago.'
+                    : 'Preencha com um produto fictício e um valor para validar a comunicação com o gateway.');
             document.getElementById('pagbankTestFields').style.display = gatewayKey === 'pagbank' ? 'block' : 'none';
-            document.getElementById('fullConnectionTestButton').style.display = gatewayKey === 'pagbank' ? 'none' : '';
+            document.getElementById('fullConnectionTestButton').style.display = (gatewayKey === 'pagbank' || gatewayKey === 'mercadopago') ? 'none' : '';
             document.getElementById('realCheckoutButton').style.display = gatewayKey === 'pagbank' ? 'none' : '';
         }
 
@@ -686,6 +797,9 @@
                     body.phone_area = phoneArea;
                     body.phone_number = phoneNumber;
                     resultBox.textContent = 'Testando conexão com o PagBank...';
+                } else if (currentConnectionTestGateway === 'mercadopago') {
+                    endpoint = '/users/me/payment/mercadopago/test-connection';
+                    resultBox.textContent = 'Criando preference de teste no Mercado Pago...';
                 }
 
                 const response = await apiFetch(endpoint, {
@@ -713,6 +827,9 @@
                     lines.push(`Status do gateway: ${data.order.status || 'n/d'}`);
                     if (data.order.payment_link) {
                         lines.push(`Link de pagamento: ${data.order.payment_link}`);
+                    }
+                    if (data.order.sandbox_payment_link) {
+                        lines.push(`Link sandbox: ${data.order.sandbox_payment_link}`);
                     }
                     if (data.order.qr_code_text) {
                         lines.push(`Pix copia e cola: ${data.order.qr_code_text}`);
@@ -760,7 +877,10 @@
             resultBox.textContent = 'Gerando checkout real no gateway...\n\nAguarde...';
 
             try {
-                const response = await apiFetch('/users/me/payment/create-checkout', {
+                const endpoint = currentConnectionTestGateway === 'mercadopago'
+                    ? '/users/me/payment/mercadopago/create-checkout'
+                    : '/users/me/payment/create-checkout';
+                const response = await apiFetch(endpoint, {
                     method: 'POST',
                     body: JSON.stringify({
                         product_name: productName,
@@ -778,9 +898,16 @@
                     throw new Error('Gateway nao retornou uma URL de checkout valida.');
                 }
 
-                const message = 'Checkout gerado com sucesso!\n\nVoce sera redirecionado para o gateway...\n\nApos completar o pagamento, retorne a esta pagina e clique em "Sincronizar pagamento" para confirmar a renovacao.';
-                resultBox.textContent = message + '\n\nURL: ' + checkoutUrl;
-                showNotification('Redirecionando para o gateway em 3 segundos...', 'success');
+                const isMercadoPago = currentConnectionTestGateway === 'mercadopago';
+                const message = isMercadoPago
+                    ? 'Checkout Mercado Pago gerado com sucesso!\n\nVoce sera redirecionado para o gateway.\n\nO webhook sera recebido em /v1/webhooks/mercadopago quando a conta estiver configurada com URL publica.'
+                    : 'Checkout gerado com sucesso!\n\nVoce sera redirecionado para o gateway...\n\nApos completar o pagamento, retorne a esta pagina e clique em "Sincronizar pagamento" para confirmar a renovacao.';
+                const extraLines = [message, '', 'URL: ' + checkoutUrl];
+                if (isMercadoPago && data.sandbox_checkout_url) {
+                    extraLines.push('URL sandbox: ' + data.sandbox_checkout_url);
+                }
+                resultBox.textContent = extraLines.join('\n');
+                showNotification(isMercadoPago ? 'Redirecionando para o Mercado Pago em 3 segundos...' : 'Redirecionando para o gateway em 3 segundos...', 'success');
 
                 // Abre o checkout em nova aba
                 setTimeout(() => {
