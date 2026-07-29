@@ -10,6 +10,7 @@ from schemas.plan import Plan as PlanResponse
 from schemas.plan import PlanCreate, PlanUpdate
 
 router = APIRouter(prefix="/plans", tags=["Planos"])
+catalog_router = APIRouter(prefix="/users/me/catalog", tags=["Catálogo"])
 
 
 def _raise_duplicate_plan_name() -> None:
@@ -17,6 +18,7 @@ def _raise_duplicate_plan_name() -> None:
 
 
 @router.post("/", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
+@catalog_router.post("/plans/", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
 def create_plan(
     plan: PlanCreate,
     db: Session = Depends(get_db),
@@ -44,6 +46,7 @@ def create_plan(
 
 
 @router.get("/", response_model=List[PlanResponse])
+@catalog_router.get("/plans/", response_model=List[PlanResponse])
 def read_plans(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -57,6 +60,7 @@ def read_plans(
 
 
 @router.put("/{plan_id}", response_model=PlanResponse)
+@catalog_router.put("/plans/{plan_id}", response_model=PlanResponse)
 def update_plan(
     plan_id: int,
     plan: PlanUpdate,
@@ -97,6 +101,7 @@ def update_plan(
 
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+@catalog_router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_plan(
     plan_id: int,
     db: Session = Depends(get_db),

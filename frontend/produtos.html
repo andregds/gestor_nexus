@@ -159,6 +159,10 @@
     <script src="assets/js/crud-helpers.js"></script>
     <script src="assets/js/main.js"></script>
     <script>
+        const CATEGORY_ENDPOINT = '/users/me/catalog/categories/';
+        const PLAN_ENDPOINT = '/users/me/catalog/plans/';
+        const PRODUCT_ENDPOINT = '/users/me/catalog/products/';
+
         let planPriceMap = {};
 
         function syncPriceWithPlan() {
@@ -203,11 +207,27 @@
             editProduct(decodeItem(encoded));
         }
 
+        async function readJsonSafe(response, fallbackMessage = 'Resposta inválida do servidor.') {
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                if (text.trim().startsWith('<')) {
+                    throw new Error('Servidor retornou HTML em vez de JSON. Verifique a URL da API ou o proxy da produção.');
+                }
+                throw new Error(fallbackMessage);
+            }
+        }
+
         async function loadCategoriesIntoSelect(selectedId) {
             const select = document.getElementById('productCategory');
-            const response = await apiFetch('/categories');
+            const response = await apiFetch(CATEGORY_ENDPOINT);
             if (!response.ok) throw new Error('Falha ao carregar categorias.');
-            const items = await response.json();
+            const items = await readJsonSafe(response, 'Falha ao interpretar a lista de categorias.');
             select.innerHTML = items.length
                 ? '<option value="">Selecione uma categoria</option>' + items.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')
                 : '<option value="">Nenhuma categoria cadastrada</option>';
@@ -216,9 +236,9 @@
 
         async function loadPlansIntoSelect(selectedId) {
             const select = document.getElementById('productPlan');
-            const response = await apiFetch('/plans');
+            const response = await apiFetch(PLAN_ENDPOINT);
             if (!response.ok) throw new Error('Falha ao carregar planos.');
-            const items = await response.json();
+            const items = await readJsonSafe(response, 'Falha ao interpretar a lista de planos.');
             planPriceMap = {};
             select.innerHTML = items.length
                 ? '<option value="">Selecione um plano</option>' + items.map((item) => {
@@ -234,7 +254,11 @@
             const tbody = document.getElementById('productsTableBody');
             tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Carregando...</td></tr>';
             try {
-                const [productsResp, categoriesResp, plansResp] = await Promise.all([apiFetch('/products'), apiFetch('/categories'), apiFetch('/plans')]);
+                const [productsResp, categoriesResp, plansResp] = await Promise.all([
+                    apiFetch(PRODUCT_ENDPOINT),
+                    apiFetch(CATEGORY_ENDPOINT),
+                    apiFetch(PLAN_ENDPOINT)
+                ]);
                 if (productsResp.status === 401 || categoriesResp.status === 401 || plansResp.status === 401) {
                     window.location.href = 'login.html';
                     return;
@@ -242,7 +266,11 @@
                 if (!productsResp.ok) throw new Error('Falha ao carregar produtos.');
                 if (!categoriesResp.ok) throw new Error('Falha ao carregar categorias.');
                 if (!plansResp.ok) throw new Error('Falha ao carregar planos.');
-                const [products, categories, plans] = await Promise.all([productsResp.json(), categoriesResp.json(), plansResp.json()]);
+                const [products, categories, plans] = await Promise.all([
+                    readJsonSafe(productsResp, 'Falha ao interpretar a lista de produtos.'),
+                    readJsonSafe(categoriesResp, 'Falha ao interpretar a lista de categorias.'),
+                    readJsonSafe(plansResp, 'Falha ao interpretar a lista de planos.')
+                ]);
                 const categoryMap = {};
                 categories.forEach((category) => { categoryMap[category.id] = category.name; });
                 const planMap = {};
@@ -303,12 +331,12 @@
             }
 
             try {
-                const response = await apiFetch(id ? `/products/${id}` : '/products', {
+                const response = await apiFetch(id ? `${PRODUCT_ENDPOINT}${id}` : PRODUCT_ENDPOINT, {
                     method: id ? 'PUT' : 'POST',
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
-                    const err = await response.json();
+                    const err = await readJsonSafe(response, 'Falha ao interpretar o erro ao salvar o produto.');
                     throw new Error(err.detail || 'Falha ao salvar produto.');
                 }
                 notify(id ? 'Produto atualizado com sucesso.' : 'Produto criado com sucesso.', 'success');
@@ -322,9 +350,9 @@
         async function deleteProduct(id) {
             if (!confirm('Deseja excluir este produto?')) return;
             try {
-                const response = await apiFetch(`/products/${id}`, { method: 'DELETE' });
+                const response = await apiFetch(`${PRODUCT_ENDPOINT}${id}`, { method: 'DELETE' });
                 if (!response.ok && response.status !== 204) {
-                    const err = await response.json();
+                    const err = await readJsonSafe(response, 'Falha ao interpretar o erro ao excluir o produto.');
                     throw new Error(err.detail || 'Falha ao excluir produto.');
                 }
                 notify('Produto excluído.', 'success');

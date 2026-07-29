@@ -153,6 +153,9 @@
     <script src="assets/js/crud-helpers.js"></script>
     <script src="assets/js/main.js"></script>
     <script>
+        const PLAN_ENDPOINT = '/users/me/catalog/plans/';
+        const PRODUCT_ENDPOINT = '/users/me/catalog/products/';
+
         function cycleLabel(value) {
             return {
                 monthly: 'Mensal',
@@ -210,7 +213,7 @@
             const tbody = document.getElementById('plansTableBody');
             tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Carregando...</td></tr>';
             try {
-                const [plansResp, productsResp] = await Promise.all([apiFetch('/plans'), apiFetch('/products')]);
+                const [plansResp, productsResp] = await Promise.all([apiFetch(PLAN_ENDPOINT), apiFetch(PRODUCT_ENDPOINT)]);
                 if (plansResp.status === 401 || productsResp.status === 401) {
                     window.location.href = 'login.html';
                     return;
@@ -270,7 +273,7 @@
             }
 
             try {
-                const response = await apiFetch(id ? `/plans/${id}` : '/plans', {
+                const response = await apiFetch(id ? `${PLAN_ENDPOINT}${id}` : PLAN_ENDPOINT, {
                     method: id ? 'PUT' : 'POST',
                     body: JSON.stringify(payload)
                 });
@@ -295,7 +298,7 @@
             }
             if (!confirm('Deseja excluir este plano?')) return;
             try {
-                const response = await apiFetch(`/plans/${id}`, { method: 'DELETE' });
+                const response = await apiFetch(`${PLAN_ENDPOINT}${id}`, { method: 'DELETE' });
                 if (!response.ok && response.status !== 204) {
                     const err = await readJsonSafe(response, 'Falha ao interpretar o erro ao excluir o plano.');
                     throw new Error(err.detail || 'Falha ao excluir plano.');

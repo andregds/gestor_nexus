@@ -112,8 +112,11 @@ app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)
 app.include_router(categories.router)
+app.include_router(categories.catalog_router)
 app.include_router(plans.router)
+app.include_router(plans.catalog_router)
 app.include_router(products.router)
+app.include_router(products.catalog_router)
 app.include_router(admin.router)
 
 

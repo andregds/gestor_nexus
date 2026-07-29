@@ -9,6 +9,7 @@ from schemas.product import Product as ProductResponse
 from schemas.product import ProductCreate, ProductUpdate
 
 router = APIRouter(prefix="/products", tags=["Produtos"])
+catalog_router = APIRouter(prefix="/users/me/catalog", tags=["Catálogo"])
 
 
 def _get_owned_category(db: Session, category_id: int, user_id: int):
@@ -28,6 +29,7 @@ def _get_owned_plan(db: Session, plan_id: int, user_id: int):
 
 
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@catalog_router.post("/products/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 def create_product(
     product: ProductCreate,
     db: Session = Depends(get_db),
@@ -50,6 +52,7 @@ def create_product(
 
 
 @router.get("/", response_model=List[ProductResponse])
+@catalog_router.get("/products/", response_model=List[ProductResponse])
 def read_products(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -63,6 +66,7 @@ def read_products(
 
 
 @router.put("/{product_id}", response_model=ProductResponse)
+@catalog_router.put("/products/{product_id}", response_model=ProductResponse)
 def update_product(
     product_id: int,
     product: ProductUpdate,
@@ -99,6 +103,7 @@ def update_product(
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@catalog_router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product(
     product_id: int,
     db: Session = Depends(get_db),

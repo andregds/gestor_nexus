@@ -9,9 +9,11 @@ from schemas.category import Category as CategoryResponse
 from schemas.category import CategoryCreate, CategoryUpdate
 
 router = APIRouter(prefix="/categories", tags=["Categorias"])
+catalog_router = APIRouter(prefix="/users/me/catalog", tags=["Catálogo"])
 
 
 @router.post("/", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
+@catalog_router.post("/categories/", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_category(
     category: CategoryCreate,
     db: Session = Depends(get_db),
@@ -25,6 +27,7 @@ def create_category(
 
 
 @router.get("/", response_model=List[CategoryResponse])
+@catalog_router.get("/categories/", response_model=List[CategoryResponse])
 def read_categories(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -38,6 +41,7 @@ def read_categories(
 
 
 @router.put("/{category_id}", response_model=CategoryResponse)
+@catalog_router.put("/categories/{category_id}", response_model=CategoryResponse)
 def update_category(
     category_id: int,
     category: CategoryUpdate,
@@ -62,6 +66,7 @@ def update_category(
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@catalog_router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(
     category_id: int,
     db: Session = Depends(get_db),

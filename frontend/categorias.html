@@ -135,6 +135,9 @@
     <script src="assets/js/crud-helpers.js"></script>
     <script src="assets/js/main.js"></script>
     <script>
+        const CATEGORY_ENDPOINT = '/users/me/catalog/categories/';
+        const PRODUCT_ENDPOINT = '/users/me/catalog/products/';
+
         function resetForm() {
             document.getElementById('categoryId').value = '';
             document.getElementById('categoryName').value = '';
@@ -154,18 +157,37 @@
             editCategory(decodeItem(encoded));
         }
 
+        async function readJsonSafe(response, fallbackMessage = 'Resposta inválida do servidor.') {
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                if (text.trim().startsWith('<')) {
+                    throw new Error('Servidor retornou HTML em vez de JSON. Verifique a URL da API ou o proxy da produção.');
+                }
+                throw new Error(fallbackMessage);
+            }
+        }
+
         async function loadCategories() {
             const tbody = document.getElementById('categoriesTableBody');
             tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Carregando...</td></tr>';
             try {
-                const [categoriesResp, productsResp] = await Promise.all([apiFetch('/categories'), apiFetch('/products')]);
+                const [categoriesResp, productsResp] = await Promise.all([apiFetch(CATEGORY_ENDPOINT), apiFetch(PRODUCT_ENDPOINT)]);
                 if (categoriesResp.status === 401 || productsResp.status === 401) {
                     window.location.href = 'login.html';
                     return;
                 }
                 if (!categoriesResp.ok) throw new Error('Falha ao carregar categorias.');
                 if (!productsResp.ok) throw new Error('Falha ao carregar produtos.');
-                const [items, products] = await Promise.all([categoriesResp.json(), productsResp.json()]);
+                const [items, products] = await Promise.all([
+                    readJsonSafe(categoriesResp, 'Falha ao interpretar a lista de categorias.'),
+                    readJsonSafe(productsResp, 'Falha ao interpretar a lista de produtos.')
+                ]);
                 const usageMap = {};
                 products.forEach((product) => {
                     if (product.category_id) usageMap[product.category_id] = (usageMap[product.category_id] || 0) + 1;
@@ -203,12 +225,12 @@
             }
 
             try {
-                const response = await apiFetch(id ? `/categories/${id}` : '/categories', {
+                const response = await apiFetch(id ? `${CATEGORY_ENDPOINT}${id}` : CATEGORY_ENDPOINT, {
                     method: id ? 'PUT' : 'POST',
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
-                    const err = await response.json();
+                    const err = await readJsonSafe(response, 'Falha ao interpretar o erro ao salvar a categoria.');
                     throw new Error(err.detail || 'Falha ao salvar categoria.');
                 }
                 notify(id ? 'Categoria atualizada com sucesso.' : 'Categoria criada com sucesso.', 'success');
@@ -228,9 +250,9 @@
             }
             if (!confirm('Deseja excluir esta categoria?')) return;
             try {
-                const response = await apiFetch(`/categories/${id}`, { method: 'DELETE' });
+                const response = await apiFetch(`${CATEGORY_ENDPOINT}${id}`, { method: 'DELETE' });
                 if (!response.ok && response.status !== 204) {
-                    const err = await response.json();
+                    const err = await readJsonSafe(response, 'Falha ao interpretar o erro ao excluir a categoria.');
                     throw new Error(err.detail || 'Falha ao excluir categoria.');
                 }
                 notify('Categoria excluída.', 'success');
