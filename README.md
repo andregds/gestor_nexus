@@ -1,4 +1,4 @@
-# 📊 Nexus Monitor - Gestor de Disponibilidade e Clientes
+# 📊 Gestor Nexus - Gestor de Disponibilidade e Clientes
 
 > Um sistema completo para monitoramento de serviços web (DNS/HTTP) e gestão de clientes, com notificações automáticas via WhatsApp e Telegram.
 
@@ -9,7 +9,7 @@
 
 ## 📝 Sobre o Projeto
 
-O **Nexus Monitor** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais (como IPTV, Streaming ou SaaS).
+O **Gestor Nexus** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais (como IPTV, Streaming ou SaaS).
 
 O sistema verifica periodicamente o status dos serviços e, em caso de queda ou lentidão, notifica o administrador via WhatsApp (integração com Evolution API) e Telegram. Além disso, permite o cadastro de clientes com datas de vencimento, enviando lembretes automáticos de cobrança.
 

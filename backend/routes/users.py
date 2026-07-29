@@ -200,7 +200,7 @@ async def test_telegram_notification(
         await send_telegram_message(
             token=current_user.telegram_token,
             chat_id=current_user.telegram_chat_id,
-            message=" *Teste de Notificao - Nexus Monitor*\n\nSe voc recebeu esta mensagem, a integrao est funcionando perfeitamente! "
+            message=" *Teste de Notificao - Gestor Nexus*\n\nSe voc recebeu esta mensagem, a integrao est funcionando perfeitamente! "
         )
         return {"message": "Mensagem de teste enviada com sucesso!"}
     except Exception as e:

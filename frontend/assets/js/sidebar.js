@@ -88,7 +88,16 @@ async function fetchCurrentUserContext() {
 
         if (!response.ok) return null;
 
-        const user = await response.json();
+        const text = await response.text();
+        let user = null;
+        try {
+            user = text ? JSON.parse(text) : null;
+        } catch (error) {
+            if ((text || '').trim().startsWith('<')) {
+                console.warn('Servidor retornou HTML em vez de JSON em /users/me');
+            }
+            return null;
+        }
         if (user.role) localStorage.setItem(USER_ROLE_KEY, user.role);
         if (user.id) localStorage.setItem('user_id', user.id);
 

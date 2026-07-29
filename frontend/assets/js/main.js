@@ -82,7 +82,7 @@ function ensureSidebarShell() {
         mobileHeader = document.createElement('div');
         mobileHeader.className = 'navbar-mobile';
         mobileHeader.innerHTML = `
-            <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+            <div class="brand-logo">GESTOR<span>NEXUS</span></div>
             <button class="mobile-toggle" id="btnToggleSidebar" type="button" aria-label="Abrir menu">☰</button>
         `;
         dashboardContainer.parentNode.insertBefore(mobileHeader, dashboardContainer);

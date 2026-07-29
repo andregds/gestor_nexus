@@ -188,10 +188,16 @@ async def test_notification(data: TestMessage, current_user: User = Depends(get_
         raise HTTPException(status_code=400, detail="Número inválido. Use o formato DDI+DDD+Número.")
 
     message = "🔔 *Teste de Notificação*\\n\\nO sistema de monitoramento está conectado e enviando mensagens com sucesso! 🚀"
-    success = await send_whatsapp_notification(data.number, message, instance_name)
+    result = await send_whatsapp_notification(data.number, message, instance_name)
 
-    if success:
-        return {"message": "Mensagem enviada com sucesso!"}
+    if result.get("accepted"):
+        if result.get("delivered"):
+            return {"message": "Mensagem entregue com sucesso!", "delivery_confirmed": True}
+        return {
+            "message": f"Mensagem aceita pela Evolution API e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
+            "delivery_confirmed": False,
+            "gateway_status": result.get("gateway_status"),
+        }
 
     # ESTA É A CORREÇÃO: Retorna 400 em vez de 500
     raise HTTPException(status_code=400, detail="Falha no envio. Verifique se o número possui WhatsApp válido.")

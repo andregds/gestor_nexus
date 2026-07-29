@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API de Pagamentos | Nexus Monitor</title>
+    <title>API de Pagamentos | Gestor Nexus</title>
     <link rel="stylesheet" href="assets/css/style.css">
     <script>
         const API_URL = (window.location.protocol === 'file:' || window.location.origin === 'null' || !window.location.hostname)
@@ -103,14 +103,14 @@
 </head>
 <body>
     <div class="navbar-mobile" style="display: none;">
-        <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+        <div class="brand-logo">GESTOR<span>NEXUS</span></div>
         <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
     </div>
 
     <div class="dashboard-container">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <div class="brand-logo">GESTOR<span>NEXUS</span></div>
             </div>
             <nav class="sidebar-menu">
                 <a href="dashboard.html" class="sidebar-link" data-feature-key="dashboard">
@@ -339,7 +339,7 @@
                                         <div class="col-12 col-md-8">
                                             <div class="form-group mb-0">
                                                 <label>Identificação do pagamento</label>
-                                                <input type="text" id="mercadopagoStatementDescriptor" placeholder="Ex: NexusMonitor">
+                                                <input type="text" id="mercadopagoStatementDescriptor" placeholder="Ex: GestorNexus">
                                             </div>
                                         </div>
                                         <div class="col-12 col-md-6">
@@ -618,6 +618,22 @@
             });
         }
 
+        async function readJsonSafe(response, fallbackMessage = 'Resposta inválida do servidor.') {
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                if (text.trim().startsWith('<')) {
+                    throw new Error('Servidor retornou HTML em vez de JSON. Verifique a URL da API ou o proxy da produção.');
+                }
+                throw new Error(fallbackMessage);
+            }
+        }
+
         function fillGatewaySettings(settings, gatewayKey) {
             const fieldMap = GATEWAY_FIELDS[gatewayKey];
             Object.entries(fieldMap).forEach(([settingKey, elementId]) => {
@@ -653,7 +669,7 @@
                     if (!response.ok) {
                         throw new Error('Falha ao carregar configurações.');
                     }
-                    return response.json();
+                    return readJsonSafe(response);
                 })
                 .then((user) => {
                     if (!user) return;
@@ -700,7 +716,7 @@
             if (!response.ok) {
                 throw new Error('Não foi possível validar o salvamento.');
             }
-            const user = await response.json();
+            const user = await readJsonSafe(response);
             const saved = normalizePaymentSettings(user.payment_api_settings);
             const keys = gatewayKey ? Object.keys(GATEWAY_FIELDS[gatewayKey]) : Object.keys(expected);
             const mismatches = keys.filter((key) => {
@@ -807,7 +823,7 @@
                     body: JSON.stringify(body)
                 });
 
-                const data = await response.json();
+                const data = await readJsonSafe(response);
                 if (!response.ok) {
                     throw new Error(data.detail || 'Falha ao testar a conexão.');
                 }
@@ -888,7 +904,7 @@
                     })
                 });
 
-                const data = await response.json();
+                const data = await readJsonSafe(response);
                 if (!response.ok) {
                     throw new Error(data.detail || 'Falha ao gerar checkout.');
                 }
@@ -932,7 +948,7 @@
                     method: 'POST'
                 });
 
-                const data = await response.json();
+                const data = await readJsonSafe(response);
                 if (!response.ok) {
                     throw new Error(data.detail || data.message || 'Falha ao sincronizar.');
                 }
@@ -965,11 +981,11 @@
                     return null;
                 }
                 if (!response.ok) {
-                    return response.json().then((err) => {
+                    return readJsonSafe(response).then((err) => {
                         throw new Error(err.detail || 'Falha ao salvar.');
                     });
                 }
-                return response.json();
+                return readJsonSafe(response);
             })
             .then((user) => {
                 if (!user) return;

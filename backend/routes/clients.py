@@ -475,7 +475,9 @@ async def send_manual_reminder(
         if clear_client_reminder_error(client):
             db.commit()
         mark_user_last_reminder_run(db, current_user.id)
-        return {"message": f"Mensagem enviada via {channel}!", "sent": True}
+        if error_detail:
+            return {"message": error_detail, "sent": True, "delivery_confirmed": False}
+        return {"message": f"Mensagem entregue via {channel}!", "sent": True, "delivery_confirmed": True}
     else:
         if set_client_reminder_error(client, error_detail or f"Falha ao enviar via {channel}."):
             db.commit()

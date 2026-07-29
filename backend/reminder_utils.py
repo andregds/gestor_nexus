@@ -250,6 +250,9 @@ def normalize_reminder_error_message(error: Any) -> str:
     message = str(detail or "").strip()
     if not message:
         return "Falha ao enviar a mensagem."
+    lowered = message.lower()
+    if "sessionerror: no sessions" in lowered or "no sessions" in lowered:
+        return "WhatsApp desconectado. Gere um novo QR Code na aba Integração e conecte a instância novamente."
     return message[:500]
 
 
@@ -310,15 +313,20 @@ async def send_client_reminder(
         if not getattr(user, "whatsapp_connected", False):
             raise RuntimeError("WhatsApp não conectado. Configure na aba Integração.")
 
-        success = await send_whatsapp_notification(
+        result = await send_whatsapp_notification(
             number=getattr(client, "whatsapp", ""),
             message=message,
             instance_name=getattr(user, "whatsapp_instance", None),
             media=media if media and media.get("data_url") else None,
         )
 
-        if not success:
+        if not result.get("accepted"):
             return False, channel, "A Evolution API retornou erro ou falha no envio."
+        if not result.get("delivered"):
+            return True, channel, (
+                "Mensagem aceita pela Evolution API e aguardando confirmação de entrega "
+                f"(status atual: {result.get('gateway_status')})."
+            )
         return True, channel, ""
 
     if channel == "telegram":

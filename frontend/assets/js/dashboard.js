@@ -154,6 +154,22 @@ async function apiFetch(path, options = {}) {
     }
 }
 
+async function readJsonSafe(response, fallbackMessage = 'Resposta inválida do servidor.') {
+    const text = await response.text();
+    if (!text) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        if (text.trim().startsWith('<')) {
+            throw new Error('Servidor retornou HTML em vez de JSON. Verifique a URL da API ou o proxy da produção.');
+        }
+        throw new Error(fallbackMessage);
+    }
+}
+
 /**
  * Redireciona para a página de login e limpa o token.
  */
@@ -203,7 +219,7 @@ async function loadUserInfo() {
     try {
         const response = await apiFetch('/users/me');
         if (response.ok) {
-            const user = await response.json();
+            const user = await readJsonSafe(response);
             const role = user.role || 'user';
             const roleLabel = formatRoleLabel(role);
             const name = user.name || 'Usuário';
@@ -330,7 +346,7 @@ async function loadURLs() {
     try {
         const response = await apiFetch('/urls');
         if (!response.ok) throw new Error('Falha ao buscar URLs');
-        const urls = await response.json();
+        const urls = await readJsonSafe(response);
         updateStats(urls);
         if (urls.length === 0) {
             urlsList.innerHTML = `<div class="empty-state">
@@ -415,7 +431,7 @@ async function addURL() {
             nameInput.value = '';
             loadURLs();
         } else {
-            const err = await response.json();
+            const err = await readJsonSafe(response);
             showNotification(`Erro: ${err.detail}`, 'error');
         }
     } catch (e) {
@@ -495,7 +511,7 @@ async function loadWhatsAppStatus() {
     }
     try {
         const response = await apiFetch('/whatsapp/status');
-        const data = await response.json();
+        const data = await readJsonSafe(response);
         updateWhatsAppUI(data);
     } catch (error) {
         console.error("Erro ao verificar status do WhatsApp:", error);
@@ -556,7 +572,7 @@ async function connectWhatsApp() {
             // Enviamos um objeto vazio ou com número nulo, já que o backend agora aceita
             body: JSON.stringify({ number: "" })
         });
-        const data = await response.json();
+        const data = await readJsonSafe(response);
         if (response.ok) {
             if (data.qr_code) {
                 showQRCode(data.qr_code);
@@ -605,7 +621,7 @@ function startWhatsAppPolling() {
         try {
             const response = await apiFetch('/whatsapp/status');
             if (!response.ok) return;
-            const data = await response.json();
+            const data = await readJsonSafe(response);
             console.log(`Polling #${pollingAttempts}:`, data);
             if (data.connected) {
                 stopWhatsAppPolling();
@@ -646,7 +662,7 @@ async function disconnectWhatsApp() {
             // Recarrega o status para mostrar o botão de conectar novamente
             loadWhatsAppStatus();
         } else {
-            const data = await response.json();
+            const data = await readJsonSafe(response);
             showNotification(data.detail || "Falha ao desconectar.", 'error');
         }
     } catch (e) {
@@ -666,7 +682,7 @@ async function testWhatsAppNotification() {
             method: 'POST',
             body: JSON.stringify({ number: number })
         });
-        const data = await response.json();
+        const data = await readJsonSafe(response);
         if (response.ok) {
             showNotification(data.message || "Teste enviado!", 'success');
         } else {
@@ -688,7 +704,7 @@ async function loadTelegramSettings() {
     try {
         const response = await apiFetch('/users/me');
         if (response.ok) {
-            const user = await response.json();
+            const user = await readJsonSafe(response);
             const tokenInput = document.getElementById('telegramToken');
             if (tokenInput) tokenInput.value = user.telegram_token || '';
             const chatInput = document.getElementById('telegramChatId');
@@ -745,7 +761,7 @@ async function testTelegram() {
         if (response.ok) {
             showNotification("Teste enviado! Verifique seu Telegram.", 'success');
         } else {
-            const err = await response.json();
+            const err = await readJsonSafe(response);
             showNotification(`Erro: ${err.detail}`, 'error');
         }
 
@@ -765,7 +781,7 @@ async function loadSettings() {
     try {
         const response = await apiFetch('/users/me'); // Reutiliza a rota /me que agora traz os flags
         if (response.ok) {
-            const user = await response.json();
+            const user = await readJsonSafe(response);
             // Preenche telefone
             const phoneInput = document.getElementById('settingsPhone');
             if (phoneInput) phoneInput.value = user.whatsapp_number || '';

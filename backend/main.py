@@ -107,6 +107,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(users.payment_webhook_router)
+app.include_router(whatsapp.webhook_router)
 app.include_router(urls.router)
 app.include_router(whatsapp.router)
 app.include_router(clients.router)

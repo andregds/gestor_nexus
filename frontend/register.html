@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Criar Conta | Nexus Monitor</title>
+    <title>Criar Conta | Gestor Nexus</title>
     <!-- Link para o CSS principal -->
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
@@ -12,7 +12,7 @@
     <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
-                <div class="brand-logo">NEXUS<span>MONITOR</span></div>
+                <div class="brand-logo">GESTOR<span>NEXUS</span></div>
                 <p>Crie sua conta para começar a monitorar</p>
             </div>
 
@@ -58,6 +58,22 @@
 
         const API_URL = resolveApiBase();
 
+        async function readJsonSafe(response, fallbackMessage = 'Resposta inválida do servidor.') {
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                if (text.trim().startsWith('<')) {
+                    throw new Error('Servidor retornou HTML em vez de JSON. Verifique a URL da API ou o proxy da produção.');
+                }
+                throw new Error(fallbackMessage);
+            }
+        }
+
         async function handleRegister(event) {
             event.preventDefault();
 
@@ -85,8 +101,8 @@
                         window.location.href = 'login.html';
                     }, 2000);
                 } else {
-                    const data = await response.json();
-                    msgDiv.textContent = data.detail || 'Erro ao criar conta.';
+                    const data = await readJsonSafe(response);
+                    msgDiv.textContent = (data && data.detail) || 'Erro ao criar conta.';
                     msgDiv.style.color = 'red';
                 }
             } catch (error) {
