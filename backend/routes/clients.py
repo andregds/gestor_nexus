@@ -1,5 +1,5 @@
 # backend/routes/clients.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -69,6 +69,10 @@ class ClientResponse(ClientCreate):
         from_attributes = True
 
 
+class BulkReminderRequest(BaseModel):
+    client_ids: Optional[List[int]] = None
+
+
 def resolve_days_window(days_ahead: int, today: date) -> tuple[date, date]:
     offset = max(days_ahead - 1, 0)
     return today - timedelta(days=offset), today + timedelta(days=offset)
@@ -135,6 +139,7 @@ async def process_reminders_now(
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         days_ahead: Optional[int] = None,
+        payload: Optional[BulkReminderRequest] = Body(None),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
@@ -156,13 +161,28 @@ async def process_reminders_now(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=400, detail="A data inicial não pode ser maior que a data final.")
 
-    clients_query = db.query(Client).filter(Client.owner_id == current_user.id)
-    if date_from:
-        clients_query = clients_query.filter(Client.expiration_date >= date_from)
-    if date_to:
-        clients_query = clients_query.filter(Client.expiration_date <= date_to)
+    filtered_client_ids = payload.client_ids if payload and payload.client_ids is not None else None
+    using_explicit_client_filter = filtered_client_ids is not None
 
-    clients = clients_query.all()
+    clients_query = db.query(Client).filter(Client.owner_id == current_user.id)
+    if using_explicit_client_filter:
+        unique_client_ids = list(dict.fromkeys(filtered_client_ids))
+        invalid_client_ids = [client_id for client_id in unique_client_ids if not isinstance(client_id, int) or client_id <= 0]
+        if invalid_client_ids:
+            raise HTTPException(status_code=400, detail="Lista de clientes filtrados inválida.")
+
+        clients = clients_query.filter(Client.id.in_(unique_client_ids)).all() if unique_client_ids else []
+        found_ids = {client.id for client in clients}
+        missing_ids = [client_id for client_id in unique_client_ids if client_id not in found_ids]
+        if missing_ids:
+            raise HTTPException(status_code=400, detail="Um ou mais clientes filtrados não foram encontrados.")
+    else:
+        if date_from:
+            clients_query = clients_query.filter(Client.expiration_date >= date_from)
+        if date_to:
+            clients_query = clients_query.filter(Client.expiration_date <= date_to)
+        clients = clients_query.all()
+
     sent_count = 0
 
     print(f"\n--- INICIANDO ENVIO EM MASSA ---")
@@ -179,7 +199,16 @@ async def process_reminders_now(
             )
     elif date_from or date_to:
         print(f"🗓️ Intervalo de vencimento aplicado: {date_from or '...'} até {date_to or '...'}")
+    if using_explicit_client_filter:
+        print(f"🎯 Envio restrito aos IDs filtrados no frontend: {filtered_client_ids}")
     print(f"👥 Total de Clientes Analisados: {len(clients)}")
+
+    if using_explicit_client_filter and not clients:
+        mark_user_last_reminder_run(db, current_user.id)
+        return {
+            "message": "Processo finalizado! Nenhum cliente filtrado para envio.",
+            "sent_count": 0,
+        }
 
     # Verifica conexão
     has_whatsapp = current_user.whatsapp_connected
@@ -220,7 +249,11 @@ async def process_reminders_now(
         # --- LÓGICA DE FILTRAGEM ---
 
         # 1. Filtro: Vencidos (expired)
-        if filter_type == "expired":
+        if using_explicit_client_filter and filter_type == "default":
+            should_send = True
+
+        # 1. Filtro: Vencidos (expired)
+        elif filter_type == "expired":
             if days_diff < 0:
                 should_send = True
 
@@ -330,6 +363,8 @@ async def process_reminders_now(
             )
     elif date_from or date_to:
         range_label = " no período de vencimento selecionado"
+    elif using_explicit_client_filter:
+        range_label = " entre os clientes filtrados"
     else:
         range_label = ""
     return {"message": f"Processo finalizado! {sent_count} mensagens enviadas{message_label}{range_label}.", "sent_count": sent_count}

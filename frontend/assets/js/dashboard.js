@@ -470,7 +470,7 @@ function whatsappTemplate() {
         <div class="page-header">
             <div class="page-title">
                 <h2>Integração WhatsApp</h2>
-                <p>Gateway de notificações via Evolution API.</p>
+                <p>Gateway de notificações via WAHA API.</p>
             </div>
         </div>
         <div class="card">

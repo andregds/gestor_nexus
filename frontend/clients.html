@@ -864,7 +864,7 @@
                         </div>
                         <div class="expiration-filter-controls">
                             <div class="expiration-days-filter">
-                                <span class="expiration-days-prefix">Filtras os ultimos</span>
+                                <span class="expiration-days-prefix">Filtrar os últimos</span>
                                 <input
                                     type="text"
                                     id="expirationDaysAhead"
@@ -1781,6 +1781,16 @@
             renderTable(filteredClients);
         }
 
+        function hasActiveClientFilter() {
+            const searchInput = document.getElementById('searchInput');
+            const searchTerm = normalizeFilterValue(searchInput ? searchInput.value : '');
+            return currentFilter !== 'all'
+                || Boolean(searchTerm)
+                || expirationDaysAhead !== ''
+                || Boolean(expirationRangeStart)
+                || Boolean(expirationRangeEnd);
+        }
+
         function getExpirationDaysWindow(daysValue) {
             const parsedDays = Number.parseInt(daysValue, 10);
             if (!Number.isInteger(parsedDays) || parsedDays < 0) {
@@ -2489,6 +2499,10 @@
         async function executeBatchProcess() {
             const filterType = document.getElementById('batchFilter').value;
             const query = new URLSearchParams({ filter_type: filterType });
+            const hasActiveFilter = hasActiveClientFilter();
+            const filteredClientIds = hasActiveFilter
+                ? filteredClients.map((client) => client.id).filter((id) => Number.isInteger(Number(id)))
+                : null;
 
             if (expirationDaysAhead !== '') {
                 query.set('days_ahead', expirationDaysAhead);
@@ -2506,7 +2520,10 @@
             try {
                 // Enviamos o filtro via Query Parameter para o backend
                 // Ex: /clients/process-now?filter_type=3
-                const response = await apiFetch(`/clients/process-now?${query.toString()}`, { method: 'POST' });
+                const response = await apiFetch(`/clients/process-now?${query.toString()}`, {
+                    method: 'POST',
+                    body: JSON.stringify(hasActiveFilter ? { client_ids: filteredClientIds } : {})
+                });
                 const result = await response.json();
                 await loadClients();
                 await loadScheduleStatus();

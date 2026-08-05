@@ -10,7 +10,14 @@ import logging
 from database import get_db
 from auth import get_current_user
 from models import User
-from core.config import get_evolution_api_key, get_evolution_api_url, get_public_backend_url
+from core.config import (
+    get_evolution_api_key,
+    get_evolution_api_url,
+    get_public_backend_url,
+    get_waha_api_key,
+    get_waha_api_url,
+    get_whatsapp_api_provider,
+)
 from whatsapp_utils import (
     configure_evolution_webhook,
     generate_instance_name,
@@ -37,9 +44,19 @@ def format_qr_code(base64_code: str) -> Optional[str]:
     if not base64_code:
         return None
     # O frontend já espera o prefixo, então garantimos que ele sempre esteja lá
-    if base64_code.startswith("data:image/png;base64,"):
+    if base64_code.startswith("data:image/"):
         return base64_code
     return f"data:image/png;base64,{base64_code}"
+
+
+def _whatsapp_gateway_label() -> str:
+    return "WAHA" if get_whatsapp_api_provider() == "waha" else "Evolution"
+
+
+def _is_whatsapp_gateway_configured() -> bool:
+    if get_whatsapp_api_provider() == "waha":
+        return bool(get_waha_api_url() and get_waha_api_key())
+    return bool(get_evolution_api_url() and get_evolution_api_key())
 
 
 # --- SCHEMAS ---
@@ -148,10 +165,15 @@ async def connect_whatsapp(
         bool(current_user.whatsapp_instance),
         whatsapp_data.number,
     )
-    if not get_evolution_api_url() or not get_evolution_api_key():
+    gateway_label = _whatsapp_gateway_label()
+    if not _is_whatsapp_gateway_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="API Evolution não configurada no servidor. Defina EVOLUTION_API_URL e EVOLUTION_API_KEY.",
+            detail=(
+                "API WAHA não configurada no servidor. Defina WAHA_API_URL e WAHA_API_KEY."
+                if gateway_label == "WAHA"
+                else "API Evolution não configurada no servidor. Defina EVOLUTION_API_URL e EVOLUTION_API_KEY."
+            ),
         )
 
     # 1. Limpeza de instância anterior (se existir)
@@ -171,7 +193,10 @@ async def connect_whatsapp(
     success = await evolution_create_instance(instance_name)
 
     if not success:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao criar instância na Evolution API.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao criar sessão na {gateway_label}.",
+        )
 
     current_user.whatsapp_instance = instance_name
     if whatsapp_data.number:
@@ -221,7 +246,7 @@ async def connect_whatsapp(
 
     return WhatsAppConnectResponse(
         success=True,
-        message="Instância criada com sucesso. Aguardando QR Code.",
+        message=f"Sessão {gateway_label} criada com sucesso. Aguardando QR Code.",
         instance_name=instance_name,
         qr_code=format_qr_code(qr_code_raw),
         webhook_url=webhook_url,
@@ -342,7 +367,7 @@ async def test_whatsapp_notification_route(
             return {"success": True, "message": f"Mensagem entregue para {target_number}.", "delivery_confirmed": True}
         return {
             "success": True,
-            "message": f"Mensagem aceita pela Evolution API para {target_number} e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
+            "message": f"Mensagem aceita pela {_whatsapp_gateway_label()} para {target_number} e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
             "delivery_confirmed": False,
             "gateway_status": result.get("gateway_status"),
         }
