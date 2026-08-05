@@ -11,18 +11,15 @@ from database import get_db
 from auth import get_current_user
 from models import User
 from core.config import (
-    get_evolution_api_key,
-    get_evolution_api_url,
     get_public_backend_url,
     get_waha_api_key,
     get_waha_api_url,
-    get_whatsapp_api_provider,
 )
 from whatsapp_utils import (
-    configure_evolution_webhook,
+    configure_waha_webhook,
+    create_whatsapp_session,
+    delete_whatsapp_session,
     generate_instance_name,
-    evolution_delete_instance,
-    evolution_create_instance,
     get_instance_state_and_qr,
     send_whatsapp_notification,
 )
@@ -47,16 +44,6 @@ def format_qr_code(base64_code: str) -> Optional[str]:
     if base64_code.startswith("data:image/"):
         return base64_code
     return f"data:image/png;base64,{base64_code}"
-
-
-def _whatsapp_gateway_label() -> str:
-    return "WAHA" if get_whatsapp_api_provider() == "waha" else "Evolution"
-
-
-def _is_whatsapp_gateway_configured() -> bool:
-    if get_whatsapp_api_provider() == "waha":
-        return bool(get_waha_api_url() and get_waha_api_key())
-    return bool(get_evolution_api_url() and get_evolution_api_key())
 
 
 # --- SCHEMAS ---
@@ -91,18 +78,22 @@ def _is_publicly_reachable_host(hostname: str) -> bool:
     return normalized not in {"", "localhost", "127.0.0.1", "0.0.0.0", "::1"}
 
 
-def _resolve_evolution_webhook_url(request: Request) -> tuple[Optional[str], Optional[str]]:
+def _is_waha_configured() -> bool:
+    return bool(get_waha_api_url() and get_waha_api_key())
+
+
+def _resolve_waha_webhook_url(request: Request) -> tuple[Optional[str], Optional[str]]:
     explicit_base_url = get_public_backend_url()
     if explicit_base_url:
-        return f"{explicit_base_url}/v1/webhooks/evolution/whatsapp", None
+        return f"{explicit_base_url}/v1/webhooks/waha/whatsapp", None
 
     request_base_url = str(request.base_url).rstrip("/")
     if _is_publicly_reachable_host(request.url.hostname or ""):
-        return f"{request_base_url}/v1/webhooks/evolution/whatsapp", None
+        return f"{request_base_url}/v1/webhooks/waha/whatsapp", None
 
     return (
         None,
-        "Webhook da Evolution não configurado automaticamente porque esta API está em localhost. "
+        "Webhook da WAHA não configurado automaticamente porque esta API está em localhost. "
         "Defina BACKEND_PUBLIC_URL ou APP_PUBLIC_URL com uma URL pública para receber eventos de entrega.",
     )
 
@@ -119,6 +110,10 @@ def _extract_event_name(payload: Any) -> str:
 def _extract_instance_name(payload: Any) -> Optional[str]:
     if not isinstance(payload, dict):
         return None
+    if payload.get("session"):
+        return str(payload.get("session"))
+    if payload.get("name"):
+        return str(payload.get("name"))
     if payload.get("instanceName"):
         return str(payload.get("instanceName"))
     instance = payload.get("instance")
@@ -165,22 +160,17 @@ async def connect_whatsapp(
         bool(current_user.whatsapp_instance),
         whatsapp_data.number,
     )
-    gateway_label = _whatsapp_gateway_label()
-    if not _is_whatsapp_gateway_configured():
+    if not _is_waha_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "API WAHA não configurada no servidor. Defina WAHA_API_URL e WAHA_API_KEY."
-                if gateway_label == "WAHA"
-                else "API Evolution não configurada no servidor. Defina EVOLUTION_API_URL e EVOLUTION_API_KEY."
-            ),
+            detail="API WAHA não configurada no servidor. Defina WAHA_API_URL e WAHA_API_KEY.",
         )
 
     # 1. Limpeza de instância anterior (se existir)
     if current_user.whatsapp_instance:
         logger.info(f"Removendo instância antiga: {current_user.whatsapp_instance}")
         try:
-            await evolution_delete_instance(current_user.whatsapp_instance)
+            await delete_whatsapp_session(current_user.whatsapp_instance)
         except Exception as e:
             # Loga o erro mas continua o processo, pois o objetivo é criar uma nova
             logger.error(f"Falha ao remover instância antiga (não bloqueante): {e}")
@@ -190,12 +180,12 @@ async def connect_whatsapp(
     # 2. Criação da nova instância
     instance_name = generate_instance_name(current_user)
     logger.info(f"Criando nova instância: {instance_name}")
-    success = await evolution_create_instance(instance_name)
+    success = await create_whatsapp_session(instance_name)
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha ao criar sessão na {gateway_label}.",
+            detail="Falha ao criar sessão na WAHA.",
         )
 
     current_user.whatsapp_instance = instance_name
@@ -208,11 +198,11 @@ async def connect_whatsapp(
     webhook_url = None
     webhook_configured = False
     webhook_warning = None
-    resolved_webhook_url, resolution_warning = _resolve_evolution_webhook_url(request)
+    resolved_webhook_url, resolution_warning = _resolve_waha_webhook_url(request)
     if resolved_webhook_url:
         webhook_url = resolved_webhook_url
         try:
-            webhook_result = await configure_evolution_webhook(instance_name, resolved_webhook_url)
+            webhook_result = await configure_waha_webhook(instance_name, resolved_webhook_url)
             webhook_configured = True
             logger.info(
                 "[WHATSAPP][ROUTE] webhook configurado | user_id=%s | instance=%s | webhook_url=%s | result=%s",
@@ -246,7 +236,7 @@ async def connect_whatsapp(
 
     return WhatsAppConnectResponse(
         success=True,
-        message=f"Sessão {gateway_label} criada com sucesso. Aguardando QR Code.",
+        message="Sessão WAHA criada com sucesso. Aguardando QR Code.",
         instance_name=instance_name,
         qr_code=format_qr_code(qr_code_raw),
         webhook_url=webhook_url,
@@ -313,7 +303,7 @@ async def disconnect_whatsapp(
     instance_to_delete = current_user.whatsapp_instance
     logger.info(f"Desconectando instância: {instance_to_delete}")
 
-    await evolution_delete_instance(instance_to_delete)
+    await delete_whatsapp_session(instance_to_delete)
 
     current_user.whatsapp_instance = None
     current_user.whatsapp_number = None # Opcional: limpar o número ao desconectar
@@ -367,7 +357,7 @@ async def test_whatsapp_notification_route(
             return {"success": True, "message": f"Mensagem entregue para {target_number}.", "delivery_confirmed": True}
         return {
             "success": True,
-            "message": f"Mensagem aceita pela {_whatsapp_gateway_label()} para {target_number} e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
+            "message": f"Mensagem aceita pela WAHA para {target_number} e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
             "delivery_confirmed": False,
             "gateway_status": result.get("gateway_status"),
         }
@@ -375,8 +365,8 @@ async def test_whatsapp_notification_route(
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha no envio. Verifique o console do servidor e se o número é válido.")
 
 
-@webhook_router.post("/v1/webhooks/evolution/whatsapp", name="evolution_whatsapp_webhook")
-async def evolution_whatsapp_webhook(request: Request):
+@webhook_router.post("/v1/webhooks/waha/whatsapp", name="waha_whatsapp_webhook")
+async def waha_whatsapp_webhook(request: Request):
     try:
         payload = await request.json()
     except Exception:

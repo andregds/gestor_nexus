@@ -459,7 +459,7 @@ async function deleteURL(id) {
 }
 
 // ============================
-// WHATSAPP (EVOLUTION API)
+// WHATSAPP (WAHA API)
 // ============================
 /**
  * Gera o template HTML inicial para a seção do WhatsApp.

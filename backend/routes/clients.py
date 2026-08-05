@@ -474,7 +474,7 @@ async def send_manual_reminder(
                 telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
             )
             if not success:
-                error_detail = error_detail or "A Evolution API retornou erro ou falha no envio."
+                error_detail = error_detail or "A WAHA retornou erro ou falha no envio."
         except HTTPException as exc:
             error_detail = normalize_reminder_error_message(exc)
             if set_client_reminder_error(client, error_detail):

@@ -321,10 +321,10 @@ async def send_client_reminder(
         )
 
         if not result.get("accepted"):
-            return False, channel, "A Evolution API retornou erro ou falha no envio."
+            return False, channel, "A WAHA retornou erro ou falha no envio."
         if not result.get("delivered"):
             return True, channel, (
-                "Mensagem aceita pela Evolution API e aguardando confirmação de entrega "
+                "Mensagem aceita pela WAHA e aguardando confirmação de entrega "
                 f"(status atual: {result.get('gateway_status')})."
             )
         return True, channel, ""

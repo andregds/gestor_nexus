@@ -7,10 +7,10 @@
 │   ├── .env                    # Mantém o que já existe
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── config.py           # Configurações globais (EVOLUTION_API_URL, etc.)
+│   │   ├── config.py           # Configurações globais (WAHA_API_URL, etc.)
 │   │   ├── dependencies.py     # get_db, get_current_user
 │   │   ├── lifespan.py         # Função lifespan
-│   │   └── whatsapp_utils.py   # generate_instance_name, evolution_headers
+│   │   └── whatsapp_utils.py   # Integração WhatsApp via WAHA
 │   ├── schemas/
 │   │   ├── __init__.py
 │   │   ├── auth.py             # Token

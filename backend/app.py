@@ -194,7 +194,7 @@ async def test_notification(data: TestMessage, current_user: User = Depends(get_
         if result.get("delivered"):
             return {"message": "Mensagem entregue com sucesso!", "delivery_confirmed": True}
         return {
-            "message": f"Mensagem aceita pela Evolution API e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
+            "message": f"Mensagem aceita pela WAHA e aguardando confirmação de entrega (status atual: {result.get('gateway_status')}).",
             "delivery_confirmed": False,
             "gateway_status": result.get("gateway_status"),
         }

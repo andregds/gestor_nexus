@@ -11,7 +11,7 @@
 
 O **Gestor Nexus** foi desenvolvido para resolver dois problemas principais: monitorar a estabilidade de servidores/URLs em tempo real e gerenciar a base de clientes de serviços digitais (como IPTV, Streaming ou SaaS).
 
-O sistema verifica periodicamente o status dos serviços e, em caso de queda ou lentidão, notifica o administrador via WhatsApp (integração com Evolution API) e Telegram. Além disso, permite o cadastro de clientes com datas de vencimento, enviando lembretes automáticos de cobrança.
+O sistema verifica periodicamente o status dos serviços e, em caso de queda ou lentidão, notifica o administrador via WhatsApp (integração com WAHA API) e Telegram. Além disso, permite o cadastro de clientes com datas de vencimento, enviando lembretes automáticos de cobrança.
 
 ## ✨ Funcionalidades Principais
 
@@ -26,7 +26,7 @@ O sistema verifica periodicamente o status dos serviços e, em caso de queda ou 
 - **Lembretes Automáticos:** Envio de mensagens de cobrança via WhatsApp antes e depois do vencimento.
 
 ### 🔔 Notificações & Integrações
-- **WhatsApp (Evolution API):** Conexão via QR Code diretamente pelo painel. Suporte a envio de mensagens de texto e alertas.
+- **WhatsApp (WAHA API):** Conexão via QR Code diretamente pelo painel. Suporte a envio de mensagens de texto, imagens e alertas.
 - **Telegram Bot:** Integração nativa para receber alertas de infraestrutura em grupos ou privado.
 - **Configurações Personalizadas:** O usuário escolhe quais tipos de alerta deseja receber (Queda, Volta, Lentidão).
 
@@ -47,7 +47,7 @@ O sistema verifica periodicamente o status dos serviços e, em caso de queda ou 
 
 ### Pré-requisitos
 - Python instalado.
-- Uma instância da [Evolution API](https://github.com/EvolutionAPI/evolution-api) rodando (para funcionalidades de WhatsApp).
+- Uma instância da [WAHA API](https://waha.devlike.pro) rodando (para funcionalidades de WhatsApp).
 
 ### Passo a Passo
 
