@@ -53,10 +53,34 @@ def ensure_user_schedule_columns():
         if "last_reminder_run_at" not in user_columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN last_reminder_run_at DATETIME"))
 
+
+def ensure_plan_name_index_compatibility():
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        if "plans" not in inspector.get_table_names():
+            return
+        if connection.dialect.name == "sqlite":
+            return
+
+        obsolete_indexes = set()
+
+        for index in inspector.get_indexes("plans"):
+            if index.get("unique") and (index.get("column_names") or []) == ["name"]:
+                obsolete_indexes.add(index["name"])
+
+        for constraint in inspector.get_unique_constraints("plans"):
+            if (constraint.get("column_names") or []) == ["name"] and constraint.get("name"):
+                obsolete_indexes.add(constraint["name"])
+
+        for index_name in obsolete_indexes:
+            escaped_index_name = index_name.replace("`", "``")
+            connection.execute(text(f"ALTER TABLE plans DROP INDEX `{escaped_index_name}`"))
+
 # Cria as tabelas no banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
 ensure_client_error_columns()
 ensure_user_schedule_columns()
+ensure_plan_name_index_compatibility()
 
 
 @asynccontextmanager
