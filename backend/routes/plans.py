@@ -13,8 +13,8 @@ router = APIRouter(prefix="/plans", tags=["Planos"])
 catalog_router = APIRouter(prefix="/users/me/catalog", tags=["Catálogo"])
 
 
-def _raise_duplicate_plan_name() -> None:
-    raise HTTPException(status_code=409, detail="Já existe um plano com esse nome.")
+def _raise_duplicate_plan_name_and_cycle() -> None:
+    raise HTTPException(status_code=409, detail="Já existe um plano com esse nome e frequência.")
 
 
 @router.post("/", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
@@ -26,11 +26,15 @@ def create_plan(
 ):
     existing_plan = (
         db.query(Plan)
-        .filter(Plan.name == plan.name)
+        .filter(
+            Plan.user_id == current_user.id,
+            Plan.name == plan.name,
+            Plan.billing_cycle == plan.billing_cycle,
+        )
         .first()
     )
     if existing_plan:
-        _raise_duplicate_plan_name()
+        _raise_duplicate_plan_name_and_cycle()
 
     db_plan = Plan(**plan.dict(), user_id=current_user.id)
     db.add(db_plan)
@@ -39,7 +43,7 @@ def create_plan(
     except IntegrityError as exc:
         db.rollback()
         if "Duplicate entry" in str(exc.orig) and "for key 'name'" in str(exc.orig):
-            _raise_duplicate_plan_name()
+            _raise_duplicate_plan_name_and_cycle()
         raise
     db.refresh(db_plan)
     return db_plan
@@ -76,15 +80,21 @@ def update_plan(
         raise HTTPException(status_code=404, detail="Plano não encontrado")
 
     update_data = plan.dict(exclude_unset=True)
-    incoming_name = update_data.get("name")
-    if incoming_name:
+    if "name" in update_data or "billing_cycle" in update_data:
+        target_name = update_data.get("name", db_plan.name)
+        target_billing_cycle = update_data.get("billing_cycle", db_plan.billing_cycle)
         existing_plan = (
             db.query(Plan)
-            .filter(Plan.name == incoming_name, Plan.id != plan_id)
+            .filter(
+                Plan.user_id == current_user.id,
+                Plan.name == target_name,
+                Plan.billing_cycle == target_billing_cycle,
+                Plan.id != plan_id,
+            )
             .first()
         )
         if existing_plan:
-            _raise_duplicate_plan_name()
+            _raise_duplicate_plan_name_and_cycle()
 
     for key, value in update_data.items():
         setattr(db_plan, key, value)
@@ -94,7 +104,7 @@ def update_plan(
     except IntegrityError as exc:
         db.rollback()
         if "Duplicate entry" in str(exc.orig) and "for key 'name'" in str(exc.orig):
-            _raise_duplicate_plan_name()
+            _raise_duplicate_plan_name_and_cycle()
         raise
     db.refresh(db_plan)
     return db_plan
