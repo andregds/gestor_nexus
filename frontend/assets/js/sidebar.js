@@ -1,7 +1,7 @@
 const DEFAULT_FEATURE_FLAGS = {
-    super_admin: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: true },
-    reseller: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
-    user: { dashboard: true, clients: true, products: true, whatsapp: true, telegram: true, settings: true, resell: true, admin: false },
+    super_admin: { dashboard: true, clients: true, products: true, communication: true, settings: true, resell: true, admin: true },
+    reseller: { dashboard: true, clients: true, products: true, communication: true, settings: true, resell: true, admin: false },
+    user: { dashboard: true, clients: true, products: true, communication: true, settings: true, resell: true, admin: false },
 };
 
 const USER_FEATURE_KEY = 'user_feature_flags';
@@ -34,8 +34,7 @@ const SIDEBAR_MENU_TEMPLATE = `
             <a href="api-pagamentos.html" class="sidebar-link sidebar-sublink" data-feature-key="products"><span class="sidebar-icon">💳</span> API de Pagamentos</a>
         </div>
     </div>
-    <a href="whatsapp.html" class="sidebar-link" data-feature-key="whatsapp"><span class="sidebar-icon">📱</span> Integração WhatsApp</a>
-    <a href="dashboard.html#telegram" class="sidebar-link" data-feature-key="telegram"><span class="sidebar-icon">✈️</span> Integração Telegram</a>
+    <a href="comunicacao.html" class="sidebar-link" data-feature-key="communication"><span class="sidebar-icon">💬</span> Comunicação</a>
     <a href="dashboard.html#settings" class="sidebar-link" data-feature-key="settings"><span class="sidebar-icon">⚙️</span> Configurações</a>
     <a href="resell.html" class="sidebar-link" data-role-required="reseller" data-feature-key="resell"><span class="sidebar-icon">💼</span> Revendedores</a>
     <a href="admin.html" class="sidebar-link" data-feature-key="admin"><span class="sidebar-icon">👑</span> Super Admin</a>

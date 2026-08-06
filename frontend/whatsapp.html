@@ -2,106 +2,12 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=comunicacao.html">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Integração WhatsApp | Gestor Nexus</title>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <title>Redirecionando | Gestor Nexus</title>
+    <script>window.location.replace('comunicacao.html');</script>
 </head>
 <body>
-    <!-- Mobile Header -->
-    <div class="navbar-mobile" style="display: none;">
-        <div class="brand-logo">GESTOR<span>NEXUS</span></div>
-        <button class="mobile-toggle" id="btnToggleSidebar">☰</button>
-    </div>
-
-    <div class="dashboard-container">
-        <!-- SIDEBAR -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="brand-logo">GESTOR<span>NEXUS</span></div>
-            </div>
-            <nav class="sidebar-menu">
-                <a href="dashboard.html" class="sidebar-link">
-                    <span class="sidebar-icon">📊</span> Dashboard
-                </a>
-                <a href="clients.html" class="sidebar-link">
-                    <span class="sidebar-icon">👥</span> Clientes
-                </a>
-                <!-- Link Ativo -->
-                <a href="whatsapp.html" class="sidebar-link active">
-                    <span class="sidebar-icon">📱</span> Integração WhatsApp
-                </a>
-                <a href="dashboard.html" class="sidebar-link">
-                    <span class="sidebar-icon">✈️</span> Integração Telegram
-                </a>
-                <a href="dashboard.html" class="sidebar-link">
-                    <span class="sidebar-icon">⚙️</span> Configurações
-                </a>
-            </nav>
-            <div class="user-profile">
-                <div class="user-info" id="userName">Carregando...</div>
-                <div class="user-role">Administrador</div>
-                <button onclick="logout()" style="background:none; border:none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-top: 5px;">Sair</button>
-            </div>
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-content">
-            <!-- A seção do WhatsApp é carregada dinamicamente pelo JS,
-                 mas precisamos da estrutura base aqui para ele injetar -->
-            <section id="section-whatsapp" class="content-section" style="display: block;">
-                <div class="page-header">
-                    <div class="page-title">
-                        <h2>Integração WhatsApp</h2>
-                        <p>Gateway de notificações via WAHA API.</p>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Status da Conexão</h3>
-
-                    <!-- Área de Status e Ações -->
-                    <div id="connectionStateArea">
-                        <div id="whatsappStatusContainer" class="whatsapp-status-box">
-                            <div class="spinner"></div>
-                            <div>Verificando status do gateway...</div>
-                        </div>
-
-                        <!-- Formulário de Conexão -->
-                        <div id="connectForm" style="display:none; margin-top: 2rem; text-align: center;">
-                            <p style="color: var(--text-muted); margin-bottom: 1rem;">Clique abaixo para gerar um novo QR Code e conectar sua instância.</p>
-                            <button class="btn btn-primary" onclick="connectWhatsApp()">🔗 Gerar QR Code</button>
-                        </div>
-
-                        <!-- Ações quando conectado -->
-                        <div id="connectedActions" style="display:none; margin-top: 1.5rem; gap: 1rem;">
-                            <button class="btn btn-secondary" onclick="testWhatsAppNotification()">🔔 Enviar Teste</button>
-                            <button class="btn btn-danger" onclick="disconnectWhatsApp()">🔴 Desconectar Instância</button>
-                        </div>
-                    </div>
-
-                    <!-- Área do QR Code -->
-                    <div id="qrCodeContainer" class="qr-container" style="display: none;">
-                        <h4 style="color: var(--primary); margin-bottom: 1rem;">Escaneie para Conectar</h4>
-                        <div id="qrCodeImageWrapper" style="min-height: 260px; display: flex; align-items: center; justify-content: center;">
-                            <div class="spinner"></div>
-                        </div>
-                        <p style="margin-top: 1rem; color: var(--text-muted);">Abra o WhatsApp > Aparelhos Conectados > Conectar Aparelho</p>
-                    </div>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <script src="assets/js/dashboard.js"></script>
-    <script src="assets/js/sidebar.js"></script>
-    <script>
-        // Script inline simples para garantir que o status carregue ao abrir esta página específica
-        document.addEventListener('DOMContentLoaded', () => {
-            // Verifica se a função existe no dashboard.js antes de chamar
-            if (typeof loadWhatsAppStatus === 'function') {
-                loadWhatsAppStatus();
-            }
-        });
-    </script>
+    <p>Redirecionando para <a href="comunicacao.html">Comunicação</a>...</p>
 </body>
 </html>
