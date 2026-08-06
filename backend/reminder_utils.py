@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_utils import send_telegram_message
 from whatsapp_utils import send_whatsapp_notification
+from email_utils import send_email_message
 
 
 DEFAULT_REMINDER_TEMPLATES = {
@@ -252,7 +253,7 @@ def normalize_reminder_error_message(error: Any) -> str:
         return "Falha ao enviar a mensagem."
     lowered = message.lower()
     if "sessionerror: no sessions" in lowered or "no sessions" in lowered:
-        return "WhatsApp desconectado. Gere um novo QR Code na aba Integração e conecte a instância novamente."
+        return "WhatsApp desconectado. Gere um novo QR Code na aba Comunicação e conecte a instância novamente."
     return message[:500]
 
 
@@ -311,7 +312,7 @@ async def send_client_reminder(
 
     if channel == "whatsapp":
         if not getattr(user, "whatsapp_connected", False):
-            raise RuntimeError("WhatsApp não conectado. Configure na aba Integração.")
+            raise RuntimeError("WhatsApp não conectado. Configure na aba Comunicação.")
 
         result = await send_whatsapp_notification(
             number=getattr(client, "whatsapp", ""),
@@ -341,6 +342,15 @@ async def send_client_reminder(
             token=user.telegram_token,
             chat_id=user.telegram_chat_id,
             message=body,
+        )
+        return True, channel, ""
+
+    if channel == "email":
+        send_email_message(
+            user,
+            getattr(client, "email", ""),
+            f"Lembrete de assinatura - {getattr(client, 'name', '')}",
+            message,
         )
         return True, channel, ""
 

@@ -32,6 +32,7 @@ class User(Base):
         "dashboard": True,
         "clients": True,
         "products": True,
+        "communication": True,
         "whatsapp": True,
         "telegram": True,
         "settings": True,
@@ -42,6 +43,7 @@ class User(Base):
         "dashboard": True,
         "clients": True,
         "products": True,
+        "communication": True,
         "whatsapp": True,
         "telegram": True,
         "settings": True,
@@ -155,6 +157,7 @@ class Client(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     login = Column(String, index=True)
+    email = Column(String(255), nullable=True)
     server_name = Column(String)
     plan_price = Column(Float, nullable=True)
     selected_products = Column(JSON, nullable=True)

@@ -7,6 +7,7 @@ from datetime import date
 class ClientBase(BaseModel):
     name: str
     login: str
+    email: Optional[str] = None
     server_name: Optional[str] = None
     plan_price: Optional[float] = None
     selected_products: Optional[List[Dict[str, Any]]] = None

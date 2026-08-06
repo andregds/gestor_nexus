@@ -17,6 +17,7 @@ from reminder_utils import (
     send_client_reminder,
     set_client_reminder_error,
 )
+from email_utils import EMAIL_REMINDERS_DISABLED_MESSAGE
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
 
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/clients", tags=["Clientes"])
 class ClientCreate(BaseModel):
     name: str
     login: str
+    email: Optional[str] = None
     server_name: Optional[str] = None
     plan_price: Optional[float] = None
     selected_products: Optional[List[Dict[str, Any]]] = None
@@ -44,6 +46,7 @@ class ClientCreate(BaseModel):
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
     login: Optional[str] = None
+    email: Optional[str] = None
     server_name: Optional[str] = None
     plan_price: Optional[float] = None
     selected_products: Optional[List[Dict[str, Any]]] = None
@@ -213,8 +216,9 @@ async def process_reminders_now(
     # Verifica conexão
     has_whatsapp = current_user.whatsapp_connected
     has_telegram = bool(current_user.telegram_token)
+    has_email = bool((current_user.payment_api_settings or {}).get("email_settings", {}).get("enabled"))
 
-    if not has_whatsapp and not has_telegram:
+    if not has_whatsapp and not has_telegram and not has_email:
         print("❌ Erro: Nenhum canal conectado.")
         raise HTTPException(status_code=400, detail="Nenhum canal de notificação conectado.")
 
@@ -335,6 +339,24 @@ async def process_reminders_now(
                     print(f"   -> Erro técnico no Telegram: {e}")
                     success = False
                     error_detail = normalize_reminder_error_message(e)
+
+            elif channel == "email" and has_email:
+                try:
+                    success, _, error_detail = await send_client_reminder(
+                        current_user,
+                        client,
+                        msg,
+                        media=media,
+                        telegram_prefix=f"🔔 *Cobrança Manual em Massa: {client.name}*",
+                    )
+                    print(f"   -> E-mail enviado com sucesso!")
+                except Exception as e:
+                    print(f"   -> Erro técnico no E-mail: {e}")
+                    success = False
+                    error_detail = normalize_reminder_error_message(e)
+
+            elif channel == "email":
+                error_detail = EMAIL_REMINDERS_DISABLED_MESSAGE
 
             if success:
                 if clear_client_reminder_error(client):
@@ -463,7 +485,7 @@ async def send_manual_reminder(
     # --- ENVIO VIA WHATSAPP ---
     if channel == "whatsapp":
         if not current_user.whatsapp_connected:
-            raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Integração.")
+            raise HTTPException(status_code=400, detail="WhatsApp não conectado. Configure na aba Comunicação.")
 
         try:
             success, _, error_detail = await send_client_reminder(
@@ -489,6 +511,24 @@ async def send_manual_reminder(
         if not current_user.telegram_token:
             raise HTTPException(status_code=400, detail="Telegram não configurado.")
 
+        try:
+            success, _, error_detail = await send_client_reminder(
+                current_user,
+                client,
+                msg,
+                media=media,
+                telegram_prefix=f"🔔 *Lembrete Manual: {client.name}*",
+            )
+        except HTTPException as exc:
+            error_detail = normalize_reminder_error_message(exc)
+            if set_client_reminder_error(client, error_detail):
+                db.commit()
+            raise
+        except Exception as e:
+            success = False
+            error_detail = normalize_reminder_error_message(e)
+
+    elif channel == "email":
         try:
             success, _, error_detail = await send_client_reminder(
                 current_user,

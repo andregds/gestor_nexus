@@ -123,7 +123,11 @@ function loadFeatureFlags() {
             reseller: Object.assign({}, DEFAULT_FEATURE_FLAGS.reseller, storedPerRole.reseller || {}),
             user: Object.assign({}, DEFAULT_FEATURE_FLAGS.user, storedPerRole.user || {})
         };
-        return userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
+        const flags = userFlags || roleDefaults[role] || DEFAULT_FEATURE_FLAGS.user;
+        if (flags.communication === undefined) {
+            flags.communication = flags.whatsapp !== false || flags.telegram !== false;
+        }
+        return flags;
     } catch (error) {
         return DEFAULT_FEATURE_FLAGS.user;
     }

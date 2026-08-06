@@ -964,10 +964,15 @@
                     <input type="text" id="clientWhatsapp" placeholder="5511999999999">
                 </div>
                 <div class="form-group">
+                    <label>E-mail</label>
+                    <input type="email" id="clientEmail" placeholder="cliente@email.com">
+                </div>
+                <div class="form-group">
                     <label>Canal de Notificação</label>
                     <select id="clientNotificationChannel" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                         <option value="whatsapp">WhatsApp</option>
                         <option value="telegram">Telegram (Admin)</option>
+                        <option value="email">E-mail</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -1201,7 +1206,7 @@
             if (typeof message !== 'string') {
                 return false;
             }
-            return message.includes('WhatsApp não conectado. Configure na aba Integração.')
+            return message.includes('WhatsApp não conectado. Configure na aba Comunicação.')
                 || message.includes('Nenhum canal de notificação conectado.');
         }
 
@@ -1212,7 +1217,7 @@
             if (!banner || !messageTarget || !titleTarget) {
                 return;
             }
-            const normalizedMessage = message || 'WhatsApp não conectado. Configure na aba Integração.';
+            const normalizedMessage = message || 'WhatsApp não conectado. Configure na aba Comunicação.';
             titleTarget.textContent = normalizedMessage.includes('Nenhum canal de notificação conectado.')
                 ? 'Nenhum canal conectado'
                 : 'WhatsApp desconectado';
@@ -2053,7 +2058,7 @@
                         <tr>
                             <th>Nome / Obs</th>
                             <th>Login</th>
-                            <th>WhatsApp</th>
+                            <th>Contato</th>
                             <th>Valor</th>
                             <th class="sort-th">
                                 Vencimento
@@ -2098,7 +2103,10 @@
                         ${errorHtml}
                     </td>
                     <td data-label="Login">${client.login}</td>
-                    <td data-label="WhatsApp">${client.whatsapp}</td>
+                    <td data-label="Contato">
+                        <div>${client.whatsapp || '-'}</div>
+                        ${client.email ? `<small style="color:var(--text-muted);">${escapeHtml(client.email)}</small>` : ''}
+                    </td>
                     <td data-label="Valor">${formatMoneyDisplay(getClientTotalAmount(client))}</td>
                     <td data-label="Vencimento">${formatLocalDate(client.expiration_date)}</td>
                     <td data-label="Status"><span class="status-badge" style="background: ${statusColor};">${statusText}</span></td>
@@ -2216,6 +2224,7 @@
                 document.getElementById('clientName').value = client.name;
                 document.getElementById('clientLogin').value = client.login;
                 document.getElementById('clientWhatsapp').value = client.whatsapp;
+                document.getElementById('clientEmail').value = client.email || '';
                 document.getElementById('clientNotificationChannel').value = client.notification_channel || 'whatsapp';
                 document.getElementById('clientExpiration').value = client.expiration_date;
 
@@ -2284,6 +2293,7 @@
                 name: document.getElementById('clientName').value,
                 login: document.getElementById('clientLogin').value,
                 whatsapp: document.getElementById('clientWhatsapp').value,
+                email: document.getElementById('clientEmail').value.trim(),
                 notification_channel: document.getElementById('clientNotificationChannel').value,
                 expiration_date: document.getElementById('clientExpiration').value,
 
@@ -2335,7 +2345,9 @@
                     customFieldsHtml += `<div><strong>${key}:</strong> ${value}</div>`;
                 });
             }
-            const channelIcon = client.notification_channel === 'telegram' ? '✈️ Telegram' : '📱 WhatsApp';
+            const channelIcon = client.notification_channel === 'telegram'
+                ? '✈️ Telegram'
+                : (client.notification_channel === 'email' ? '📧 E-mail' : '📱 WhatsApp');
             const errorHtml = hasReminderError(client)
                 ? `
                     <div class="error-detail-card">
@@ -2367,6 +2379,7 @@
                     <div><strong>Nome:</strong> ${client.name}</div>
                     <div><strong>Login:</strong> ${client.login}</div>
                     <div><strong>WhatsApp:</strong> ${client.whatsapp}</div>
+                    <div><strong>E-mail:</strong> ${client.email || '-'}</div>
                     <div><strong>Canal:</strong> ${channelIcon}</div>
                     <div><strong>Vencimento:</strong> ${formatLocalDate(client.expiration_date)}</div>
                     <div><strong>Plano:</strong> ${client.server_name}</div>

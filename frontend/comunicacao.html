@@ -124,7 +124,7 @@
                     <div style="max-width: 1120px;">
                         <div style="margin-bottom: 1rem;">
                             <h3 style="margin-bottom: 0.35rem; color: var(--primary);">Configurar canais</h3>
-                            <p style="margin: 0; color: var(--text-muted);">Use os painéis abaixo para conectar o WhatsApp via WAHA e configurar o bot do Telegram.</p>
+                            <p style="margin: 0; color: var(--text-muted);">Use os painéis abaixo para conectar WhatsApp via WAHA, Telegram e envio de lembretes por e-mail.</p>
                         </div>
 
                         <div class="row g-3">
@@ -227,6 +227,94 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div class="row g-3" style="margin-top: 1rem;">
+                            <div class="col-12">
+                                <div class="communication-panel" id="emailPanel">
+                                    <button type="button" class="communication-panel-toggle" onclick="toggleCommunicationPanel('emailPanel')" aria-expanded="false" aria-controls="emailPanelContent">
+                                        <div class="communication-panel-toggle-inner" style="background:rgba(124, 58, 237, 0.10); border-color:rgba(124, 58, 237, 0.24);">
+                                            <div>
+                                                <h4 style="margin:0 0 0.2rem; color:#6d28d9; font-size:1.15rem; font-weight:800; letter-spacing:0.01em;">E-mail de lembretes</h4>
+                                                <small style="color:#5b21b6;">Configure Gmail, Outlook/Hotmail, Yahoo ou qualquer outro SMTP próprio.</small>
+                                            </div>
+                                            <span class="communication-panel-toggle-icon" style="color:#6d28d9;">▾</span>
+                                        </div>
+                                    </button>
+                                    <div class="communication-panel-content" id="emailPanelContent">
+                                        <section id="section-email" class="content-section" style="display: block;">
+                                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+                                                <div class="form-group">
+                                                    <label>Tipo de e-mail</label>
+                                                    <select id="emailProvider" onchange="updateEmailProviderFields()">
+                                                        <option value="gmail">Gmail</option>
+                                                        <option value="hotmail">Hotmail</option>
+                                                        <option value="outlook">Outlook</option>
+                                                        <option value="yahoo">Yahoo</option>
+                                                        <option value="other">Outro SMTP</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Nome do remetente</label>
+                                                    <input type="text" id="emailSenderName" placeholder="Ex: Gestor Nexus">
+                                                </div>
+                                                <div class="form-group" style="display:flex; align-items:center; gap:0.65rem; padding-top:1.55rem;">
+                                                    <input type="checkbox" id="emailEnabled" style="width:auto;">
+                                                    <label for="emailEnabled" style="margin:0;">Ativar envio por e-mail</label>
+                                                </div>
+                                            </div>
+
+                                            <div id="externalEmailSettingsArea" style="margin-top: 1rem; display:block;">
+                                                <div class="communication-help-card" style="margin-bottom: 1rem; border-left-color:#7c3aed;">
+                                                    <h4 id="emailSmtpSettingsTitle" style="margin-bottom: 0.35rem;">Configuração SMTP</h4>
+                                                    <p id="emailSmtpSettingsHelp" style="margin: 0;">Para Gmail, selecione Gmail no campo "Tipo de e-mail"; os dados SMTP serão preenchidos automaticamente.</p>
+                                                </div>
+                                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+                                                    <div class="form-group" id="emailSenderEmailGroup">
+                                                        <label>E-mail remetente</label>
+                                                        <input type="email" id="emailSenderEmail" placeholder="seuemail@gmail.com">
+                                                    </div>
+                                                    <div class="form-group" id="emailUsernameGroup">
+                                                        <label>Usuário SMTP</label>
+                                                        <input type="text" id="emailUsername" placeholder="Normalmente o próprio e-mail">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Senha ou senha de app</label>
+                                                        <input type="password" id="emailPassword" placeholder="Senha de app do provedor">
+                                                        <small id="emailPasswordHelp" style="color: var(--text-muted);">Use senha de app quando o provedor exigir autenticação em duas etapas.</small>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Servidor SMTP</label>
+                                                        <input type="text" id="emailSmtpHost" placeholder="smtp.gmail.com" value="smtp.gmail.com">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Porta</label>
+                                                        <input type="number" id="emailSmtpPort" placeholder="587" value="587">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Segurança</label>
+                                                        <select id="emailSmtpSecurity">
+                                                            <option value="tls">TLS / STARTTLS</option>
+                                                            <option value="ssl">SSL</option>
+                                                            <option value="none">Sem criptografia</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="communication-help-card success" style="margin-top: 1rem;">
+                                                <h4 style="margin-bottom: 0.35rem;">Uso nos lembretes</h4>
+                                                <p style="margin: 0;">Depois de salvar, cadastre o e-mail do cliente na tela de Clientes e escolha o canal <strong>E-mail</strong> para os lembretes de cobrança.</p>
+                                            </div>
+
+                                            <div class="communication-actions" style="margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+                                                <button class="btn btn-secondary" onclick="testEmailSettings()">📨 Enviar Teste</button>
+                                                <button class="btn btn-primary" onclick="saveEmailSettings()">💾 Salvar E-mail</button>
+                                            </div>
+                                        </section>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -255,6 +343,9 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            if (typeof updateEmailProviderFields === 'function') {
+                updateEmailProviderFields();
+            }
             resizeOpenCommunicationPanels();
             setTimeout(resizeOpenCommunicationPanels, 400);
             setTimeout(resizeOpenCommunicationPanels, 1200);

@@ -36,6 +36,8 @@ def ensure_client_error_columns():
             connection.execute(text("ALTER TABLE clients ADD COLUMN plan_price FLOAT NULL"))
         if "selected_products" not in client_columns:
             connection.execute(text("ALTER TABLE clients ADD COLUMN selected_products JSON NULL"))
+        if "email" not in client_columns:
+            connection.execute(text("ALTER TABLE clients ADD COLUMN email VARCHAR(255) NULL"))
         if "reminder_error_message" not in client_columns:
             connection.execute(text("ALTER TABLE clients ADD COLUMN reminder_error_message VARCHAR(500)"))
         if "reminder_error_at" not in client_columns:
@@ -155,8 +157,9 @@ def check_and_send_reminders():
             # Verifica canais
             has_whatsapp = user.whatsapp_connected
             has_telegram = bool(user.telegram_token and user.telegram_chat_id)
+            has_email = bool((user.payment_api_settings or {}).get("email_settings", {}).get("enabled"))
 
-            if not has_whatsapp and not has_telegram:
+            if not has_whatsapp and not has_telegram and not has_email:
                 print(f"      ⚠️ Nenhum canal de notificação conectado. Pulando.")
                 continue
 

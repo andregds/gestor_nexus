@@ -1,7 +1,7 @@
 /**
  * @file dashboard.js
  * @description Lógica do painel de controle, incluindo autenticação,
- * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp e Telegram.
+ * carregamento de dados, navegação e interação com a API de monitoramento, WhatsApp, Telegram e E-mail.
  * @version 2.6
  */
 // ============================
@@ -59,6 +59,7 @@ function loadPage() {
     loadWhatsAppStatus();
     loadSettings();
     loadTelegramSettings();
+    loadEmailSettings();
     setInterval(loadURLs, 30000);
 }
 
@@ -764,12 +765,217 @@ async function testTelegram() {
             const err = await readJsonSafe(response);
             showNotification(`Erro: ${err.detail}`, 'error');
         }
-
     } catch (error) {
         console.error(error);
         showNotification("Erro de conexão ao enviar teste.", 'error');
     }
 }
+
+        // ============================
+        // E-MAIL
+        // ============================
+        function getEmailSettingsFromUser(user) {
+            const paymentSettings = user && typeof user.payment_api_settings === 'object' ? user.payment_api_settings : {};
+            return paymentSettings && typeof paymentSettings.email_settings === 'object' ? paymentSettings.email_settings : {};
+        }
+
+        function updateEmailProviderFields() {
+            const providerSelect = document.getElementById('emailProvider');
+            if (!providerSelect) return;
+
+            const provider = providerSelect.value;
+            const isCustomProvider = provider === 'other';
+            const smtpArea = document.getElementById('externalEmailSettingsArea');
+            const senderEmailGroup = document.getElementById('emailSenderEmailGroup');
+            const usernameGroup = document.getElementById('emailUsernameGroup');
+            const smtpTitle = document.getElementById('emailSmtpSettingsTitle');
+            const smtpHelp = document.getElementById('emailSmtpSettingsHelp');
+            const passwordHelp = document.getElementById('emailPasswordHelp');
+            const hostInput = document.getElementById('emailSmtpHost');
+            const portInput = document.getElementById('emailSmtpPort');
+            const securityInput = document.getElementById('emailSmtpSecurity');
+
+            if (smtpArea) smtpArea.style.display = 'block';
+            if (senderEmailGroup) senderEmailGroup.style.display = 'block';
+            if (usernameGroup) usernameGroup.style.display = 'block';
+
+            const presets = {
+                gmail: { host: 'smtp.gmail.com', port: '587', security: 'tls' },
+                hotmail: { host: 'smtp.office365.com', port: '587', security: 'tls' },
+                outlook: { host: 'smtp.office365.com', port: '587', security: 'tls' },
+                yahoo: { host: 'smtp.mail.yahoo.com', port: '587', security: 'tls' }
+            };
+
+            if (smtpTitle) {
+                smtpTitle.textContent = 'Configuração SMTP';
+            }
+            if (smtpHelp) {
+                smtpHelp.textContent = 'Informe os dados de envio do provedor selecionado.';
+            }
+            if (passwordHelp) {
+                passwordHelp.textContent = 'Use senha de app quando o provedor exigir autenticação em duas etapas.';
+            }
+
+            if (presets[provider]) {
+                if (hostInput) hostInput.value = presets[provider].host;
+                if (portInput) portInput.value = presets[provider].port;
+                if (securityInput) securityInput.value = presets[provider].security;
+                if (hostInput) hostInput.readOnly = true;
+                if (portInput) portInput.readOnly = true;
+            } else {
+                if (hostInput) hostInput.readOnly = false;
+                if (portInput) portInput.readOnly = false;
+                if (isCustomProvider && hostInput && !hostInput.value) hostInput.placeholder = 'smtp.seudominio.com';
+            }
+        }
+
+        async function loadEmailSettings() {
+            const providerSelect = document.getElementById('emailProvider');
+            if (!providerSelect) return;
+
+            try {
+                const response = await apiFetch('/users/me');
+                if (!response.ok) return;
+
+                const user = await readJsonSafe(response);
+                const settings = getEmailSettingsFromUser(user);
+                const provider = settings.provider || 'gmail';
+                providerSelect.value = provider;
+
+                const enabledInput = document.getElementById('emailEnabled');
+                if (enabledInput) enabledInput.checked = Boolean(settings.enabled);
+
+                const senderNameInput = document.getElementById('emailSenderName');
+                if (senderNameInput) senderNameInput.value = settings.sender_name || user.name || 'Gestor Nexus';
+
+                const senderEmailInput = document.getElementById('emailSenderEmail');
+                if (senderEmailInput) senderEmailInput.value = settings.sender_email || '';
+
+                const usernameInput = document.getElementById('emailUsername');
+                if (usernameInput) usernameInput.value = settings.username || '';
+
+                const passwordInput = document.getElementById('emailPassword');
+                if (passwordInput) passwordInput.value = settings.password || '';
+
+                const hostInput = document.getElementById('emailSmtpHost');
+                if (hostInput) hostInput.value = settings.smtp_host || '';
+
+                const portInput = document.getElementById('emailSmtpPort');
+                if (portInput) portInput.value = settings.smtp_port || '587';
+
+                const securityInput = document.getElementById('emailSmtpSecurity');
+                if (securityInput) securityInput.value = settings.smtp_security || 'tls';
+
+                updateEmailProviderFields();
+            } catch (error) {
+                console.error('Erro ao carregar E-mail:', error);
+            }
+        }
+
+        function collectEmailSettings() {
+            const provider = document.getElementById('emailProvider').value;
+            const senderEmailInput = document.getElementById('emailSenderEmail');
+            const usernameInput = document.getElementById('emailUsername');
+
+            return {
+                provider,
+                enabled: document.getElementById('emailEnabled').checked,
+                sender_name: document.getElementById('emailSenderName').value.trim(),
+                sender_email: senderEmailInput.value.trim(),
+                username: usernameInput.value.trim(),
+                password: document.getElementById('emailPassword').value,
+                smtp_host: document.getElementById('emailSmtpHost').value.trim(),
+                smtp_port: document.getElementById('emailSmtpPort').value.trim(),
+                smtp_security: document.getElementById('emailSmtpSecurity').value
+            };
+        }
+
+        function validateEmailSettings(emailSettings) {
+            if (!emailSettings.sender_email || !emailSettings.username || !emailSettings.password || !emailSettings.smtp_host) {
+                showNotification('Preencha a configuração do e-mail antes de continuar.', 'error');
+                return false;
+            }
+
+            return true;
+        }
+
+        async function persistEmailSettings(emailSettings) {
+            const response = await apiFetch('/users/me/settings', {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    payment_api_settings: {
+                        email_settings: emailSettings
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const err = await readJsonSafe(response);
+                throw new Error(err.detail || 'Erro ao salvar E-mail.');
+            }
+
+            return response;
+        }
+
+        async function saveEmailSettings() {
+            const emailSettings = collectEmailSettings();
+
+            if (emailSettings.enabled) {
+                if (!validateEmailSettings(emailSettings)) {
+                    return;
+                }
+            }
+
+            try {
+                await persistEmailSettings(emailSettings);
+                showNotification('E-mail configurado com sucesso!', 'success');
+                await loadEmailSettings();
+            } catch (error) {
+                console.error(error);
+                showNotification(error.message || 'Erro de conexão ao salvar E-mail.', 'error');
+            }
+        }
+
+        async function testEmailSettings() {
+            const emailSettings = collectEmailSettings();
+            if (!validateEmailSettings(emailSettings)) {
+                return;
+            }
+
+            function formatEmailErrorMessage(detail) {
+                const message = String(detail || '').trim();
+                if (!message) return 'Erro ao enviar e-mail de teste.';
+
+                if (
+                    message.toLowerCase().includes('badcredentials')
+                    || message.toLowerCase().includes('username and password not accepted')
+                    || message.toLowerCase().includes('gmail recusou')
+                ) {
+                    return 'Gmail recusou o usuário ou senha. Use o Gmail completo em E-mail remetente e Usuário SMTP. Ative a verificação em duas etapas na Conta Google e gere uma Senha de app em Conta Google > Segurança > Senhas de app. Cole essa senha de app no campo Senha; a senha normal do Gmail geralmente não funciona.';
+                }
+
+                return message;
+            }
+
+            showNotification('Enviando e-mail de teste...', 'info');
+
+            try {
+                await persistEmailSettings(emailSettings);
+                const response = await apiFetch('/users/me/email/test', {
+                    method: 'POST'
+                });
+                const data = await readJsonSafe(response);
+
+                if (response.ok) {
+                    showNotification(data.message || 'E-mail de teste enviado!', 'success');
+                } else {
+                    showNotification(formatEmailErrorMessage(data.detail), 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showNotification(formatEmailErrorMessage(error.message), 'error');
+            }
+        }
 
 // ============================
 // CONFIGURAÇÕES (SETTINGS)

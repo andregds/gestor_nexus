@@ -18,6 +18,7 @@ async function addClient(event) {
         name: document.getElementById('cName').value,
         login: document.getElementById('cLogin').value,
         server_name: document.getElementById('cServer').value,
+        email: document.getElementById('cEmail') ? document.getElementById('cEmail').value.trim() : '',
         whatsapp: document.getElementById('cWhatsapp').value.replace(/\D/g, ''),
         expiration_date: document.getElementById('cDate').value,
         notes: document.getElementById('cNotes').value,

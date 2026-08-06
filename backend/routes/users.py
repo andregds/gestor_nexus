@@ -32,6 +32,7 @@ from reminder_utils import (
     normalize_reminder_templates,
     set_user_reminder_settings,
 )
+from email_utils import normalize_email_settings, send_email_message
 
 # Defaults para evitar None em permisses/feature flags antigos
 DEFAULT_PERMISSIONS = {
@@ -45,6 +46,7 @@ DEFAULT_FEATURE_FLAGS = {
     "dashboard": True,
     "clients": True,
     "products": True,
+    "communication": True,
     "whatsapp": True,
     "telegram": True,
     "settings": True,
@@ -94,6 +96,7 @@ def _ensure_defaults(user: User, db: Optional[Session] = None, persist: bool = T
     payment_settings["reminder_templates"] = normalize_reminder_templates(payment_settings.get("reminder_templates"))
     payment_settings["reminder_scenarios"] = normalize_custom_reminder_scenarios(payment_settings.get("reminder_scenarios"))
     payment_settings["reminder_media"] = normalize_reminder_media(payment_settings.get("reminder_media"))
+    payment_settings["email_settings"] = normalize_email_settings(payment_settings.get("email_settings"), user)
 
     # Super admin no pode perder o console
     if user.role == "super_admin":
@@ -172,6 +175,8 @@ def update_user_settings(
     if settings.payment_api_settings is not None:
         payment_settings = _safe_dict(user_in_db.payment_api_settings, DEFAULT_PAYMENT_API_SETTINGS)
         payment_settings.update(settings.payment_api_settings)
+        if "email_settings" in settings.payment_api_settings:
+            payment_settings["email_settings"] = normalize_email_settings(settings.payment_api_settings.get("email_settings"), user_in_db)
         user_in_db.payment_api_settings = payment_settings
         flag_modified(user_in_db, "payment_api_settings")
 
@@ -187,6 +192,25 @@ def update_user_settings(
     db.commit()
     db.refresh(user_in_db)
     return _ensure_defaults(user_in_db, db, persist=False)
+
+
+@router.post("/me/email/test")
+def test_email_notification(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user_in_db = db.query(User).filter(User.id == current_user.id).first()
+    if not user_in_db:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    try:
+        send_email_message(
+            user_in_db,
+            user_in_db.email,
+            "Teste de E-mail - Gestor Nexus",
+            "Se você recebeu este e-mail, a configuração de envio está funcionando corretamente.",
+            require_enabled=False,
+        )
+        return {"message": "E-mail de teste enviado com sucesso!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/me/telegram/test")

@@ -9,6 +9,7 @@ from reminder_utils import (
     normalize_reminder_media,
     normalize_reminder_templates,
 )
+from email_utils import DEFAULT_EMAIL_SETTINGS, normalize_email_settings
 
 # Fallbacks used when legacy rows have NULL/invalid JSON
 DEFAULT_PERMISSIONS = {
@@ -22,6 +23,7 @@ DEFAULT_FEATURE_FLAGS = {
     "dashboard": True,
     "clients": True,
     "products": True,
+    "communication": True,
     "whatsapp": True,
     "telegram": True,
     "settings": True,
@@ -54,6 +56,7 @@ DEFAULT_PAYMENT_API_SETTINGS = {
     "mercadopago_pending_url": "",
     "mercadopago_failure_url": "",
     "mercadopago_statement_descriptor": "",
+    "email_settings": DEFAULT_EMAIL_SETTINGS.copy(),
 }
 
 
@@ -134,6 +137,8 @@ class UserResponse(BaseModel):
             # Ensure effective_feature_flags attribute exists
             if not hasattr(obj, "effective_feature_flags"):
                 object.__setattr__(obj, "effective_feature_flags", DEFAULT_FEATURE_FLAGS.copy())
+            payload_payment_settings = _coerce(getattr(obj, "payment_api_settings", None), DEFAULT_PAYMENT_API_SETTINGS)
+            payload_payment_settings["email_settings"] = normalize_email_settings(payload_payment_settings.get("email_settings"), obj)
             return {
                 "id": getattr(obj, "id", None),
                 "name": getattr(obj, "name", ""),
@@ -152,10 +157,10 @@ class UserResponse(BaseModel):
                 "feature_flags": _coerce(getattr(obj, "feature_flags", None), DEFAULT_FEATURE_FLAGS),
                 "reseller_feature_flags": _coerce(getattr(obj, "reseller_feature_flags", None), DEFAULT_RESELLER_FEATURE_FLAGS),
                 "effective_feature_flags": _coerce(getattr(obj, "effective_feature_flags", None), DEFAULT_FEATURE_FLAGS),
-                "payment_api_settings": _coerce(getattr(obj, "payment_api_settings", None), DEFAULT_PAYMENT_API_SETTINGS),
-                "reminder_templates": normalize_reminder_templates(_coerce(getattr(obj, "payment_api_settings", None), DEFAULT_PAYMENT_API_SETTINGS).get("reminder_templates")),
-                "reminder_scenarios": normalize_custom_reminder_scenarios(_coerce(getattr(obj, "payment_api_settings", None), DEFAULT_PAYMENT_API_SETTINGS).get("reminder_scenarios")),
-                "reminder_media": normalize_reminder_media(_coerce(getattr(obj, "payment_api_settings", None), DEFAULT_PAYMENT_API_SETTINGS).get("reminder_media")),
+                "payment_api_settings": payload_payment_settings,
+                "reminder_templates": normalize_reminder_templates(payload_payment_settings.get("reminder_templates")),
+                "reminder_scenarios": normalize_custom_reminder_scenarios(payload_payment_settings.get("reminder_scenarios")),
+                "reminder_media": normalize_reminder_media(payload_payment_settings.get("reminder_media")),
                 "client_limit": getattr(obj, "client_limit", 0) or 0,
                 "is_active": getattr(obj, "is_active", True) if getattr(obj, "is_active", True) is not None else True,
                 "block_reason": getattr(obj, "block_reason", None),
@@ -166,6 +171,7 @@ class UserResponse(BaseModel):
             data["reseller_feature_flags"] = _coerce(data.get("reseller_feature_flags"), DEFAULT_RESELLER_FEATURE_FLAGS)
             data["effective_feature_flags"] = _coerce(data.get("effective_feature_flags"), DEFAULT_FEATURE_FLAGS)
             data["payment_api_settings"] = _coerce(data.get("payment_api_settings"), DEFAULT_PAYMENT_API_SETTINGS)
+            data["payment_api_settings"]["email_settings"] = normalize_email_settings(data["payment_api_settings"].get("email_settings"))
             data["reminder_templates"] = normalize_reminder_templates(data["payment_api_settings"].get("reminder_templates"))
             data["reminder_scenarios"] = normalize_custom_reminder_scenarios(data["payment_api_settings"].get("reminder_scenarios"))
             data["reminder_media"] = normalize_reminder_media(data["payment_api_settings"].get("reminder_media"))
