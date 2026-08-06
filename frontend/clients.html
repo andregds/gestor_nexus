@@ -1115,6 +1115,8 @@
         let itemsPerPage = 20;
         let allPlans = [];
         let allProducts = [];
+        const CLIENT_PLAN_ENDPOINT = '/users/me/catalog/plans/';
+        const CLIENT_PRODUCT_ENDPOINT = '/users/me/catalog/products/';
         const EXPIRATION_RANGE_STORAGE_KEY = 'clients_expiration_range';
         const EXPIRATION_RANGE_INPUTS_STORAGE_KEY = 'clients_expiration_range_inputs';
         let expirationRangeStart = '';
@@ -1266,6 +1268,31 @@
             return allProducts.find((product) => Number(product.id) === Number(productId)) || null;
         }
 
+        async function fetchCatalogArray(primaryPath, fallbackPath, label) {
+            const paths = [...new Set([primaryPath, fallbackPath].filter(Boolean))];
+            let lastError = null;
+
+            for (const path of paths) {
+                try {
+                    const response = await apiFetch(path);
+                    if (response.status === 401) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+                    if (!response.ok) {
+                        lastError = new Error(`Falha ao carregar ${label} em ${path}.`);
+                        continue;
+                    }
+                    const data = await response.json();
+                    return Array.isArray(data) ? data : [];
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+
+            throw lastError || new Error(`Falha ao carregar ${label}.`);
+        }
+
         function renderPlanOptions(selectedValue = '') {
             const select = document.getElementById('clientServer');
             if (!select) {
@@ -1306,16 +1333,9 @@
             select.innerHTML = '<option value="">Carregando planos...</option>';
 
             try {
-                const response = await apiFetch('/plans');
-                if (response.status === 401) {
-                    window.location.href = 'login.html';
-                    return;
-                }
-                if (!response.ok) {
-                    throw new Error('Falha ao carregar planos.');
-                }
-
-                allPlans = await response.json();
+                const plans = await fetchCatalogArray(CLIENT_PLAN_ENDPOINT, '/plans', 'planos');
+                if (plans === null) return;
+                allPlans = plans;
                 renderPlanOptions(selectedValue);
             } catch (error) {
                 console.error('Erro ao carregar planos:', error);
@@ -1326,15 +1346,9 @@
 
         async function loadProductCatalog() {
             try {
-                const response = await apiFetch('/products');
-                if (response.status === 401) {
-                    window.location.href = 'login.html';
-                    return;
-                }
-                if (!response.ok) {
-                    throw new Error('Falha ao carregar produtos.');
-                }
-                allProducts = await response.json();
+                const products = await fetchCatalogArray(CLIENT_PRODUCT_ENDPOINT, '/products', 'produtos');
+                if (products === null) return;
+                allProducts = products;
             } catch (error) {
                 console.error('Erro ao carregar produtos:', error);
                 allProducts = [];
